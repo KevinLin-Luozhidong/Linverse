@@ -4,7 +4,7 @@ import {
   ask, listConversations, getConversation, deleteConversation,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
   type ConversationMeta, type ChatMsg,
-} from '../api'
+} from '@api'
 import { toggleFav, isFav } from '../favs'
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉

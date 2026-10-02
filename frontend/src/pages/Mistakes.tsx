@@ -3,7 +3,7 @@ import { I, Toast, Spin, Empty, Sheet } from '../components'
 import {
   listMistakes, createMistake, updateMistake, deleteMistake,
   uploadImage, ocr, imgSrc, type Mistake,
-} from '../api'
+} from '@api'
 
 // 错题本：默认按科目排列，可切换排序
 // 题目保留原图展示，不强制转文字；OCR 只是可选的辅助填入

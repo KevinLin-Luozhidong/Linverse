@@ -3,7 +3,7 @@ import { I, Toast } from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
-} from '../api'
+} from '@api'
 
 // 设置页：七个多彩圆角入口，点进二级页用横向推入转场（苹果味）
 // AI 的 Key 只存前端 localStorage，不经过后端

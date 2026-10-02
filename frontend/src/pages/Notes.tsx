@@ -3,7 +3,7 @@ import { I, Toast, Spin, Empty, Sheet } from '../components'
 import {
   listNotes, createNote, updateNote, deleteNote,
   uploadImage, imgSrc, type Note,
-} from '../api'
+} from '@api'
 
 // 笔记本：新建 / 编辑 / 删除（二次确认）/ 插图 / 标签 / 背景色 / 置顶 / 归档 / 搜索 / 列表网格切换
 

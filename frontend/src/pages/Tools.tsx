@@ -3,7 +3,7 @@ import Mistakes from './Mistakes'
 import Notes from './Notes'
 import Dictionary from './Dictionary'
 import { I, Toast } from '../components'
-import { getStats, type Stats } from '../api'
+import { getStats, type Stats } from '@api'
 
 // 学习工具页：三张大卡片横向滑动选择 + 底部指示点
 // 选中一张进入工作区后：左上角返回重选，其余两张缩成迷你切换器

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { I, Toast, Spin } from '../components'
-import { getStats, getBadges, listProfiles, type Stats, type Badge } from '../api'
+import { getStats, getBadges, listProfiles, type Stats, type Badge } from '@api'
 
 // 个人中心：顶部四统计卡 + 6 成就徽章 + "更多"区
 // 徽章定义按演示版（上色 / 灰掉未解锁），解锁状态以后端为准

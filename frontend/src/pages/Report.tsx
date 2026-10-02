@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { I, Toast, Spin } from '../components'
-import { getStats, getBadges, type Stats, type Badge } from '../api'
+import { getStats, getBadges, type Stats, type Badge } from '@api'
 
 // 学习报告：学习数据一览（统计展示 + 徽章进度），不是空壳
 

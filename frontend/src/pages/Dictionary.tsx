@@ -3,7 +3,7 @@ import { I, Toast, Spin, Empty } from '../components'
 import {
   lookupWord, getWordHistory, listVocab, addVocab, reviewVocab,
   dueVocab, checkin, type DictResult, type VocabWord,
-} from '../api'
+} from '@api'
 
 // 词典页：查词 / 生词本两个子板块
 // 生词本支持到期复习（遮住释义自测，懂/不懂反馈）和每日打卡

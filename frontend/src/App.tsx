@@ -6,7 +6,7 @@ import Settings from './pages/Settings'
 import Report from './pages/Report'
 import Favorites from './pages/Favorites'
 import { I, Toast } from './components'
-import { listProfiles, createProfile, getSettings } from './api'
+import { listProfiles, createProfile, getSettings } from '@api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
