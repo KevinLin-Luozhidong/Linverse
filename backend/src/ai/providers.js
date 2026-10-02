@@ -146,7 +146,9 @@ return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') |
 function resolveCustomEndpoint(endpoint) {
 const e = String(endpoint || '').replace(/\/+$/, ''); // 去掉末尾多余的斜杠
 if (!e) throw new Error('未配置自定义 AI 接口地址');
-if (e.endsWith('/v1')) {
+// OpenAI 标准（/v1 结尾）和智谱（/v4 结尾）：自动拼上 /chat/completions
+// 用户填 https://open.bigmodel.cn/api/paas/v4 就行，不用自己拼
+if (e.endsWith('/v1') || e.endsWith('/v4')) {
 return { url: e + '/chat/completions', format: 'openai'};
 }
 let pathname = '/';
