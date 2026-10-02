@@ -24,6 +24,14 @@ router.put('/:id', ah(async (req, res) => {
   res.json(p);
 }));
 
+// 换头像：body { avatarUrl }
+router.put('/:id/avatar', ah(async (req, res) => {
+  if (need(res, req.body.avatarUrl, 'avatarUrl 不能为空')) return;
+  const p = await dao.setAvatar(req.params.id, req.body.avatarUrl);
+  if (!p) return res.status(404).json({ error: '账号不存在' });
+  res.json(p);
+}));
+
 // 删除账号（连带删除该账号所有数据：外键 CASCADE）
 router.delete('/:id', ah(async (req, res) => {
   const n = await dao.deleteProfile(req.params.id);

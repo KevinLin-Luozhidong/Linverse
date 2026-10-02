@@ -156,11 +156,55 @@ router.post('/ocr', ah(async (req, res) => {
 }));
 
 // ---------- 词典 ----------
-// GET /api/dictionary?word=&profileId=
-// 数据源：dictionaryapi.dev（免费、无需 Key）；中文释义用 MyMemory 免费翻译（失败就保留英文，不报错）
+// GET /api/dictionary?word=&profileId=&source=dict|ai&aiKey=&model=
+// 数据源：
+//   dict（默认）：dictionaryapi.dev（免费、无需 Key）；中文释义用 MyMemory 免费翻译（失败就保留英文，不报错）
+//   ai（AI 详解）：用用户配置的 AI 供应商解释单词，中英文、成语都行；需要 aiKey（随请求传，不存后端）
 router.get('/dictionary', ah(async (req, res) => {
   const word = (req.query.word || '').trim().toLowerCase();
   if (need(res, word, 'word 必填')) return;
+  const source = req.query.source === 'ai' ? 'ai' : 'dict';
+
+  // ---- AI 详解：走统一 ask() 入口， prompt 要求只返回 JSON ----
+  if (source === 'ai') {
+    const aiKey = req.query.aiKey || '';
+    const model = req.query.model || 'demo';
+    if (!aiKey && model !== 'demo') {
+      return res.status(400).json({ error: 'AI 详解需要先去"设置 → AI 接口"填写 Key' });
+    }
+    let endpoint = '';
+    let modelName = '';
+    if (model === 'custom' && req.query.profileId) {
+      const s = await dao.getSettings(req.query.profileId);
+      endpoint = s.aiEndpoint;
+      modelName = s.aiModel;
+    }
+    const prompt = `你是中英双语词典。请解释词语「${word}」，只返回 JSON，不要任何多余文字，不要 markdown 代码块标记：{"phonetic":"音标（英文单词才有，如 /wɜːd/，没有就空字符串）","meanings":[{"pos":"词性（如 n./v./adj.，中文词填\"\"）","zh":"中文释义","en":"英文释义（中文词可空）"}],"examples":["英文例句（中文词给中文例句）"],"synonyms":["同义词/近义词"]}\n要求：meanings 最多 4 条，examples 最多 3 条，synonyms 最多 6 个。`;
+    const { answer } = await ask({
+      model, question: prompt, deepThink: false, aiKey, endpoint, modelName,
+    });
+    // AI 可能包一层 ```json ... ```，先剥掉再解析
+    const jsonText = String(answer || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return res.status(502).json({ error: 'AI 返回格式异常，换个词或稍后再试' });
+    }
+    const result = {
+      word,
+      phonetic: parsed.phonetic || '',
+      meanings: (parsed.meanings || []).slice(0, 4).map((m) => ({
+        pos: m.pos || '', zh: m.zh || '', en: m.en || '',
+      })),
+      examples: (parsed.examples || []).slice(0, 3),
+      synonyms: (parsed.synonyms || []).slice(0, 6),
+    };
+    if (req.query.profileId) {
+      await dao.recordWordHistory(req.query.profileId, result.word);
+    }
+    return res.json(result);
+  }
 
   const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
   if (!r.ok) {

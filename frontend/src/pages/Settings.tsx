@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react'
-import { I, Toast } from '../components'
+import { useEffect, useRef, useState } from 'react'
+import { I, Toast, useSwipeBack } from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
   siteStatus, siteSetPassword, setSiteToken, siteReset,
+  dangerStatus, setDangerPassword,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
 // AI 的 Key 只存前端 localStorage，不经过后端
 
 type View = 'menu' | 'profile' | 'accounts' | 'ai' | 'appearance' | 'font' | 'storage' | 'about' | 'sitepw'
-const ORDER: View[] = ['menu', 'profile', 'accounts', 'ai', 'appearance', 'font', 'storage', 'about', 'sitepw']
+// 注意：ORDER 的顺序必须和下面 JSX 里 settings-page 的出现顺序完全一致，
+// 否则点"关于"会显示访问密码的内容（2026-10-03 真实 bug）
+const ORDER: View[] = ['menu', 'profile', 'accounts', 'ai', 'appearance', 'font', 'storage', 'sitepw', 'about']
 const TITLES: Record<View, string> = {
   menu: '设置', profile: '个人资料', accounts: '多账号', ai: 'AI 接口',
   appearance: '外观', font: '字体大小', storage: '存储空间', about: '关于',
@@ -30,6 +33,15 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 }) {
   const [view, setView] = useState<View>('menu')
   const [toast, setToast] = useState('')
+
+  // 切页时把目标页滚回顶部：避免"内容被顶栏压住半行"的错位感
+  const viewRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const pages = viewRef.current?.querySelectorAll('.settings-page')
+    pages?.[ORDER.indexOf(view)]?.scrollTo({ top: 0 })
+  }, [view])
+  // 右滑退出二级菜单（iOS 手势习惯：从左边缘向右滑）
+  const swipe = useSwipeBack(() => setView('menu'), view !== 'menu')
 
   // 账号
   const [profiles, setProfiles] = useState<P[]>([])
@@ -177,13 +189,18 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // 清空所有数据（恢复出厂设置）：删掉全部账号、错题、笔记、生词、会话，ID 从 1 重来。
   // 访问密码保留；本地存的账号 ID 也清掉，App 重启后会自动建新账号
+  // 必须输入所有者密码：只有本人能操作，朋友知道访问密码也清空不了
   const [confirmWipe, setConfirmWipe] = useState(false)
+  const [wipePw, setWipePw] = useState('')
   const wipeAll = async () => {
     if (!confirmWipe) { setConfirmWipe(true); return }
+    const d = wipePw.trim()
+    if (!d) { setToast('请输入所有者密码'); return }
     setConfirmWipe(false)
     try {
-      await siteReset()
+      await siteReset(d)
       localStorage.removeItem('linverse.profileId')
+      setWipePw('')
       setToast('已清空，重新开始')
       setTimeout(() => location.reload(), 900)
     } catch (e) {
@@ -214,6 +231,26 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     }
   }
 
+  // 所有者密码：只属于本人的密码，专管"清空所有数据"。朋友知道访问密码也动不了数据。
+  const [dangerSet, setDangerSet] = useState(false)
+  const [oldDanger, setOldDanger] = useState('')
+  const [newDanger, setNewDanger] = useState('')
+  useEffect(() => {
+    dangerStatus().then((s) => setDangerSet(s.dangerSet)).catch(() => {})
+  }, [])
+  const saveDangerPw = async () => {
+    const p = newDanger.trim()
+    if (p.length < 4) { setToast('密码至少 4 位'); return }
+    try {
+      await setDangerPassword(p, dangerSet ? oldDanger.trim() : undefined)
+      setDangerSet(true)
+      setOldDanger(''); setNewDanger('')
+      setToast(dangerSet ? '所有者密码已修改' : '所有者密码已设置：清空数据时必须输对它')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '设置失败')
+    }
+  }
+
   const idx = ORDER.indexOf(view)
   const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || '演示'
   const themeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色'
@@ -239,7 +276,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
         <div className="topbar-spacer" />
       </div>
 
-      <div className="settings-view">
+      <div className="settings-view" ref={viewRef} {...swipe}>
         <div className="settings-track" style={{ transform: `translateX(-${idx * 100}%)` }}>
           {/* 一级菜单：三组多彩圆角入口 */}
           <div className="settings-page">
@@ -377,9 +414,14 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
               {confirmClear ? '再点一次确认清理' : '清理缓存'}
             </button>
             <div className="safe-note" style={{ marginTop: 16, color: 'var(--red)' }}>危险区</div>
-            <div className="safe-note">清空所有账号、错题、笔记、生词和会话，账号 ID 从 1 重新开始，访问密码保留</div>
+            <div className="safe-note">清空所有账号、错题、笔记、生词和会话，账号 ID 从 1 重新开始，访问密码保留。必须输入所有者密码，只有本人能操作。</div>
+            <div className="field" style={{ marginTop: 12 }}>
+              <div className="field-label">所有者密码</div>
+              <input className="input" type="password" value={wipePw}
+                onChange={(e) => setWipePw(e.target.value)} placeholder="输入所有者密码" />
+            </div>
             <button className={'btn ' + (confirmWipe ? 'btn-danger' : 'btn-ghost')}
-              style={{ width: '100%', marginTop: 12 }} onClick={wipeAll}>
+              style={{ width: '100%', marginTop: 4 }} onClick={wipeAll}>
               {confirmWipe ? '再点一次确认清空' : '清空所有数据'}
             </button>
           </div>
@@ -406,6 +448,27 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
             <button className="btn" style={{ width: '100%' }} onClick={saveSitePw}>
               {pwSet ? '修改密码' : '设置密码'}
             </button>
+            {/* 所有者密码：只有本人知道，清空数据时必须输对 */}
+            <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
+              {dangerSet
+                ? '已设置所有者密码：清空所有数据时必须输对它，朋友不知道这个密码就动不了数据'
+                : '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它'}
+            </div>
+            {dangerSet && (
+              <div className="field">
+                <div className="field-label">旧的所有者密码</div>
+                <input className="input" type="password" value={oldDanger}
+                  onChange={(e) => setOldDanger(e.target.value)} placeholder="输入旧密码" />
+              </div>
+            )}
+            <div className="field">
+              <div className="field-label">{dangerSet ? '新的所有者密码' : '所有者密码'}（至少 4 位）</div>
+              <input className="input" type="password" value={newDanger}
+                onChange={(e) => setNewDanger(e.target.value)} placeholder={dangerSet ? '输入新密码' : '定一个只有你知道的密码'} />
+            </div>
+            <button className="btn" style={{ width: '100%' }} onClick={saveDangerPw}>
+              {dangerSet ? '修改所有者密码' : '设置所有者密码'}
+            </button>
           </div>
 
           {/* 关于 */}
@@ -417,7 +480,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
               </div>
               <div className="set-row" style={{ cursor: 'default' }}>
                 <span className="sr-label">版本</span>
-                <span className="set-val">v0.1.0</span>
+                <span className="set-val">v0.1.5</span>
               </div>
             </div>
           </div>

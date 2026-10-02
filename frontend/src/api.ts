@@ -89,7 +89,7 @@ export interface Settings {
   aiProvider?: string; aiModel?: string; aiEndpoint?: string;
 }
 
-export interface Profile { id: string; name: string }
+export interface Profile { id: string; name: string; avatar_url?: string }
 
 // 图片地址归一化：/uploads/... 拼上后端地址（本地 BASE 为空走 Vite 代理，部署后走 VITE_API_URL），http 开头原样返回
 export function imgSrc(url?: string): string {
@@ -209,8 +209,16 @@ export const updateNote = async (id: string, n: Partial<Note>) => normNote(await
 export const deleteNote = (id: string) => del(`/notes/${id}`)
 
 // ---- 词典 ----
-export const lookupWord = (word: string) =>
-  get<DictResult>(`/dictionary?word=${encodeURIComponent(word)}`)
+export type DictSource = 'dict' | 'ai'
+export const lookupWord = (word: string, source: DictSource = 'dict', opts?: {
+  aiKey?: string; model?: string; profileId?: string
+}) => {
+  const q = new URLSearchParams({ word, source })
+  if (opts?.aiKey) q.set('aiKey', opts.aiKey)
+  if (opts?.model) q.set('model', opts.model)
+  if (opts?.profileId) q.set('profileId', opts.profileId)
+  return get<DictResult>(`/dictionary?${q.toString()}`)
+}
 export const getWordHistory = (profileId: string) =>
   get<{ word: string; createdAt: string }[]>(`/word-history?profileId=${encodeURIComponent(profileId)}`)
 
@@ -242,6 +250,8 @@ export const listProfiles = () => get<Profile[]>('/profiles')
 export const createProfile = (name: string) => post<Profile>('/profiles', { name })
 export const renameProfile = (id: string, name: string) => put<Profile>(`/profiles/${id}`, { name })
 export const deleteProfile = (id: string) => del(`/profiles/${id}`)
+export const setAvatar = (id: string, avatarUrl: string) =>
+  put<Profile>(`/profiles/${id}/avatar`, { avatarUrl })
 
 // AI Key 存取：只放 localStorage，不经过后端
 const AI_KEY = 'linverse.aiKey'
@@ -266,4 +276,8 @@ export const siteVerify = (password: string) =>
 export const siteSetPassword = (password: string, oldPassword?: string) =>
   post<{ ok: boolean; token: string }>('/site/password', { password, oldPassword })
 // 清空所有数据：后端要求 token + 二次确认，成功后账号 ID 从 1 重来
-export const siteReset = () => post<{ ok: boolean }>('/site/reset', { confirm: 'RESET' })
+export const siteReset = (danger: string) => post<{ ok: boolean }>('/site/reset', { confirm: 'RESET', danger })
+// 所有者密码：只属于本人的密码，清空数据时必须输对
+export const dangerStatus = () => get<{ dangerSet: boolean }>('/site/danger-status')
+export const setDangerPassword = (password: string, oldPassword?: string) =>
+  post<{ ok: boolean }>('/site/danger-password', { password, oldPassword })

@@ -165,8 +165,8 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   return (
     <div className="mistake-sec">
       <div className="work-head">
+        <div className="work-kicker">学习工具</div>
         <div className="work-title">错题本</div>
-        <div className="work-desc">每一次弄清一个错题，就离真正掌握更近一步</div>
       </div>
       <div className="toolbar-row" style={{ padding: '10px 0 0' }}>
         <div className="seg" style={{ flex: 1 }}>

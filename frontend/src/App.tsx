@@ -4,7 +4,6 @@ import Tools from './pages/Tools'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import Report from './pages/Report'
-import Favorites from './pages/Favorites'
 import SiteGate from './SiteGate'
 import { I, Toast } from './components'
 import { listProfiles, createProfile, getSettings, siteStatus, getSiteToken } from '@api'
@@ -12,7 +11,7 @@ import { listProfiles, createProfile, getSettings, siteStatus, getSiteToken } fr
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
 type Tab = 'assistant' | 'tools' | 'me'
-type MeView = 'profile' | 'settings' | 'report' | 'favorites'
+type MeView = 'profile' | 'settings' | 'report'
 
 export default function App() {
   // 截图调试用：?tab=tools&view=settings 可直接定位页面，日常使用无影响
@@ -112,12 +111,16 @@ export default function App() {
   // 切 tab：标记访问过（首次挂载），之后只显隐不卸载
   const goTab = (t: Tab) => {
     setVisitedTabs((v) => (v.includes(t) ? v : [...v, t]))
+    if (t === 'me' && tab === 'me') goMeView('profile') // 重复点个人中心：回到主页（初级菜单）
     setTab(t)
     if (t !== 'me') goMeView('profile')
   }
   // 个人中心二级页切换：同样首次挂载、之后常驻
+  // 点"设置"永远回到设置初级菜单：Settings 内部 view 状态会记住子菜单，用 key 强制重挂载清掉
+  const [settingsKey, setSettingsKey] = useState(0)
   const goMeView = (v: MeView) => {
     setVisitedMe((s) => (s.includes(v) ? s : [...s, v]))
+    if (v === 'settings') setSettingsKey((k) => k + 1)
     setMeView(v)
   }
 
@@ -147,23 +150,17 @@ export default function App() {
               <div style={{ display: meView === 'profile' ? 'block' : 'none' }}>
                 <Profile profileId={profileId}
                   onOpenSettings={() => goMeView('settings')}
-                  onOpenReport={() => goMeView('report')}
-                  onOpenFavorites={() => goMeView('favorites')} />
+                  onOpenReport={() => goMeView('report')} />
               </div>
             )}
             {visitedMe.includes('settings') && (
               <div style={{ display: meView === 'settings' ? 'block' : 'none' }}>
-                <Settings profileId={profileId} onBack={() => goMeView('profile')} onProfileChange={switchProfile} />
+                <Settings key={settingsKey} profileId={profileId} onBack={() => goMeView('profile')} onProfileChange={switchProfile} />
               </div>
             )}
             {visitedMe.includes('report') && (
               <div style={{ display: meView === 'report' ? 'block' : 'none' }}>
                 <Report profileId={profileId} onBack={() => goMeView('profile')} />
-              </div>
-            )}
-            {visitedMe.includes('favorites') && (
-              <div style={{ display: meView === 'favorites' ? 'block' : 'none' }}>
-                <Favorites profileId={profileId} onBack={() => goMeView('profile')} />
               </div>
             )}
           </div>

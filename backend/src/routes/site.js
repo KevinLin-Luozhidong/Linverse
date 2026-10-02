@@ -12,6 +12,9 @@ const { ah, need } = require('./helpers');
 
 const router = express.Router();
 const HASH_KEY = 'site_password_hash';
+// 所有者密码：只有用户本人知道，专管"清空所有数据"这种危险操作。
+// 访问密码是发给朋友的"大门钥匙"，所有者密码是只属于本人的"保险柜钥匙"。
+const DANGER_KEY = 'danger_password_hash';
 
 // 密码 → 哈希：固定加一段应用前缀再算 SHA256，避免和其它地方的哈希撞车
 function hashPw(pw) {
@@ -50,13 +53,39 @@ router.post('/password', ah(async (req, res) => {
   res.json({ ok: true, token: h });
 }));
 
+// 所有者密码：设置/修改。第一次直接设；之后必须带对旧的所有者密码。
+// 这个密码只属于用户本人，朋友知道访问密码也清空不了数据。
+router.post('/danger-password', ah(async (req, res) => {
+  const pw = (req.body.password || '').trim();
+  if (need(res, pw && pw.length >= 4, '密码至少 4 位')) return;
+  if (need(res, pw.length <= 64, '密码太长了')) return;
+  const old = await dao.getSiteConfig(DANGER_KEY);
+  if (old) {
+    const oldPw = (req.body.oldPassword || '').trim();
+    if (need(res, oldPw, '请输入旧的所有者密码')) return;
+    if (hashPw(oldPw) !== old) return res.status(401).json({ error: '旧的所有者密码不对' });
+  }
+  await dao.setSiteConfig(DANGER_KEY, hashPw(pw));
+  res.json({ ok: true });
+}));
+
+// 状态：有没有设所有者密码（前端危险区靠它决定展示"设置"还是"输入"）
+router.get('/danger-status', ah(async (req, res) => {
+  const h = await dao.getSiteConfig(DANGER_KEY);
+  res.json({ dangerSet: !!h });
+}));
+
 // 清空所有数据（恢复出厂设置）：账号、错题、笔记、生词、会话全删，ID 从 1 重来。
-// 三重保护：必须已设访问密码 + 请求头带对 token + body 二次确认，缺一个都不执行。
+// 四重保护：必须已设访问密码 + 请求头带对 token + 所有者密码 + body 二次确认，缺一个都不执行。
 // 注意 need() 的语义：验证失败时返回 true（已回 400），所以用 if (need(...)) return
 router.post('/reset', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
   if (need(res, h, '还没设访问密码，不能清空')) return;
   if (need(res, req.headers['x-site-token'] === h, '访问密码不对')) return;
+  const dh = await dao.getSiteConfig(DANGER_KEY);
+  if (need(res, dh, '还没设所有者密码，不能清空（去设置 → 访问密码里设置）')) return;
+  const danger = (req.body.danger || '').trim();
+  if (need(res, danger && hashPw(danger) === dh, '所有者密码不对：只有本人能清空数据')) return;
   if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
   await dao.resetAll();
   res.json({ ok: true });

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { I, Toast } from '../components'
-import { getStats, getBadges, listMistakes, listProfiles, type Stats, type Badge } from '@api'
+import { useEffect, useRef, useState } from 'react'
+import { I, Toast, Spin } from '../components'
+import { getStats, getBadges, listMistakes, listProfiles, setAvatar, uploadImage, imgSrc, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
 // 徽章解锁以后端为准，阈值兜底保证演示/离线也能亮
@@ -48,32 +48,68 @@ const BADGE_DEFS = [
 // 星期中文：0=周日
 const DOW = ['日', '一', '二', '三', '四', '五', '六']
 
-export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpenFavorites }: {
+export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   profileId: string | null
   onOpenSettings: () => void
   onOpenReport: () => void
-  onOpenFavorites: () => void
 }) {
   const [stats, setStats] = useState<Stats | null>(null)
   const [badges, setBadges] = useState<Badge[]>([])
   const [name, setName] = useState('')
+  const [avatar, setAvatarUrl] = useState('')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInput = useRef<HTMLInputElement>(null)
   const [mastered, setMastered] = useState(0)
   const [totalMistakes, setTotalMistakes] = useState(0)
   const [toast, setToast] = useState('')
 
   useEffect(() => {
     if (!profileId) return
-    getStats(profileId).then(setStats).catch((e) => setToast(e instanceof Error ? e.message : '加载失败'))
-    getBadges(profileId).then(setBadges).catch(() => {})
+    // 秒开：先从本地缓存恢复上次的数据立刻渲染，后台再静默刷新
+    // （Vercel 无服务器冷启动时要几秒，不能让用户干等）
+    const ck = (k: string) => `linverse.cache.${profileId}.${k}`
+    try {
+      const cs = localStorage.getItem(ck('stats'))
+      if (cs) setStats(JSON.parse(cs))
+      const cb = localStorage.getItem(ck('badges'))
+      if (cb) setBadges(JSON.parse(cb))
+      const cn = localStorage.getItem(ck('name'))
+      if (cn) setName(cn)
+      const ca = localStorage.getItem(ck('avatar'))
+      if (ca) setAvatarUrl(ca)
+      const cm = localStorage.getItem(ck('mistakes'))
+      if (cm) {
+        const ms = JSON.parse(cm) as { mastered?: boolean }[]
+        setTotalMistakes(ms.length)
+        setMastered(ms.filter((m) => m.mastered).length)
+      }
+    } catch { /* 缓存坏了就忽略，走网络 */ }
+    // 后台刷新：拿到新数据后更新界面 + 覆盖缓存
+    getStats(profileId).then((s) => {
+      setStats(s)
+      try { localStorage.setItem(ck('stats'), JSON.stringify(s)) } catch {}
+    }).catch((e) => setToast(e instanceof Error ? e.message : '加载失败'))
+    getBadges(profileId).then((b) => {
+      setBadges(b)
+      try { localStorage.setItem(ck('badges'), JSON.stringify(b)) } catch {}
+    }).catch(() => {})
     listProfiles().then((ps) => {
       // 同 App.tsx：数据库 id 可能是数字，比较前统一转字符串
       const me = ps.find((p) => String(p.id) === String(profileId))
-      if (me) setName(me.name)
+      if (me) {
+        setName(me.name)
+        try { localStorage.setItem(ck('name'), me.name) } catch {}
+        if (me.avatar_url) {
+          setAvatarUrl(me.avatar_url)
+          try { localStorage.setItem(ck('avatar'), me.avatar_url) } catch {}
+        }
+      }
     }).catch(() => {})
     // 已掌握 x/y：从错题列表里数 mastered
     listMistakes(profileId).then((ms) => {
       setTotalMistakes(ms.length)
       setMastered(ms.filter((m) => m.mastered).length)
+      try { localStorage.setItem(ck('mistakes'), JSON.stringify(ms.map((m) => ({ mastered: m.mastered })))) } catch {}
     }).catch(() => {})
   }, [profileId])
 
@@ -92,7 +128,22 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
   const unlockedCount = stats ? BADGE_DEFS.filter((b) => unlockedOf(b, stats)).length : 0
   const avatarChar = (name || '我').slice(0, 1)
 
-  // 复制账号 ID：换设备时凭它在设置-多账号里找回数据
+  // 换头像：点头像选图 → 上传到 Supabase → 存到账号上
+  const changeAvatar = async (f: File | undefined) => {
+    if (!f || !profileId) return
+    setUploadingAvatar(true)
+    try {
+      const url = await uploadImage(f)
+      await setAvatar(profileId, url)
+      setAvatarUrl(url)
+      try { localStorage.setItem(`linverse.cache.${profileId}.avatar`, url) } catch {}
+      setToast('头像已更换')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '上传失败')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
   const copyId = async () => {
     if (!profileId) return
     try {
@@ -105,9 +156,16 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
 
   return (
     <div className="me-sec">
-      {/* 顶部：圆形头像 + 个人中心/昵称 */}
+      {/* 顶部：圆形头像（点一下换头像） + 个人中心/昵称 */}
       <div className="me-top">
-        <div className="me-avatar">{avatarChar}</div>
+        <button className="me-avatar" onClick={() => avatarInput.current?.click()}
+          aria-label="更换头像" style={{ padding: 0, overflow: 'hidden', border: 0, cursor: 'pointer' }}>
+          {avatar
+            ? <img src={imgSrc(avatar)} alt="头像" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : uploadingAvatar ? <Spin /> : avatarChar}
+        </button>
+        <input ref={avatarInput} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={(e) => { changeAvatar(e.target.files?.[0]); e.target.value = '' }} />
         <div className="me-id">
           <div className="me-kicker">个人中心</div>
           <div className="me-nick">{name || '我'}</div>
@@ -199,7 +257,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
         </div>
       </>)}
 
-      {/* 更多区：设置 / 学习报告 / 我的收藏 */}
+      {/* 更多区：设置 / 学习报告（我的收藏已挪到 AI 助手左上角抽屉） */}
       <div className="me-sec-title">更多</div>
       <div className="more-card">
         <button className="more-row" onClick={onOpenSettings}>
@@ -210,11 +268,6 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
         <button className="more-row" onClick={onOpenReport}>
           <span className="sq blue" style={{ width: 36, height: 36, borderRadius: 11 }}><I n="chart" size={20} /></span>
           学习报告
-          <span className="chev"><I n="chev" size={16} /></span>
-        </button>
-        <button className="more-row" onClick={onOpenFavorites}>
-          <span className="sq orange" style={{ width: 36, height: 36, borderRadius: 11 }}><I n="heart" size={20} /></span>
-          我的收藏
           <span className="chev"><I n="chev" size={16} /></span>
         </button>
       </div>

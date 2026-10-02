@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from 'react'
 
 // 共享小组件：线条图标、开关、弹窗、提示条等
 
@@ -113,4 +113,27 @@ export function Empty({ text, action }: { text: string; action?: ReactNode }) {
 // 加载中小圈
 export function Spin() {
   return <div className="spin" aria-label="加载中" />
+}
+
+// 右滑返回手势（iOS 习惯：手指从屏幕左边缘向右滑，退出二级页面）
+// 用法：const swipe = useSwipeBack(() => setView('menu'), view !== 'menu')
+//   <div {...swipe}>...</div>
+// 只响应"从左边缘出发"的右滑，避免和页面内的横滑（徽章横滚等）冲突
+export function useSwipeBack(onBack: () => void, enabled = true) {
+  const start = useRef<{ x: number; y: number } | null>(null)
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0]
+      start.current = { x: t.clientX, y: t.clientY }
+    },
+    onTouchEnd: (e: TouchEvent) => {
+      const s = start.current
+      start.current = null
+      if (!s || !enabled) return
+      const t = e.changedTouches[0]
+      const dx = t.clientX - s.x
+      const dy = t.clientY - s.y
+      if (s.x < 48 && dx > 64 && Math.abs(dy) < 48) onBack()
+    },
+  }
 }

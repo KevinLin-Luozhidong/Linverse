@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { I, Toast, Spin } from '../components'
+import { I, Toast, Spin, useSwipeBack } from '../components'
 import { getStats, getBadges, type Stats, type Badge } from '@api'
 
 // 学习报告：学习数据一览（统计展示 + 徽章进度），不是空壳
@@ -18,9 +18,10 @@ export default function Report({ profileId, onBack }: {
   }, [profileId])
 
   const unlocked = badges.filter((b) => b.unlocked).length
+  const swipe = useSwipeBack(onBack)
 
   return (
-    <div className="settings" style={{ height: '100%' }}>
+    <div className="settings" style={{ height: '100%' }} {...swipe}>
       <div className="topbar">
         <button className="icon-btn" onClick={onBack} aria-label="返回"><I n="back" /></button>
         <div className="topbar-title">学习报告</div>

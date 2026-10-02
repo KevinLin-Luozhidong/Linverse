@@ -70,6 +70,13 @@ async function updateProfile(id, name) {
   return r.rows[0] || null;
 }
 
+// 换头像：存 Supabase Storage 的图片地址
+async function setAvatar(id, url) {
+  await query('UPDATE profiles SET avatar_url = $1 WHERE id = $2', [url, id]);
+  const r = await query('SELECT * FROM profiles WHERE id = $1', [id]);
+  return r.rows[0] || null;
+}
+
 async function deleteProfile(id) {
   // 外键带 CASCADE，删除账号会连带删除该账号的所有数据
   const r = await query('DELETE FROM profiles WHERE id = $1', [id]);
@@ -474,7 +481,7 @@ async function updateSettings(profileId, patch) {
 
 module.exports = {
   today,
-  listProfiles, createProfile, updateProfile, deleteProfile,
+  listProfiles, createProfile, updateProfile, deleteProfile, setAvatar,
   listConversations, getConversation, createConversation, addMessage, deleteConversation,
   listMistakes, createMistake, updateMistake, deleteMistake, countMistakes,
   listNotes, createNote, updateNote, deleteNote, countNotes,

@@ -65,8 +65,8 @@ export default function Tools({ profileId }: { profileId: string | null }) {
     const sx = c.width / fly.width
     const sy = c.height / fly.height
     // 兜底清理：如果 transitionend 没触发（比如用户开了系统的"减弱动态效果"，
-    // CSS 里 transition 被关掉），300ms 后强制移除克隆卡片，避免残留（动画已缩短到 0.22s）
-    const timer = setTimeout(() => { setFly(null); setFlyTo('') }, 300)
+    // CSS 里 transition 被关掉），220ms 后强制移除克隆卡片，避免残留（动画已缩短到 0.15s）
+    const timer = setTimeout(() => { setFly(null); setFlyTo('') }, 220)
     const raf = requestAnimationFrame(() => {
       setFlyTo(`translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`)
     })

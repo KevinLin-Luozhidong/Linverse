@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Toast, Spin, Empty } from '../components'
+import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
@@ -171,6 +172,19 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
+  // 抽屉标签：会话列表 / 我的收藏（原来在个人中心"更多"里，现挪到这里和历史会话放一起）
+  const [drawerTab, setDrawerTab] = useState<'conv' | 'fav'>('conv')
+  const [favs, setFavs] = useState<Fav[]>([])
+  const [favOpenId, setFavOpenId] = useState('')
+  // 打开抽屉或切到收藏时刷新收藏列表（收藏是在回答卡片上点的，抽屉里要实时）
+  useEffect(() => {
+    if (drawerOpen && drawerTab === 'fav' && profileId) setFavs(listFavs(profileId))
+  }, [drawerOpen, drawerTab, profileId])
+  const unFav = (id: string) => {
+    if (!profileId) return
+    removeFav(profileId, id)
+    setFavs((v) => v.filter((f) => f.id !== id))
+  }
   const [toast, setToast] = useState('')
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
   const [uploading, setUploading] = useState(false)
@@ -348,27 +362,49 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
       </div>
 
-      {/* 左侧抽屉：新建会话 + 历史列表，默认关闭不闪现 */}
+      {/* 左侧抽屉：新建会话 + 会话/收藏双标签，默认关闭不闪现 */}
       <div className={'drawer-mask' + (drawerOpen ? ' open' : '')} onClick={() => setDrawerOpen(false)} />
       <aside className={'drawer' + (drawerOpen ? ' open' : '')} aria-hidden={!drawerOpen}>
         <div className="drawer-head">
           <button className="btn btn-ghost" style={{ width: '100%' }} onClick={newConv}>
             ＋ 新会话
           </button>
+          <div className="seg" style={{ marginTop: 10 }}>
+            <button className={drawerTab === 'conv' ? 'on' : ''} onClick={() => setDrawerTab('conv')}>会话</button>
+            <button className={drawerTab === 'fav' ? 'on' : ''} onClick={() => setDrawerTab('fav')}>
+              我的收藏{favs.length > 0 ? ` · ${favs.length}` : ''}
+            </button>
+          </div>
         </div>
         <div className="drawer-list">
-          {convs.length === 0 && <Empty text="还没有会话，开始第一次提问吧" />}
-          {convs.map((c) => (
-            <div key={c.id} className={'conv-item' + (c.id === convId ? ' active' : '')}
-              onClick={() => openConv(c.id)}>
-              <span className="conv-title">{c.title || '新会话'}</span>
-              {deletingId === c.id
-                ? <button className="mini-btn" style={{ color: 'var(--red)' }}
-                    onClick={(e) => { e.stopPropagation(); delConv(c.id) }}>确认删除</button>
-                : <button className="conv-del" aria-label="删除会话"
-                    onClick={(e) => { e.stopPropagation(); delConv(c.id) }}><I n="trash" size={18} /></button>}
-            </div>
-          ))}
+          {drawerTab === 'conv' ? (<>
+            {convs.length === 0 && <Empty text="还没有会话，开始第一次提问吧" />}
+            {convs.map((c) => (
+              <div key={c.id} className={'conv-item' + (c.id === convId ? ' active' : '')}
+                onClick={() => openConv(c.id)}>
+                <span className="conv-title">{c.title || '新会话'}</span>
+                {deletingId === c.id
+                  ? <button className="mini-btn" style={{ color: 'var(--red)' }}
+                      onClick={(e) => { e.stopPropagation(); delConv(c.id) }}>确认删除</button>
+                  : <button className="conv-del" aria-label="删除会话"
+                      onClick={(e) => { e.stopPropagation(); delConv(c.id) }}><I n="trash" size={18} /></button>}
+              </div>
+            ))}
+          </>) : (<>
+            {favs.length === 0 && <Empty text="还没有收藏，在 AI 回答卡片上点收藏试试" />}
+            {favs.map((f) => (
+              <div key={f.id} className="fav-card">
+                <div className="fav-q" onClick={() => setFavOpenId(favOpenId === f.id ? '' : f.id)}>
+                  {f.q}
+                </div>
+                {favOpenId === f.id && <div className="fav-a" style={{ WebkitLineClamp: 'unset' }}>{f.a}</div>}
+                <div className="fav-foot">
+                  <button className="mini-btn" style={{ color: 'var(--red)' }}
+                    onClick={() => unFav(f.id)}>取消收藏</button>
+                </div>
+              </div>
+            ))}
+          </>)}
         </div>
       </aside>
 

@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- v0.1.5：头像（Supabase Storage 的图片地址）
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id SERIAL PRIMARY KEY,

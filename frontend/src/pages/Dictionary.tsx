@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { I, Toast, Spin, Empty } from '../components'
 import {
   lookupWord, getWordHistory, listVocab, addVocab, reviewVocab,
-  dueVocab, checkin, type DictResult, type VocabWord,
+  dueVocab, checkin, getAiKey, type DictResult, type DictSource, type VocabWord,
 } from '@api'
 
 // 词典页：查词 / 生词本两个子板块
@@ -15,6 +15,9 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [word, setWord] = useState('')
   const [result, setResult] = useState<DictResult | null>(null)
   const [searching, setSearching] = useState(false)
+  // 词典接口：dict = 免费默认词典（快、不用 Key），ai = AI 详解（用你配的 AI，中英文都行）
+  const [dictSource, setDictSource] = useState<DictSource>(() =>
+    (localStorage.getItem('linverse.dictSource') as DictSource) || 'dict')
   const [history, setHistory] = useState<{ word: string; createdAt: string }[]>([])
   const [toast, setToast] = useState('')
 
@@ -41,7 +44,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     if (!target) return
     setSearching(true)
     try {
-      const r = await lookupWord(target)
+      const r = await lookupWord(target, dictSource, dictSource === 'ai' ? {
+        aiKey: getAiKey() || undefined,
+        model: localStorage.getItem('linverse.model') || 'demo',
+        profileId: profileId || undefined,
+      } : { profileId: profileId || undefined })
       setResult(r)
       loadHistory()
     } catch (e) {
@@ -49,6 +56,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     } finally {
       setSearching(false)
     }
+  }
+  const pickSource = (s: DictSource) => {
+    setDictSource(s)
+    localStorage.setItem('linverse.dictSource', s)
   }
 
   // 加入生词本：取第一条中文释义
@@ -99,8 +110,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   return (
     <div className="dict-sec">
       <div className="work-head">
+        <div className="work-kicker">学习工具</div>
         <div className="work-title">词典</div>
-        <div className="work-desc">查词背词一条龙，越背越牢</div>
       </div>
       <div className="seg" style={{ marginTop: 10 }}>
         <button className={sub === 'dict' ? 'on' : ''} onClick={() => setSub('dict')}>查词</button>
@@ -119,6 +130,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 onKeyDown={(e) => { if (e.key === 'Enter') search() }} />
             </div>
             <button className="btn" onClick={() => search()} disabled={searching}>查词</button>
+          </div>
+          {/* 词典接口切换：默认词典（快、免费）/ AI 详解（用你配的 AI，中英文、成语都能讲） */}
+          <div className="seg" style={{ marginTop: 10 }}>
+            <button className={dictSource === 'dict' ? 'on' : ''} onClick={() => pickSource('dict')}>默认词典</button>
+            <button className={dictSource === 'ai' ? 'on' : ''} onClick={() => pickSource('ai')}>AI 详解</button>
           </div>
 
           {searching && <Spin />}
