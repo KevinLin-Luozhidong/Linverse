@@ -77,11 +77,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [word, setWord] = useState('')
   const [result, setResult] = useState<DictResult | null>(null)
   const [searching, setSearching] = useState(false)
-  // 词典接口：offline = 离线词典包（快、断网可用），ai = AI 详解（联网、更详细）
-  // 老版本的 'dict' 默认值迁移到 'offline'
+  // 词典接口：dict = 在线词典（默认），offline = 离线词典包（断网备胎），ai = AI 详解（联网、更详细）
   const [dictSource, setDictSource] = useState<DictSource>(() => {
     const s = localStorage.getItem('linverse.dictSource') as DictSource
-    return (s === 'ai' || s === 'offline') ? s : 'offline'
+    return (s === 'ai' || s === 'offline' || s === 'dict') ? s : 'dict'
   })
   const [history, setHistory] = useState<{ word: string; createdAt: string }[]>([])
   const [toast, setToast] = useState('')
@@ -313,8 +312,9 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             </div>
             <button className="btn" onClick={() => search()} disabled={searching}>查词</button>
           </div>
-          {/* 词典二选一：离线词典（快、断网可用）/ AI 详解（联网、更详细） */}
+          {/* 词典三选一：在线词典（默认）/ 离线词典（断网备胎）/ AI 详解（联网、更详细） */}
           <div className="seg" style={{ marginTop: 10 }}>
+            <button className={dictSource === 'dict' ? 'on' : ''} onClick={() => pickSource('dict')}>在线词典</button>
             <button className={dictSource === 'offline' ? 'on' : ''} onClick={() => pickSource('offline')}>离线词典</button>
             <button className={dictSource === 'ai' ? 'on' : ''} onClick={() => pickSource('ai')}>AI 详解</button>
           </div>
