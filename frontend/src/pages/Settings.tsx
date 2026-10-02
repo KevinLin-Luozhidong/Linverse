@@ -461,7 +461,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   <div className="set-row" style={{ cursor: 'default' }}>
   <span className="sr-label">版本</span>
-  <span className="set-val">v0.1.7</span>
+  <span className="set-val">v0.1.8</span>
   </div>
   </div>
   </>),
@@ -470,7 +470,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   return (
     <div className="settings">
       <div className="topbar">
-        <button className="icon-btn" onClick={goBack} aria-label="返回">
+        <button className="icon-btn" onClick={() => goBack()} aria-label="返回">
           <I n="back" />
         </button>
         <div className="topbar-title">{TITLES[view]}</div>
