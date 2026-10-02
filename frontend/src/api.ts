@@ -153,7 +153,15 @@ export const updateMistake = (id: string, m: Partial<Mistake>) => put<Mistake>(`
 export const deleteMistake = (id: string) => del(`/mistakes/${id}`)
 
 // ---- OCR ----
-export const ocr = (imageUrl: string) => post<{ text: string }>('/ocr', { imageUrl })
+// 自动带上本地 AI Key 和当前供应商：以前只传 imageUrl，后端拿不到 Key 静默返回空文本
+export const ocr = (imageUrl: string) => {
+  const model = localStorage.getItem('linverse.model') || 'deepseek'
+  return post<{ text: string; error?: string }>('/ocr', {
+    imageUrl,
+    model: model === 'demo' ? 'deepseek' : model, // 演示模式没有真 Key，默认走 deepseek
+    aiKey: getAiKey() || undefined,
+  })
+}
 
 // ---- 笔记 ----
 // 后端把 tags/images 存成 JSON 字符串，前端按数组用，这里归一化（字段名不变）

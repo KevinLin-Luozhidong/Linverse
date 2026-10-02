@@ -837,20 +837,20 @@ body {
 }
 .me-badge-row::-webkit-scrollbar { display: none; }
 .me-badge {
-  flex: 0 0 150px; background: var(--card); border: 1px solid var(--line);
-  border-radius: 22px; padding: 16px 14px 14px;
+  flex: 0 0 108px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 18px; padding: 12px 10px 10px;
   transition: transform 0.15s var(--ease);
   animation: msgIn 0.25s var(--ease);
 }
 .me-badge:active { transform: scale(0.96); }
 .me-badge.locked { opacity: 0.55; }
 .me-badge-icon {
-  width: 54px; height: 54px; border-radius: 16px;
-  display: flex; align-items: center; justify-content: center; margin-bottom: 10px;
+  width: 40px; height: 40px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center; margin-bottom: 8px;
 }
-.me-badge-name { color: var(--ink); font-size: 17px; font-weight: 700; }
-.me-badge-desc { color: var(--ink2); font-size: 13px; margin-top: 4px; }
-.me-badge-status { margin-top: 12px; font-size: 14px; font-weight: 700; color: var(--blue); min-height: 20px; }
+.me-badge-name { color: var(--ink); font-size: 14px; font-weight: 700; }
+.me-badge-desc { color: var(--ink2); font-size: 11px; margin-top: 3px; }
+.me-badge-status { margin-top: 8px; font-size: 12px; font-weight: 700; color: var(--blue); min-height: 16px; }
 .me-badge.locked .me-badge-status { color: var(--ink2); }
 /* 骨架屏：占位块，与最终布局同尺寸， shimmer 只用 transform */
 .sk {
@@ -883,3 +883,30 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .fly-card { transition: none; }
 }
+/* 图片裁剪器：全屏覆盖，手指拖框选区，Canvas 按原图分辨率裁剪 */
+.crop-wrap {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(8, 14, 26, 0.96);
+  display: flex; flex-direction: column;
+  animation: msgIn 0.25s var(--ease);
+}
+.crop-head { padding: calc(14px + env(safe-area-inset-top)) 18px 10px; }
+.crop-title { color: #fff; font-size: 18px; font-weight: 800; }
+.crop-hint { display: block; color: rgba(255, 255, 255, 0.6); font-size: 13px; margin-top: 4px; }
+.crop-stage {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 8px 18px; min-height: 0;
+}
+.crop-box { position: relative; display: inline-block; max-width: 100%; max-height: 100%; }
+.crop-img { display: block; max-width: 100%; max-height: 62vh; border-radius: 12px; user-select: none; -webkit-user-drag: none; }
+.crop-mask { position: absolute; background: rgba(0, 0, 0, 0.55); pointer-events: none; }
+.crop-sel {
+  position: absolute; border: 2px solid #fff; border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.8);
+  pointer-events: none;
+}
+.crop-foot {
+  display: flex; gap: 10px; align-items: center; justify-content: center;
+  padding: 14px 18px calc(18px + env(safe-area-inset-bottom));
+}
+.crop-foot .mini-btn { color: #fff; border-color: rgba(255, 255, 255, 0.25); }

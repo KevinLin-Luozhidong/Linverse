@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet } from '../components'
+import Cropper from '../Cropper'
 import {
   listMistakes, createMistake, updateMistake, deleteMistake,
-  uploadImage, ocr, imgSrc, type Mistake,
+  uploadImage, ocr, imgSrc, getAiKey, type Mistake,
 } from '@api'
 
 // 错题本：默认按科目排列，可切换排序
@@ -28,6 +29,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [delId, setDelId] = useState('') // 二次确认删除
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileTarget, setFileTarget] = useState<'q' | 'a'>('q')
+  const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片本地地址，有值就弹出裁剪器
 
   const reload = () => {
     if (!profileId) { setLoading(false); return }
@@ -85,33 +87,53 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     setFileTarget(target)
     fileRef.current?.click()
   }
-  const onFile = async (f: File | undefined) => {
+  // 选图后先裁剪：不直接上传，弹出裁剪器让用户框出题目区域
+  const onFile = (f: File | undefined) => {
     if (!f || !editing) return
+    if (fileRef.current) fileRef.current.value = ''
+    const url = URL.createObjectURL(f)
+    setCropSrc(url)
+  }
+  // 裁剪完成（或直接使用原图）：走原来的上传流程
+  const onCropDone = async (blob: Blob) => {
+    const url = cropSrc
+    setCropSrc('')
+    if (url) URL.revokeObjectURL(url)
+    if (!editing) return
     setUploading(fileTarget)
     try {
-      const url = await uploadImage(f)
+      const upUrl = await uploadImage(new File([blob], 'crop.jpg', { type: 'image/jpeg' }))
       setEditing((e) => e ? {
         ...e,
-        ...(fileTarget === 'q' ? { questionImageUrl: url } : { answerImageUrl: url }),
+        ...(fileTarget === 'q' ? { questionImageUrl: upUrl } : { answerImageUrl: upUrl }),
       } : e)
     } catch (e) {
       setToast(e instanceof Error ? e.message : '上传失败')
     } finally {
       setUploading('')
-      if (fileRef.current) fileRef.current.value = ''
     }
+  }
+  const onCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc('')
   }
 
   // OCR 识别题目图文字，自动填入题目输入框
   const doOcr = async () => {
     if (!editing?.questionImageUrl) return
+    // 没配 Key 直接明说，不调接口也不装作"识别完成"
+    if (!getAiKey()) { setToast('先去个人中心-设置里填写 AI Key'); return }
     setOcrBusy(true)
     try {
       const r = await ocr(editing.questionImageUrl)
+      // 后端无 Key 或识别失败会带 error 字段；以前没检查，空文本也报"识别完成"，这就是"读不出来"的根因
+      if (r.error || !r.text.trim()) {
+        setToast(r.error || '没识别出文字，换张更清晰的图试试')
+        return
+      }
       setEditing((e) => e ? { ...e, questionText: e.questionText ? e.questionText + '\n' + r.text : r.text } : e)
       setToast('识别完成')
     } catch (e) {
-      // 无 Key 时后端返回错误，前端直接展示提示用户去设置
       setToast(e instanceof Error ? e.message : '识别失败')
     } finally {
       setOcrBusy(false)
@@ -219,7 +241,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
               )}
             </div>
             <div className="field">
-              <div className="field-label">题目（可留白只用图）</div>
+              <div className="field-label">题目（可选）</div>
               <textarea className="textarea" value={ed.questionText}
                 placeholder="手打或点上方识别文字自动填入"
                 onChange={(e) => setEditing({ ...ed, questionText: e.target.value })} />
@@ -239,12 +261,12 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
               </div>
             </div>
             <div className="field">
-              <div className="field-label">正确答案（可留白）</div>
+              <div className="field-label">正确答案（可选）</div>
               <textarea className="textarea" style={{ minHeight: 64 }} value={ed.answerText || ''}
                 onChange={(e) => setEditing({ ...ed, answerText: e.target.value })} />
             </div>
             <div className="field">
-              <div className="field-label">错因（可留白）</div>
+              <div className="field-label">错因（可选）</div>
               <input className="input" value={ed.reason || ''}
                 placeholder="比如概念混淆、审题失误"
                 onChange={(e) => setEditing({ ...ed, reason: e.target.value })} />
@@ -260,6 +282,10 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
           </>
         )}
       </Sheet>
+      {/* 图片裁剪器：选图后先裁再上传 */}
+      {cropSrc && (
+        <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
+      )}
       <Toast msg={toast} />
     </div>
   )

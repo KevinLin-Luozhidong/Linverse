@@ -130,9 +130,9 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
           <div className="me-sec-kicker">成长记录</div>
           <div className="me-sec-title">成就徽章</div>
           <div className="me-badge-row">
-            <div className="sk" style={{ flex: '0 0 150px', height: 168, borderRadius: 22 }} />
-            <div className="sk" style={{ flex: '0 0 150px', height: 168, borderRadius: 22 }} />
-            <div className="sk" style={{ flex: '0 0 150px', height: 168, borderRadius: 22 }} />
+            <div className="sk" style={{ flex: '0 0 108px', height: 132, borderRadius: 18 }} />
+            <div className="sk" style={{ flex: '0 0 108px', height: 132, borderRadius: 18 }} />
+            <div className="sk" style={{ flex: '0 0 108px', height: 132, borderRadius: 18 }} />
           </div>
         </div>
       ) : (<>
@@ -186,7 +186,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
                     ? { background: `${b.color}26`, color: b.color }
                     : { background: 'var(--blue-soft)', color: 'var(--ink3)' }}
                 >
-                  <I n={b.icon} size={24} />
+                  <I n={b.icon} size={20} />
                 </div>
                 <div className="me-badge-name">{b.name}</div>
                 <div className="me-badge-desc">{b.desc}</div>

@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS settings (
   "profileId" INTEGER PRIMARY KEY,
   "displayName" TEXT NOT NULL DEFAULT '',
   "fontSize" TEXT NOT NULL DEFAULT 'medium',
-  theme TEXT NOT NULL DEFAULT 'light',
+  theme TEXT NOT NULL DEFAULT 'system', -- 默认跟随系统深浅色，用户可在设置页手动覆盖
   "aiProvider" TEXT NOT NULL DEFAULT 'demo',
   "aiModel" TEXT NOT NULL DEFAULT '',
   "aiEndpoint" TEXT NOT NULL DEFAULT '',
@@ -175,6 +175,15 @@ function initDb() {
       }
     }
     console.log('[db] 建表检查完成，共', statements.length, '条语句');
+    // 主题默认跟随系统：老表只改默认值不影响已有行；
+    // 之前被默认成 light 的行（用户没手动选过）一起迁到 system，真正实现"默认随系统"
+    try {
+      await pool.query(`ALTER TABLE settings ALTER COLUMN theme SET DEFAULT 'system'`);
+      const r = await pool.query(`UPDATE settings SET theme = 'system' WHERE theme = 'light'`);
+      console.log('[db] 主题已迁为跟随系统，影响行数：', r.rowCount);
+    } catch (err) {
+      console.error('[db] 主题迁移失败 →', err.message);
+    }
     return true;
   })().catch((err) => {
     console.error('[db] 建表异常：', err.message);
