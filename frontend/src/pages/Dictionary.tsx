@@ -98,6 +98,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
 
   return (
     <div className="dict-sec">
+      <div className="work-head">
+        <div className="work-title">词典</div>
+        <div className="work-desc">查词背词一条龙，越背越牢</div>
+      </div>
       <div className="seg" style={{ marginTop: 10 }}>
         <button className={sub === 'dict' ? 'on' : ''} onClick={() => setSub('dict')}>查词</button>
         <button className={sub === 'vocab' ? 'on' : ''} onClick={() => { setSub('vocab'); loadVocab() }}>

@@ -871,7 +871,7 @@ body {
 .fly-card {
   position: fixed; z-index: 60; pointer-events: none;
   transform-origin: top left;
-  transition: transform 0.38s var(--ease);
+  transition: transform 0.22s var(--ease); /* 用户嫌 0.38s 太长，要干脆 */
   border: 1px solid var(--line); background: var(--card);
   border-radius: 28px; padding: 30px 24px 26px;
   display: flex; flex-direction: column; justify-content: flex-end;
@@ -924,3 +924,25 @@ body {
 .gate-input { width: 100%; max-width: 300px; text-align: center; }
 .gate-err { color: var(--red); font-size: 13px; min-height: 18px; }
 .gate-btn { width: 100%; max-width: 300px; margin-top: 8px; }
+/* 深度思考小胶囊：顶栏模型选择旁边，点按切换 */
+.think-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1.5px solid var(--line); background: var(--card); color: var(--ink2);
+  border-radius: 18px; padding: 7px 12px; font-size: 13px; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+  transition: transform 0.15s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.think-pill:active { transform: scale(0.94); }
+.think-pill.on { border-color: var(--blue); color: var(--blue-deep); background: var(--blue-soft); }
+/* 工具工作区切换：面板滑入（只用 transform/opacity，不卡） */
+.tool-panel-in { animation: panelIn 0.28s var(--ease); }
+@keyframes panelIn {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) { .tool-panel-in { animation: none; } }
+
+/* 工具工作区大标题：iOS 风格大字 + 一句话描述，内容整体下移 */
+.work-head { padding: 22px 14px 8px; }
+.work-title { font-size: 32px; font-weight: 800; letter-spacing: 1px; }
+.work-desc { margin-top: 6px; font-size: 14px; color: var(--ink2); }

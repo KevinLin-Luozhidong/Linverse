@@ -122,6 +122,10 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
   return (
     <div className="notes-sec">
+      <div className="work-head">
+        <div className="work-title">笔记本</div>
+        <div className="work-desc">课堂重点随手记，复习时一目了然</div>
+      </div>
       <div className="toolbar-row" style={{ padding: '10px 0 0' }}>
         <div className="search-box">
           <I n="search" size={18} />

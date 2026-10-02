@@ -50,4 +50,16 @@ router.post('/password', ah(async (req, res) => {
   res.json({ ok: true, token: h });
 }));
 
+// 清空所有数据（恢复出厂设置）：账号、错题、笔记、生词、会话全删，ID 从 1 重来。
+// 三重保护：必须已设访问密码 + 请求头带对 token + body 二次确认，缺一个都不执行。
+// 注意 need() 的语义：验证失败时返回 true（已回 400），所以用 if (need(...)) return
+router.post('/reset', ah(async (req, res) => {
+  const h = await dao.getSiteConfig(HASH_KEY);
+  if (need(res, h, '还没设访问密码，不能清空')) return;
+  if (need(res, req.headers['x-site-token'] === h, '访问密码不对')) return;
+  if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
+  await dao.resetAll();
+  res.json({ ok: true });
+}));
+
 module.exports = router;

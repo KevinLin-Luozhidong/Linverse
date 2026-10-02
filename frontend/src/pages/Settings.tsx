@@ -3,7 +3,7 @@ import { I, Toast } from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
-  siteStatus, siteSetPassword, setSiteToken,
+  siteStatus, siteSetPassword, setSiteToken, siteReset,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -173,6 +173,22 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     localStorage.removeItem('linverse.model')
     setConfirmClear(false)
     setToast('已清理')
+  }
+
+  // 清空所有数据（恢复出厂设置）：删掉全部账号、错题、笔记、生词、会话，ID 从 1 重来。
+  // 访问密码保留；本地存的账号 ID 也清掉，App 重启后会自动建新账号
+  const [confirmWipe, setConfirmWipe] = useState(false)
+  const wipeAll = async () => {
+    if (!confirmWipe) { setConfirmWipe(true); return }
+    setConfirmWipe(false)
+    try {
+      await siteReset()
+      localStorage.removeItem('linverse.profileId')
+      setToast('已清空，重新开始')
+      setTimeout(() => location.reload(), 900)
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '清空失败')
+    }
   }
 
   // 访问密码：网站大门的密码锁。设好后别人打开网址要先输对密码才能用。
@@ -359,6 +375,12 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
             <button className={'btn ' + (confirmClear ? 'btn-danger' : 'btn-ghost')}
               style={{ width: '100%', marginTop: 12 }} onClick={clearCache}>
               {confirmClear ? '再点一次确认清理' : '清理缓存'}
+            </button>
+            <div className="safe-note" style={{ marginTop: 16, color: 'var(--red)' }}>危险区</div>
+            <div className="safe-note">清空所有账号、错题、笔记、生词和会话，账号 ID 从 1 重新开始，访问密码保留</div>
+            <button className={'btn ' + (confirmWipe ? 'btn-danger' : 'btn-ghost')}
+              style={{ width: '100%', marginTop: 12 }} onClick={wipeAll}>
+              {confirmWipe ? '再点一次确认清空' : '清空所有数据'}
             </button>
           </div>
 

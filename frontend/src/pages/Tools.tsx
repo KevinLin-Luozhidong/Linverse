@@ -33,6 +33,18 @@ export default function Tools({ profileId }: { profileId: string | null }) {
   const [fly, setFly] = useState<{ tool: Tool; left: number; top: number; width: number; height: number } | null>(null)
   const [flyTo, setFlyTo] = useState<string>('') // 目标 transform，下一帧设置以触发过渡
   const chipRefs = useRef<Partial<Record<Tool, HTMLButtonElement | null>>>({})
+  // 工作区面板：切换工具时重播滑入动画，但不卸载（状态保留）。
+  // 做法：active 变化后，把可见面板的动画类先摘掉、强制回流、再加回去，纯 CSS 重播
+  const panelRefs = useRef<Partial<Record<Tool, HTMLDivElement | null>>>({})
+  const goTool = (t: Tool) => setActive(t)
+  useEffect(() => {
+    if (!active) return
+    const el = panelRefs.current[active]
+    if (!el) return
+    el.classList.remove('tool-panel-in')
+    void el.offsetWidth // 强制回流，让浏览器"忘记"上一次动画
+    el.classList.add('tool-panel-in')
+  }, [active])
 
   // 点卡片：记录位置（First），然后进工作区
   const pick = (t: Tool) => (e: { currentTarget: HTMLButtonElement }) => {
@@ -53,8 +65,8 @@ export default function Tools({ profileId }: { profileId: string | null }) {
     const sx = c.width / fly.width
     const sy = c.height / fly.height
     // 兜底清理：如果 transitionend 没触发（比如用户开了系统的"减弱动态效果"，
-    // CSS 里 transition 被关掉），450ms 后强制移除克隆卡片，避免残留
-    const timer = setTimeout(() => { setFly(null); setFlyTo('') }, 450)
+    // CSS 里 transition 被关掉），300ms 后强制移除克隆卡片，避免残留（动画已缩短到 0.22s）
+    const timer = setTimeout(() => { setFly(null); setFlyTo('') }, 300)
     const raf = requestAnimationFrame(() => {
       setFlyTo(`translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`)
     })
@@ -121,20 +133,23 @@ export default function Tools({ profileId }: { profileId: string | null }) {
           <button key={t.id}
             ref={(el) => { chipRefs.current[t.id] = el }}
             className={'mini-chip' + (t.id === active ? ' active' : '')}
-            onClick={() => setActive(t.id)}>
+            onClick={() => goTool(t.id)}>
             <I n={t.icon} size={14} />
             {t.name}
           </button>
         ))}
       </div>
       <div className="tools-body">
-        <div style={{ display: active === 'mistakes' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
+        <div ref={(el) => { panelRefs.current['mistakes'] = el }}
+          style={{ display: active === 'mistakes' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
           <Mistakes profileId={profileId} />
         </div>
-        <div style={{ display: active === 'notes' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
+        <div ref={(el) => { panelRefs.current['notes'] = el }}
+          style={{ display: active === 'notes' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
           <Notes profileId={profileId} />
         </div>
-        <div style={{ display: active === 'dict' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
+        <div ref={(el) => { panelRefs.current['dict'] = el }}
+          style={{ display: active === 'dict' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
           <Dictionary profileId={profileId} />
         </div>
       </div>

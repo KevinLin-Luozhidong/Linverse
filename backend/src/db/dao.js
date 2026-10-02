@@ -30,6 +30,13 @@ function today() {
 
 // ---------- 全站配置（site_config：访问密码等） ----------
 
+// 清空所有用户数据并重置 ID 自增：TRUNCATE 全部业务表。
+// site_config 不动（访问密码保留）；RESTART IDENTITY 让 id 从 1 重新开始
+async function resetAll() {
+  await query(`TRUNCATE TABLE profiles, conversations, messages, mistakes, notes,
+    vocabulary, word_history, checkins, settings RESTART IDENTITY`);
+}
+
 // 读配置：没有返回 null
 async function getSiteConfig(key) {
   const r = await query('SELECT value FROM site_config WHERE key = $1', [key]);
@@ -476,5 +483,5 @@ module.exports = {
   recordWordHistory, listWordHistory,
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
-  getSiteConfig, setSiteConfig,
+  getSiteConfig, setSiteConfig, resetAll,
 };

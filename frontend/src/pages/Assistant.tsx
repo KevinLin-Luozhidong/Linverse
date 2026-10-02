@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { I, Switch, Toast, Spin, Empty } from '../components'
+import { I, Toast, Spin, Empty } from '../components'
 import {
   ask, listConversations, getConversation, deleteConversation,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
@@ -339,6 +339,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
             </>
           )}
         </div>
+        {/* 深度思考：按需求文档放在左上角、和模型选择一起（原来在输入框上方） */}
+        <button className={'think-pill' + (deepThink ? ' on' : '')}
+          onClick={() => { const v = !deepThink; setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }}
+          aria-label="深度思考开关" aria-pressed={deepThink}>
+          <I n="sparkle" size={14} />深度思考
+        </button>
         <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
       </div>
 
@@ -405,14 +411,6 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           </div>
         ))}
         {sending && <Spin />}
-      </div>
-
-      {/* 深度思考开关胶囊 */}
-      <div className="deep-row">
-        <span className={'deep-cap' + (deepThink ? ' on' : '')}>
-          深度思考
-          <Switch on={deepThink} onChange={(v) => { setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }} />
-        </span>
       </div>
 
       {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}

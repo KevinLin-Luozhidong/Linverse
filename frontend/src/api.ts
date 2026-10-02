@@ -265,3 +265,5 @@ export const siteVerify = (password: string) =>
   post<{ ok: boolean; token: string }>('/site/verify', { password })
 export const siteSetPassword = (password: string, oldPassword?: string) =>
   post<{ ok: boolean; token: string }>('/site/password', { password, oldPassword })
+// 清空所有数据：后端要求 token + 二次确认，成功后账号 ID 从 1 重来
+export const siteReset = () => post<{ ok: boolean }>('/site/reset', { confirm: 'RESET' })
