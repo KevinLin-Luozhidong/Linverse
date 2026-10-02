@@ -222,7 +222,7 @@ export const updateNote = async (id: string, n: Partial<Note>) => normNote(await
 export const deleteNote = (id: string) => del(`/notes/${id}`)
 
 // ---- 词典 ----
-export type DictSource = 'dict' | 'ai'
+export type DictSource = 'dict' | 'ai' | 'offline'
 export const lookupWord = (word: string, source: DictSource = 'dict', opts?: {
   aiKey?: string; model?: string; profileId?: string
 }) => {

@@ -77,9 +77,12 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [word, setWord] = useState('')
   const [result, setResult] = useState<DictResult | null>(null)
   const [searching, setSearching] = useState(false)
-  // 词典接口：dict = 免费默认词典（快、不用 Key），ai = AI 详解（用你配的 AI，中英文都行）
-  const [dictSource, setDictSource] = useState<DictSource>(() =>
-    (localStorage.getItem('linverse.dictSource') as DictSource) || 'dict')
+  // 词典接口：offline = 离线词典包（快、断网可用），ai = AI 详解（联网、更详细）
+  // 老版本的 'dict' 默认值迁移到 'offline'
+  const [dictSource, setDictSource] = useState<DictSource>(() => {
+    const s = localStorage.getItem('linverse.dictSource') as DictSource
+    return (s === 'ai' || s === 'offline') ? s : 'offline'
+  })
   const [history, setHistory] = useState<{ word: string; createdAt: string }[]>([])
   const [toast, setToast] = useState('')
 
@@ -110,18 +113,33 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     const readCache = (): Record<string, DictResult> => {
       try { return JSON.parse(localStorage.getItem(cacheKey) || '{}') } catch { return {} }
     }
-    // 优先查离线词典包（已下载的话）：快、不耗流量、断网也能用
-    if (dictPkg) {
+    // 离线词典：直接查已下载的包，断网也能用
+    if (dictSource === 'offline') {
+      if (!dictPkg) {
+        setToast('先下载离线词典包才能用')
+        setSearching(false)
+        return
+      }
       try {
         const hit = await queryOfflineDict(target)
         if (hit) {
           setResult(hit)
           setOfflineHit(false)
           setOfflinePkgHit(true)
-          setSearching(false)
-          return
+        } else {
+          // 离线包里没有，回落到在线默认词典
+          const r = await lookupWord(target, 'dict', { profileId: profileId || undefined })
+          setResult(r)
+          setOfflineHit(false)
+          setOfflinePkgHit(false)
+          setToast('离线包里没有这个词，已用在线词典')
         }
-      } catch {}
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : '查词失败')
+      } finally {
+        setSearching(false)
+      }
+      return
     }
     try {
       const r = await lookupWord(target, dictSource, dictSource === 'ai' ? {
@@ -295,24 +313,26 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             </div>
             <button className="btn" onClick={() => search()} disabled={searching}>查词</button>
           </div>
-          {/* 词典接口切换：默认词典（快、免费）/ AI 详解（用你配的 AI，中英文、成语都能讲） */}
+          {/* 词典二选一：离线词典（快、断网可用）/ AI 详解（联网、更详细） */}
           <div className="seg" style={{ marginTop: 10 }}>
-            <button className={dictSource === 'dict' ? 'on' : ''} onClick={() => pickSource('dict')}>默认词典</button>
+            <button className={dictSource === 'offline' ? 'on' : ''} onClick={() => pickSource('offline')}>离线词典</button>
             <button className={dictSource === 'ai' ? 'on' : ''} onClick={() => pickSource('ai')}>AI 详解</button>
           </div>
           {/* 离线词典包：下载一次，断网也能查 1.4 万常用词 */}
-          <div style={{ marginTop: 10 }}>
-            {dictPkg ? (
-              <div style={{ fontSize: 13, color: 'var(--ink2)' }}>
-                ✓ 离线词典包已下载（{dictPkg.count} 词，断网可用）
-              </div>
-            ) : (
-              <button className="btn btn-ghost" style={{ width: '100%' }}
-                onClick={downloadDictPkg} disabled={downloading}>
-                {downloading ? (dlProgress || '下载中…') : '下载离线词典包（约 600K，一次下载断网可用）'}
-              </button>
-            )}
-          </div>
+          {dictSource === 'offline' && (
+            <div style={{ marginTop: 10 }}>
+              {dictPkg ? (
+                <div style={{ fontSize: 13, color: 'var(--ink2)' }}>
+                  ✓ 离线词典包已下载（{dictPkg.count} 词，断网可用）
+                </div>
+              ) : (
+                <button className="btn btn-ghost" style={{ width: '100%' }}
+                  onClick={downloadDictPkg} disabled={downloading}>
+                  {downloading ? (dlProgress || '下载中…') : '下载离线词典包（约 600K，一次下载断网可用）'}
+                </button>
+              )}
+            </div>
+          )}
 
           {searching && <Spin />}
           {result && !searching && (
