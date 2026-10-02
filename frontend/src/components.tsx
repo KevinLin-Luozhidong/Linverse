@@ -39,6 +39,9 @@ const PATHS: Record<string, ReactNode> = {
   textsize: <><path d="M5 6V4h14v2M12 4v15M9.5 19h5" /></>,
   notebook: <><rect x="6" y="4" width="12" height="17" rx="2" /><path d="m9.6 12.4 1.9 1.9 3.4-3.9" /></>,
   dict: <><path d="M12 6.5C10 5 7 4.5 4 4.5v14c3 0 6 .5 8 2 2-1.5 5-2 8-2v-14c-3 0-6 .5-8 2Z" /><path d="M12 6.5v14" /></>,
+  star4: <><path d="M12 2.5c.9 5.8 4.2 9.1 10 10-5.8.9-9.1 4.2-10 10-.9-5.8-4.2-9.1-10-10 5.8-.9 9.1-4.2 10-10Z" /></>,
+  target: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /></>,
+  crown: <><path d="M3.5 8.5 7 12l5-6.8L17 12l3.5-3.5L19 18.5H5L3.5 8.5Z" /><path d="M5 21h14" /></>,
 }
 
 // 图标组件：size 控制大小，描边继承文字颜色
