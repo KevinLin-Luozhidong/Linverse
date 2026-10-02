@@ -11,7 +11,11 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // 静态托管上传的图片：POST /api/upload 返回的 /uploads/xxx.jpg 能直接访问
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// 云端（Railway）设了 DATA_DIR 时，图片也写进 Volume，和数据库放一起
+const uploadDir = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, 'uploads')
+  : path.join(__dirname, '../uploads');
+app.use('/uploads', express.static(uploadDir));
 
 // 路由挂载（URL 和字段名按 API 契约，原样不动）
 app.use('/api/profiles', require('./routes/profiles'));

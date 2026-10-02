@@ -12,7 +12,10 @@ const router = express.Router();
 
 // ---------- 图片上传 ----------
 // 安全限制：只收图片（jpeg/png/gif/webp），单文件上限 5MB
-const uploadDir = path.join(__dirname, '../../uploads');
+// 云端（Railway）设了 DATA_DIR 时，和数据库一起写进 Volume，重新部署不丢
+const uploadDir = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, 'uploads')
+  : path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

@@ -7,8 +7,11 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-// 数据库文件放在 backend/data/linverse.db（data 目录已进 .gitignore，不会提交）
-const dataDir = path.join(__dirname, '../../data');
+// 数据库文件位置：
+// - 本地开发：backend/data/linverse.db（data 目录已进 .gitignore，不会提交）
+// - 云端（Railway）：设置环境变量 DATA_DIR=/data，并挂一个 Volume 到 /data，
+//   数据库和上传图片都会写进 Volume，重新部署不丢数据
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '../../data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
