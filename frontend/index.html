@@ -34,6 +34,15 @@
     <script>
       // React 跑起来后第一时间撤掉启动屏
       window.__hideSplash = function () { var s = document.getElementById('splash'); if (s) s.remove(); };
+      // 兜底：15 秒 JS 还没跑起来（网络太差下载失败），显示重试提示，别让用户对着 Linverse 干等
+      setTimeout(function () {
+        var s = document.getElementById('splash');
+        if (s && !window.__reactBooted) {
+          s.innerHTML = '<div class="t">Linverse</div><div class="s" style="letter-spacing:2px">网络太慢没加载出来，点我重试</div>';
+          s.style.cursor = 'pointer';
+          s.onclick = function () { location.reload(); };
+        }
+      }, 15000);
     </script>
   </body>
 </html>

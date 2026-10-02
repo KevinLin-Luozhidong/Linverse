@@ -206,7 +206,15 @@ router.get('/dictionary', ah(async (req, res) => {
     return res.json(result);
   }
 
-  const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+  // 默认词典：dictionaryapi.dev 在国内经常连不上，加 6 秒超时，失败就快速报错（前端会试离线缓存）
+  let r
+  try {
+    r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, {
+      signal: AbortSignal.timeout(6000),
+    })
+  } catch {
+    return res.status(502).json({ error: '词典接口连不上，试试切换到 AI 详解或看离线缓存' })
+  }
   if (!r.ok) {
     return res.status(404).json({ error: '查不到这个单词' });
   }
@@ -230,7 +238,8 @@ router.get('/dictionary', ah(async (req, res) => {
     await Promise.all(
       meanings.slice(0, 6).map(async (m) => {
         const tr = await fetch(
-          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(m.en)}&langpair=en|zh-CN`
+          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(m.en)}&langpair=en|zh-CN`,
+          { signal: AbortSignal.timeout(5000) } // 国内连不上就快速跳过，别卡住整个查词
         );
         const tj = await tr.json();
         const zh = tj?.responseData?.translatedText;

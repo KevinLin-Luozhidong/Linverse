@@ -708,8 +708,22 @@ body {
 /* ============ 设置页：多彩圆角图标分组 ============ */
 .settings { height: 100%; display: flex; flex-direction: column; }
 .settings-view { flex: 1; overflow: hidden; position: relative; }
-.settings-track { display: flex; height: 100%; transition: transform 0.32s var(--ease); }
-.settings-page { width: 100%; flex-shrink: 0; overflow-y: auto; padding: 14px 16px 90px; }
+.settings-view { position: relative; }
+.settings-page { width: 100%; height: 100%; overflow-y: auto; padding: 14px 16px 90px; }
+/* 子页面浮层：iOS 推入式，从右侧盖上来，带层次阴影 */
+.settings-over {
+  position: absolute; inset: 0;
+  background: var(--bg);
+  box-shadow: -16px 0 32px rgba(0, 0, 0, 0.18);
+  animation: pushIn 0.32s var(--ease);
+}
+@keyframes pushIn { from { transform: translateX(100%); } }
+/* 退出中：从手指位置（--leave-x）向右滑出，露出底下菜单 */
+.settings-leaving { animation: popOutFrom 0.3s var(--ease) forwards; }
+@keyframes popOutFrom {
+  from { transform: translateX(var(--leave-x, 0px)); }
+  to { transform: translateX(100%); }
+}
 .set-group {
   background: var(--card); border: 1px solid var(--line);
   border-radius: 20px; overflow: hidden; margin-bottom: 16px;

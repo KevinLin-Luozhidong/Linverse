@@ -7,16 +7,18 @@ const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
 // 访问密码 token 存在 localStorage，每次请求自动带在 x-site-token 头里
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Promise<T> {
   let res: Response
   const token = getSiteToken()
   try {
     res = await fetch(`${BASE}/api${path}`, {
+      ...init,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'x-site-token': token } : {}),
       },
-      ...init,
+      // 20 秒还没回来就放弃，别让界面一直转圈（国内连 Vercel 有时会 hang 住）
+      signal: init?.signal || AbortSignal.timeout(timeoutMs),
     })
   } catch {
     // 网络层失败（后端没跑）：抛可展示的错误

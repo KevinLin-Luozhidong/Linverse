@@ -122,7 +122,7 @@ export function Spin() {
 //     <div style={{ transform: `translateX(calc(${-idx*100}% + ${swipe.dragX}px))`,
 //                    transition: swipe.dragging ? 'none' : undefined }}>
 // 只响应"从左边缘出发"的右滑，避免和页面内的纵滑/横滑冲突
-export function useSwipeBack(onBack: () => void, enabled = true) {
+export function useSwipeBack(onBack: (fromX?: number) => void, enabled = true) {
   const start = useRef<{ x: number; y: number } | null>(null)
   const [drag, setDrag] = useState({ x: 0, active: false })
   return {
@@ -152,7 +152,7 @@ export function useSwipeBack(onBack: () => void, enabled = true) {
         const d = drag
         start.current = null
         setDrag({ x: 0, active: false })
-        if (d.active && d.x > 90) onBack()
+        if (d.active && d.x > 90) onBack(d.x) // 把手指位置传给调用方，退出动画从这里接着滑
       },
     },
   }

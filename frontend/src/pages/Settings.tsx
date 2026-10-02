@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { I, Toast, useSwipeBack } from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
@@ -11,9 +11,6 @@ import {
 // AI 的 Key 只存前端 localStorage，不经过后端
 
 type View = 'menu' | 'profile' | 'accounts' | 'ai' | 'appearance' | 'font' | 'storage' | 'about' | 'sitepw'
-// 注意：ORDER 的顺序必须和下面 JSX 里 settings-page 的出现顺序完全一致，
-// 否则点"关于"会显示访问密码的内容（2026-10-03 真实 bug）
-const ORDER: View[] = ['menu', 'profile', 'accounts', 'ai', 'appearance', 'font', 'storage', 'sitepw', 'about']
 const TITLES: Record<View, string> = {
   menu: '设置', profile: '个人资料', accounts: '多账号', ai: 'AI 接口',
   appearance: '外观', font: '字体大小', storage: '存储空间', about: '关于',
@@ -33,15 +30,35 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 }) {
   const [view, setView] = useState<View>('menu')
   const [toast, setToast] = useState('')
+  // 正在退出的子页面：保留一帧做"向右滑出"动画，露出底下菜单
+  const [leaving, setLeaving] = useState<Exclude<View, 'menu'> | null>(null)
+  const [leaveFrom, setLeaveFrom] = useState(0) // 退出动画起点（右滑松手时的手指位置）
+  // 推入动画播完后标记 settled，避免"拖拽取消"时推入动画重播导致闪烁
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    setSettled(false)
+    const t = setTimeout(() => setSettled(true), 350)
+    return () => clearTimeout(t)
+  }, [view])
+
+  // 进子页：浮层 key 变化触发推入动画
+  const goSub = (v: Exclude<View, 'menu'>) => { setLeaving(null); setView(v) }
+  // 回菜单：先记下离开的页面做滑出动画，320ms 后卸载
+  const goBack = (fromX = 0) => {
+    if (view === 'menu') { onBack(); return }
+    setLeaving(view as Exclude<View, 'menu'>)
+    setLeaveFrom(fromX)
+    setView('menu')
+    setTimeout(() => { setLeaving(null); setLeaveFrom(0) }, 340)
+  }
 
   // 切页时把目标页滚回顶部：避免"内容被顶栏压住半行"的错位感
   const viewRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const pages = viewRef.current?.querySelectorAll('.settings-page')
-    pages?.[ORDER.indexOf(view)]?.scrollTo({ top: 0 })
+    viewRef.current?.querySelector('.settings-over')?.scrollTo({ top: 0 })
   }, [view])
   // 右滑退出二级菜单（iOS 手势习惯：从左边缘向右滑）
-  const swipe = useSwipeBack(() => setView('menu'), view !== 'menu')
+  const swipe = useSwipeBack(goBack, view !== 'menu')
 
   // 账号
   const [profiles, setProfiles] = useState<P[]>([])
@@ -252,14 +269,13 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     }
   }
 
-  const idx = ORDER.indexOf(view)
   const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || '演示'
   const themeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色'
   const fontLabel = fontSize === 'small' ? '小' : fontSize === 'large' ? '大' : '标准'
 
   const row = (v: View, icon: 'user' | 'key' | 'users' | 'moon' | 'textsize' | 'db' | 'info' | 'lock',
     sq: 'blue' | 'green' | 'orange' | 'gray', label: string, val?: string) => (
-    <button className="set-row" onClick={() => setView(v)}>
+    <button className="set-row" onClick={() => goSub(v as Exclude<View, 'menu'>)}>
       <span className={'sq ' + sq}><I n={icon} size={21} /></span>
       <span>{label}</span>
       {val && <span className="set-val">{val}</span>}
@@ -267,22 +283,201 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     </button>
   )
 
+  // 子页面内容：iOS 推入式，菜单在底层，子页从右侧盖上来
+  const SUB: Record<Exclude<View, 'menu'>, ReactNode> = {
+  profile: (<>
+  <div className="field">
+  <div className="field-label">显示名</div>
+  <input className="input" value={displayName}
+  onChange={(e) => setDisplayName(e.target.value)} />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={saveDisplayName}>保存</button>
+  </>),
+
+  accounts: (<>
+  {profiles.map((p) => (
+  <div key={p.id} className={'profile-item' + (p.id === profileId ? ' current' : '')}>
+  {editingId === p.id ? (
+  <input className="input" value={editingName}
+  onChange={(e) => setEditingName(e.target.value)}
+  onKeyDown={(e) => { if (e.key === 'Enter') doRename(p.id) }} autoFocus />
+  ) : (
+  <span className="profile-name" onClick={() => p.id !== profileId && onProfileChange(p.id)}>
+  {p.name}{p.id === profileId ? '（当前）' : ''}
+  </span>
+  )}
+  {editingId === p.id ? (
+  <button className="mini-btn" onClick={() => doRename(p.id)}>确定</button>
+  ) : (
+  <button className="mini-btn" onClick={() => { setEditingId(p.id); setEditingName(p.name) }}>改名</button>
+  )}
+  {delId === p.id
+  ? <button className="mini-btn" style={{ color: 'var(--red)' }} onClick={() => doDelete(p.id)}>确认删除</button>
+  : <button className="mini-btn" style={{ color: 'var(--ink3)' }} onClick={() => doDelete(p.id)}>删除</button>}
+  </div>
+  ))}
+  <div className="btn-row" style={{ marginTop: 6 }}>
+  <input className="input" value={newName} placeholder="新账号名字"
+  onChange={(e) => setNewName(e.target.value)} />
+  <button className="btn" onClick={addProfile}>添加</button>
+  </div>
+  {/* 换设备找回：输入旧账号 ID */}
+  <div className="field-label" style={{ marginTop: 14 }}>换设备时输入旧账号 ID 找回</div>
+  <div className="btn-row" style={{ marginTop: 6 }}>
+  <input className="input" value={findId} placeholder="账号 ID"
+  onChange={(e) => setFindId(e.target.value)} />
+  <button className="btn" onClick={doFind}>找回</button>
+  </div>
+  </>),
+
+  ai: (<>
+  <div className="field">
+  <div className="field-label">供应商</div>
+  <div className="seg">
+  {PROVIDERS.map((p) => (
+  <button key={p.v} className={provider === p.v ? 'on' : ''}
+  onClick={() => setProvider(p.v)}>{p.label}</button>
+  ))}
+  </div>
+  </div>
+  <div className="field">
+  <div className="field-label">模型名（可改）</div>
+  <input className="input" value={aiModel}
+  placeholder={provider === 'deepseek' ? '比如 deepseek-chat' : '比如 gpt-4o-mini'}
+  onChange={(e) => setAiModel(e.target.value)} />
+  </div>
+  <div className="field">
+  <div className="field-label">接口地址（自定义供应商填写）</div>
+  <input className="input" value={endpoint}
+  placeholder="https://…/v1/chat/completions"
+  onChange={(e) => setEndpoint(e.target.value)} />
+  </div>
+  <div className="field">
+  <div className="field-label">Key</div>
+  <input className="input" type="password" value={key}
+  placeholder="粘贴你的 API Key"
+  onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+  <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写</div>
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={saveAi}>保存</button>
+  </>),
+
+  appearance: (<>
+  <div className="field">
+  <div className="field-label">深浅色</div>
+  <div className="seg">
+  {[['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']].map(([v, l]) => (
+  <button key={v} className={theme === v ? 'on' : ''}
+  onClick={() => changeAppearance(fontSize, v)}>{l}</button>
+  ))}
+  </div>
+  </div>
+  </>),
+
+  font: (<>
+  <div className="field">
+  <div className="field-label">字体大小</div>
+  <div className="seg">
+  {[['small', '小'], ['medium', '标准'], ['large', '大']].map(([v, l]) => (
+  <button key={v} className={fontSize === v ? 'on' : ''}
+  onClick={() => changeAppearance(v, theme)}>{l}</button>
+  ))}
+  </div>
+  </div>
+  </>),
+
+  storage: (<>
+  <div className="report-row">
+  <span>本地缓存</span>
+  <span className="v">{cacheMB()} MB</span>
+  </div>
+  <div className="safe-note">清理只清除界面偏好等临时缓存，账号、错题、笔记、生词和 Key 不受影响</div>
+  <button className={'btn ' + (confirmClear ? 'btn-danger' : 'btn-ghost')}
+  style={{ width: '100%', marginTop: 12 }} onClick={clearCache}>
+  {confirmClear ? '再点一次确认清理' : '清理缓存'}
+  </button>
+  <div className="safe-note" style={{ marginTop: 16, color: 'var(--red)' }}>危险区</div>
+  <div className="safe-note">清空所有账号、错题、笔记、生词和会话，账号 ID 从 1 重新开始，访问密码保留。必须输入所有者密码，只有本人能操作。</div>
+  <div className="field" style={{ marginTop: 12 }}>
+  <div className="field-label">所有者密码</div>
+  <input className="input" type="password" value={wipePw}
+  onChange={(e) => setWipePw(e.target.value)} placeholder="输入所有者密码" />
+  </div>
+  <button className={'btn ' + (confirmWipe ? 'btn-danger' : 'btn-ghost')}
+  style={{ width: '100%', marginTop: 4 }} onClick={wipeAll}>
+  {confirmWipe ? '再点一次确认清空' : '清空所有数据'}
+  </button>
+  </>),
+
+  sitepw: (<>
+  <div className="safe-note" style={{ marginBottom: 12 }}>
+  {pwSet
+  ? '已设置访问密码：别人打开网址要先输对密码才能用'
+  : '设一个访问密码：之后朋友打开网址要先输这个密码，把密码告诉他们就行'}
+  </div>
+  {pwSet && (
+  <div className="field">
+  <div className="field-label">旧密码</div>
+  <input className="input" type="password" value={oldPw}
+  onChange={(e) => setOldPw(e.target.value)} placeholder="输入旧密码" />
+  </div>
+  )}
+  <div className="field">
+  <div className="field-label">{pwSet ? '新密码' : '访问密码'}（至少 4 位）</div>
+  <input className="input" type="password" value={newPw}
+  onChange={(e) => setNewPw(e.target.value)} placeholder={pwSet ? '输入新密码' : '定一个密码'} />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={saveSitePw}>
+  {pwSet ? '修改密码' : '设置密码'}
+  </button>
+  {/* 所有者密码：只有本人知道，清空数据时必须输对 */}
+  <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
+  {dangerSet
+  ? '已设置所有者密码：清空所有数据时必须输对它，朋友不知道这个密码就动不了数据'
+  : '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它'}
+  </div>
+  {dangerSet && (
+  <div className="field">
+  <div className="field-label">旧的所有者密码</div>
+  <input className="input" type="password" value={oldDanger}
+  onChange={(e) => setOldDanger(e.target.value)} placeholder="输入旧密码" />
+  </div>
+  )}
+  <div className="field">
+  <div className="field-label">{dangerSet ? '新的所有者密码' : '所有者密码'}（至少 4 位）</div>
+  <input className="input" type="password" value={newDanger}
+  onChange={(e) => setNewDanger(e.target.value)} placeholder={dangerSet ? '输入新密码' : '定一个只有你知道的密码'} />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={saveDangerPw}>
+  {dangerSet ? '修改所有者密码' : '设置所有者密码'}
+  </button>
+  </>),
+
+  about: (<>
+  <div className="set-group">
+  <div className="set-row" style={{ cursor: 'default' }}>
+  <span className="sq blue"><I n="sparkle" size={21} /></span>
+  <span>Linverse<span className="sr-desc" style={{ display: 'block' }}>专为中国高中生打造的 AI 学习助手</span></span>
+  </div>
+  <div className="set-row" style={{ cursor: 'default' }}>
+  <span className="sr-label">版本</span>
+  <span className="set-val">v0.1.7</span>
+  </div>
+  </div>
+  </>),
+  }
+
   return (
     <div className="settings">
       <div className="topbar">
-        <button className="icon-btn" onClick={() => (view === 'menu' ? onBack() : setView('menu'))} aria-label="返回">
+        <button className="icon-btn" onClick={goBack} aria-label="返回">
           <I n="back" />
         </button>
         <div className="topbar-title">{TITLES[view]}</div>
         <div className="topbar-spacer" />
       </div>
 
-      <div className="settings-view" ref={viewRef} {...swipe.handlers}>
-        <div className="settings-track" style={{
-          // 跟手：手指拖动时轨道实时跟随；松手后 transition 恢复，自动平滑归位/退回菜单
-          transform: `translateX(calc(${-idx * 100}% + ${swipe.dragX}px))`,
-          transition: swipe.dragging ? 'none' : undefined,
-        }}>
+      <div className="settings-view" ref={viewRef}>
           {/* 一级菜单：三组多彩圆角入口 */}
           <div className="settings-page">
             <div className="set-group">
@@ -301,195 +496,24 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
             </div>
           </div>
 
-          {/* 个人资料 */}
-          <div className="settings-page">
-            <div className="field">
-              <div className="field-label">显示名</div>
-              <input className="input" value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)} />
-            </div>
-            <button className="btn" style={{ width: '100%' }} onClick={saveDisplayName}>保存</button>
+        {/* 子页面：iOS 推入式浮层，从右侧盖上来；右滑时跟手 */}
+        {view !== 'menu' && (
+          <div key={view} className="settings-page settings-over" {...swipe.handlers}
+            style={{
+              animation: (settled || swipe.dragging) ? 'none' : undefined,
+              transition: swipe.dragging ? 'none' : 'transform 0.28s var(--ease)',
+              transform: swipe.dragging ? `translateX(${swipe.dragX}px)` : undefined,
+            }}>
+            {SUB[view as Exclude<View, 'menu'>]}
           </div>
-
-          {/* 多账号 */}
-          <div className="settings-page">
-            {profiles.map((p) => (
-              <div key={p.id} className={'profile-item' + (p.id === profileId ? ' current' : '')}>
-                {editingId === p.id ? (
-                  <input className="input" value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') doRename(p.id) }} autoFocus />
-                ) : (
-                  <span className="profile-name" onClick={() => p.id !== profileId && onProfileChange(p.id)}>
-                    {p.name}{p.id === profileId ? '（当前）' : ''}
-                  </span>
-                )}
-                {editingId === p.id ? (
-                  <button className="mini-btn" onClick={() => doRename(p.id)}>确定</button>
-                ) : (
-                  <button className="mini-btn" onClick={() => { setEditingId(p.id); setEditingName(p.name) }}>改名</button>
-                )}
-                {delId === p.id
-                  ? <button className="mini-btn" style={{ color: 'var(--red)' }} onClick={() => doDelete(p.id)}>确认删除</button>
-                  : <button className="mini-btn" style={{ color: 'var(--ink3)' }} onClick={() => doDelete(p.id)}>删除</button>}
-              </div>
-            ))}
-            <div className="btn-row" style={{ marginTop: 6 }}>
-              <input className="input" value={newName} placeholder="新账号名字"
-                onChange={(e) => setNewName(e.target.value)} />
-              <button className="btn" onClick={addProfile}>添加</button>
-            </div>
-            {/* 换设备找回：输入旧账号 ID */}
-            <div className="field-label" style={{ marginTop: 14 }}>换设备时输入旧账号 ID 找回</div>
-            <div className="btn-row" style={{ marginTop: 6 }}>
-              <input className="input" value={findId} placeholder="账号 ID"
-                onChange={(e) => setFindId(e.target.value)} />
-              <button className="btn" onClick={doFind}>找回</button>
-            </div>
+        )}
+        {/* 正在退出的子页面：从手指位置向右滑出，露出底下菜单 */}
+        {leaving && (
+          <div className="settings-page settings-over settings-leaving"
+            style={{ '--leave-x': `${leaveFrom}px` } as CSSProperties}>
+            {SUB[leaving]}
           </div>
-
-          {/* AI 接口 */}
-          <div className="settings-page">
-            <div className="field">
-              <div className="field-label">供应商</div>
-              <div className="seg">
-                {PROVIDERS.map((p) => (
-                  <button key={p.v} className={provider === p.v ? 'on' : ''}
-                    onClick={() => setProvider(p.v)}>{p.label}</button>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <div className="field-label">模型名（可改）</div>
-              <input className="input" value={aiModel}
-                placeholder={provider === 'deepseek' ? '比如 deepseek-chat' : '比如 gpt-4o-mini'}
-                onChange={(e) => setAiModel(e.target.value)} />
-            </div>
-            <div className="field">
-              <div className="field-label">接口地址（自定义供应商填写）</div>
-              <input className="input" value={endpoint}
-                placeholder="https://…/v1/chat/completions"
-                onChange={(e) => setEndpoint(e.target.value)} />
-            </div>
-            <div className="field">
-              <div className="field-label">Key</div>
-              <input className="input" type="password" value={key}
-                placeholder="粘贴你的 API Key"
-                onChange={(e) => setKey(e.target.value)} autoComplete="off" />
-              <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写</div>
-            </div>
-            <button className="btn" style={{ width: '100%' }} onClick={saveAi}>保存</button>
-          </div>
-
-          {/* 外观 */}
-          <div className="settings-page">
-            <div className="field">
-              <div className="field-label">深浅色</div>
-              <div className="seg">
-                {[['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']].map(([v, l]) => (
-                  <button key={v} className={theme === v ? 'on' : ''}
-                    onClick={() => changeAppearance(fontSize, v)}>{l}</button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 字体大小 */}
-          <div className="settings-page">
-            <div className="field">
-              <div className="field-label">字体大小</div>
-              <div className="seg">
-                {[['small', '小'], ['medium', '标准'], ['large', '大']].map(([v, l]) => (
-                  <button key={v} className={fontSize === v ? 'on' : ''}
-                    onClick={() => changeAppearance(v, theme)}>{l}</button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 存储空间 */}
-          <div className="settings-page">
-            <div className="report-row">
-              <span>本地缓存</span>
-              <span className="v">{cacheMB()} MB</span>
-            </div>
-            <div className="safe-note">清理只清除界面偏好等临时缓存，账号、错题、笔记、生词和 Key 不受影响</div>
-            <button className={'btn ' + (confirmClear ? 'btn-danger' : 'btn-ghost')}
-              style={{ width: '100%', marginTop: 12 }} onClick={clearCache}>
-              {confirmClear ? '再点一次确认清理' : '清理缓存'}
-            </button>
-            <div className="safe-note" style={{ marginTop: 16, color: 'var(--red)' }}>危险区</div>
-            <div className="safe-note">清空所有账号、错题、笔记、生词和会话，账号 ID 从 1 重新开始，访问密码保留。必须输入所有者密码，只有本人能操作。</div>
-            <div className="field" style={{ marginTop: 12 }}>
-              <div className="field-label">所有者密码</div>
-              <input className="input" type="password" value={wipePw}
-                onChange={(e) => setWipePw(e.target.value)} placeholder="输入所有者密码" />
-            </div>
-            <button className={'btn ' + (confirmWipe ? 'btn-danger' : 'btn-ghost')}
-              style={{ width: '100%', marginTop: 4 }} onClick={wipeAll}>
-              {confirmWipe ? '再点一次确认清空' : '清空所有数据'}
-            </button>
-          </div>
-
-          {/* 访问密码 */}
-          <div className="settings-page">
-            <div className="safe-note" style={{ marginBottom: 12 }}>
-              {pwSet
-                ? '已设置访问密码：别人打开网址要先输对密码才能用'
-                : '设一个访问密码：之后朋友打开网址要先输这个密码，把密码告诉他们就行'}
-            </div>
-            {pwSet && (
-              <div className="field">
-                <div className="field-label">旧密码</div>
-                <input className="input" type="password" value={oldPw}
-                  onChange={(e) => setOldPw(e.target.value)} placeholder="输入旧密码" />
-              </div>
-            )}
-            <div className="field">
-              <div className="field-label">{pwSet ? '新密码' : '访问密码'}（至少 4 位）</div>
-              <input className="input" type="password" value={newPw}
-                onChange={(e) => setNewPw(e.target.value)} placeholder={pwSet ? '输入新密码' : '定一个密码'} />
-            </div>
-            <button className="btn" style={{ width: '100%' }} onClick={saveSitePw}>
-              {pwSet ? '修改密码' : '设置密码'}
-            </button>
-            {/* 所有者密码：只有本人知道，清空数据时必须输对 */}
-            <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
-              {dangerSet
-                ? '已设置所有者密码：清空所有数据时必须输对它，朋友不知道这个密码就动不了数据'
-                : '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它'}
-            </div>
-            {dangerSet && (
-              <div className="field">
-                <div className="field-label">旧的所有者密码</div>
-                <input className="input" type="password" value={oldDanger}
-                  onChange={(e) => setOldDanger(e.target.value)} placeholder="输入旧密码" />
-              </div>
-            )}
-            <div className="field">
-              <div className="field-label">{dangerSet ? '新的所有者密码' : '所有者密码'}（至少 4 位）</div>
-              <input className="input" type="password" value={newDanger}
-                onChange={(e) => setNewDanger(e.target.value)} placeholder={dangerSet ? '输入新密码' : '定一个只有你知道的密码'} />
-            </div>
-            <button className="btn" style={{ width: '100%' }} onClick={saveDangerPw}>
-              {dangerSet ? '修改所有者密码' : '设置所有者密码'}
-            </button>
-          </div>
-
-          {/* 关于 */}
-          <div className="settings-page">
-            <div className="set-group">
-              <div className="set-row" style={{ cursor: 'default' }}>
-                <span className="sq blue"><I n="sparkle" size={21} /></span>
-                <span>Linverse<span className="sr-desc" style={{ display: 'block' }}>专为中国高中生打造的 AI 学习助手</span></span>
-              </div>
-              <div className="set-row" style={{ cursor: 'default' }}>
-                <span className="sr-label">版本</span>
-                <span className="set-val">v0.1.5</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
       <Toast msg={toast} />
     </div>

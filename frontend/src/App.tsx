@@ -41,14 +41,26 @@ export default function App() {
     const cachedNoPw = localStorage.getItem('linverse.sitePwSet') === '0'
     const hasToken = !!getSiteToken()
     if (cachedNoPw || hasToken) setGate('pass')
+    // 开屏兜底：2.5 秒后端还没回话，先放行进 App（后台继续等，确认要密码再弹门）
+    // 避免国内网络 hang 住时卡在 Linverse 启动屏"等得崩溃"
+    let gateDone = false
+    const gateTimer = setTimeout(() => {
+      if (!gateDone && alive) setGate('pass')
+    }, 2500)
     siteStatus()
       .then((s) => {
+        gateDone = true
+        clearTimeout(gateTimer)
         try { localStorage.setItem('linverse.sitePwSet', s.passwordSet ? '1' : '0') } catch {}
         if (!alive) return
         if (s.passwordSet && !getSiteToken()) setGate('open')
         else setGate('pass')
       })
-      .catch(() => { if (alive && !cachedNoPw && !hasToken) setGate('pass') }) // 后端连不上：先放行，页面内再提示
+      .catch(() => {
+        gateDone = true
+        clearTimeout(gateTimer)
+        if (alive && !cachedNoPw && !hasToken) setGate('pass')
+      }) // 后端连不上：先放行，页面内再提示
     const onLock = () => setGate('open')
     window.addEventListener('linverse:site-locked', onLock)
     return () => { alive = false; window.removeEventListener('linverse:site-locked', onLock) }
