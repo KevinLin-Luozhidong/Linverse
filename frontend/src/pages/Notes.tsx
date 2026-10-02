@@ -125,6 +125,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
       <div className="work-head">
         <div className="work-kicker">学习工具</div>
         <div className="work-title">笔记本</div>
+        <div className="work-desc">把课堂重点留下来，复习时一目了然</div>
       </div>
       <div className="toolbar-row" style={{ padding: '10px 0 0' }}>
         <div className="search-box">

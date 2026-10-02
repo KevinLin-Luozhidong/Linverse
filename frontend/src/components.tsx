@@ -116,24 +116,96 @@ export function Spin() {
 }
 
 // 右滑返回手势（iOS 习惯：手指从屏幕左边缘向右滑，退出二级页面）
+// 跟手版：手指拖动时页面实时跟随，松手后拉够 90px 就回去、不够就平滑弹回原位
 // 用法：const swipe = useSwipeBack(() => setView('menu'), view !== 'menu')
-//   <div {...swipe}>...</div>
-// 只响应"从左边缘出发"的右滑，避免和页面内的横滑（徽章横滚等）冲突
+//   <div {...swipe.handlers}>
+//     <div style={{ transform: `translateX(calc(${-idx*100}% + ${swipe.dragX}px))`,
+//                    transition: swipe.dragging ? 'none' : undefined }}>
+// 只响应"从左边缘出发"的右滑，避免和页面内的纵滑/横滑冲突
 export function useSwipeBack(onBack: () => void, enabled = true) {
   const start = useRef<{ x: number; y: number } | null>(null)
+  const [drag, setDrag] = useState({ x: 0, active: false })
   return {
-    onTouchStart: (e: TouchEvent) => {
-      const t = e.touches[0]
-      start.current = { x: t.clientX, y: t.clientY }
-    },
-    onTouchEnd: (e: TouchEvent) => {
-      const s = start.current
-      start.current = null
-      if (!s || !enabled) return
-      const t = e.changedTouches[0]
-      const dx = t.clientX - s.x
-      const dy = t.clientY - s.y
-      if (s.x < 48 && dx > 64 && Math.abs(dy) < 48) onBack()
+    dragX: drag.active ? drag.x : 0, // 当前跟手的偏移（px）
+    dragging: drag.active,
+    handlers: {
+      onTouchStart: (e: TouchEvent) => {
+        if (!enabled) return
+        const t = e.touches[0]
+        if (t.clientX < 64) start.current = { x: t.clientX, y: t.clientY }
+      },
+      onTouchMove: (e: TouchEvent) => {
+        const s = start.current
+        if (!s || !enabled) return
+        const t = e.touches[0]
+        const dx = t.clientX - s.x
+        const dy = t.clientY - s.y
+        // 纵向意图优先：交给页面滚动，不抢手势
+        if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+          start.current = null
+          setDrag({ x: 0, active: false })
+          return
+        }
+        if (dx > 0) setDrag({ x: Math.min(dx, 320), active: true })
+      },
+      onTouchEnd: () => {
+        const d = drag
+        start.current = null
+        setDrag({ x: 0, active: false })
+        if (d.active && d.x > 90) onBack()
+      },
     },
   }
+}
+
+// 每日一句：底部励志文案，点一下换一句（用户点名要的"特别有意思"的小功能）
+// 每天固定一句（按日期取），点一下随机换一句并记住选择
+const QUOTES = [
+  '今天多问一个为什么，明天就少一个盲点',
+  '把每次出错变成下一次的得分点',
+  '慢一点没关系，方向对了就好',
+  '你背的每一个单词，都在为未来铺路',
+  '错题本越厚，考场上越稳',
+  '自律的人，连运气都更好',
+  '今天的汗水，是明天的底气',
+  '不要和别人比，和昨天的自己比',
+  '把大目标拆成小步骤，每天完成一个',
+  '复习不是重复，是升级',
+  '课堂的 45 分钟，值得你 100% 的专注',
+  '坚持的第 21 天，会感谢第 1 天的你',
+  '难题都是纸老虎，拆开了一只一只打',
+  '笔记是写给未来自己的信',
+  '早起的半小时，是偷来的成长时间',
+  '不懂就问，不丢人；不懂装懂，才可惜',
+  '把"再学五分钟"变成习惯',
+  '错一次是成长，错两次是选择',
+  '你的努力，时间都看得见',
+  '把手机放下，把未来拿起来',
+  '每一个高手，都曾是新手',
+  '学习是场马拉松，配速比冲刺重要',
+  '今天搞懂的，明天就不会再错',
+  '星光不问赶路人，时光不负有心人',
+]
+export function DailyQuote() {
+  const [idx, setIdx] = useState(() => {
+    try {
+      const saved = localStorage.getItem('linverse.quote')
+      if (saved) {
+        const { date, i } = JSON.parse(saved)
+        if (date === new Date().toDateString()) return i % QUOTES.length
+      }
+    } catch {}
+    return new Date().getDate() % QUOTES.length
+  })
+  const refresh = () => {
+    let n = Math.floor(Math.random() * QUOTES.length)
+    if (n === idx) n = (n + 1) % QUOTES.length
+    setIdx(n)
+    try { localStorage.setItem('linverse.quote', JSON.stringify({ date: new Date().toDateString(), i: n })) } catch {}
+  }
+  return (
+    <button className="daily-quote" onClick={refresh} aria-label="换一句">
+      {QUOTES[idx]}
+    </button>
+  )
 }

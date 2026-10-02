@@ -43,6 +43,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     const target = (w ?? word).trim().toLowerCase()
     if (!target) return
     setSearching(true)
+    // 离线缓存：查过的词存本地，没网时也能看（真正的"离线词典包"基础）
+    const cacheKey = `linverse.dictCache.${profileId || 'anon'}`
+    const readCache = (): Record<string, DictResult> => {
+      try { return JSON.parse(localStorage.getItem(cacheKey) || '{}') } catch { return {} }
+    }
     try {
       const r = await lookupWord(target, dictSource, dictSource === 'ai' ? {
         aiKey: getAiKey() || undefined,
@@ -50,13 +55,37 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         profileId: profileId || undefined,
       } : { profileId: profileId || undefined })
       setResult(r)
+      setOfflineHit(false)
+      // 存入离线缓存（最多 200 个，新的在前）
+      try {
+        const c = readCache()
+        delete c[target]
+        const entries = Object.entries(c).slice(0, 199)
+        localStorage.setItem(cacheKey, JSON.stringify({ [target]: r, ...Object.fromEntries(entries) }))
+      } catch {}
       loadHistory()
     } catch (e) {
-      setToast(e instanceof Error ? e.message : '查词失败')
+      // 没网：试试离线缓存
+      const hit = readCache()[target]
+      if (hit) {
+        setResult(hit)
+        setOfflineHit(true)
+        setToast('')
+      } else {
+        setToast(e instanceof Error ? e.message : '查词失败')
+      }
     } finally {
       setSearching(false)
     }
   }
+  const [offlineHit, setOfflineHit] = useState(false) // 当前结果来自离线缓存
+  const [cachedCount, setCachedCount] = useState(0)
+  useEffect(() => {
+    try {
+      const c = JSON.parse(localStorage.getItem(`linverse.dictCache.${profileId || 'anon'}`) || '{}')
+      setCachedCount(Object.keys(c).length)
+    } catch {}
+  }, [profileId, result])
   const pickSource = (s: DictSource) => {
     setDictSource(s)
     localStorage.setItem('linverse.dictSource', s)
@@ -112,6 +141,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       <div className="work-head">
         <div className="work-kicker">学习工具</div>
         <div className="work-title">词典</div>
+        <div className="work-desc">每天多查一个词，英语更进一步</div>
       </div>
       <div className="seg" style={{ marginTop: 10 }}>
         <button className={sub === 'dict' ? 'on' : ''} onClick={() => setSub('dict')}>查词</button>
@@ -140,7 +170,9 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           {searching && <Spin />}
           {result && !searching && (
             <div className="dict-card">
-              <div className="dict-word">{result.word}</div>
+              <div className="dict-word">{result.word}
+                {offlineHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线缓存</span>}
+              </div>
               {result.phonetic && <div className="dict-phonetic">/{result.phonetic}/</div>}
               {result.meanings.map((m, i) => (
                 <div key={i} className="dict-meaning">
@@ -177,6 +209,32 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               ))}
             </>
           )}
+
+          {/* 离线词典包：查过的词自动存本地，没网也能看；多语言词库待接入 */}
+          <div className="dict-pack">
+            <div className="dict-pack-head">
+              <div>
+                <div className="dict-pack-title">离线词典包</div>
+                <div className="dict-pack-sub">
+                  {cachedCount > 0 ? `已缓存 ${cachedCount} 个查过的词，没网也能看` : '查过的词会自动存下来，没网也能看'}
+                </div>
+              </div>
+              <span className="tag">接口就绪</span>
+            </div>
+            {[
+              { n: '英汉词典', d: '英语 → 简体中文' },
+              { n: '日汉词典', d: '日语 → 简体中文' },
+              { n: '西汉词典', d: '西班牙语 → 简体中文' },
+            ].map((p) => (
+              <div key={p.n} className="dict-pack-row">
+                <div>
+                  <div className="dict-pack-name">{p.n}</div>
+                  <div className="dict-pack-sub">{p.d}</div>
+                </div>
+                <span className="dict-pack-wait">词库待接入</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
 

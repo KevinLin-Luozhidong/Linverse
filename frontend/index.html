@@ -14,9 +14,26 @@
     <meta name="apple-mobile-web-app-title" content="Linverse" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Linverse</title>
+    <style>
+      /* 原生启动屏：JS 还没跑起来时先显示品牌，避免白屏干等（开屏太长的体感来源） */
+      #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f2f7ff; z-index: 9999; }
+      @media (prefers-color-scheme: dark) { #splash { background: #0b1220; } }
+      #splash .t { font-size: 34px; font-weight: 800; letter-spacing: 3px; color: #1e3a5f; font-family: -apple-system, 'PingFang SC', sans-serif; }
+      @media (prefers-color-scheme: dark) { #splash .t { color: #a9cdee; } }
+      #splash .s { font-size: 14px; color: #7b8aa0; letter-spacing: 6px; }
+      #splash .bar { width: 120px; height: 4px; border-radius: 2px; background: #d7e6fa; overflow: hidden; }
+      @media (prefers-color-scheme: dark) { #splash .bar { background: #1d2942; } }
+      #splash .bar i { display: block; height: 100%; width: 40%; border-radius: 2px; background: #3b82f6; animation: sp 1s ease-in-out infinite; }
+      @keyframes sp { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+    </style>
   </head>
   <body>
+    <div id="splash"><div class="t">Linverse</div><div class="bar"><i></i></div><div class="s">学习宇宙</div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // React 跑起来后第一时间撤掉启动屏
+      window.__hideSplash = function () { var s = document.getElementById('splash'); if (s) s.remove(); };
+    </script>
   </body>
 </html>

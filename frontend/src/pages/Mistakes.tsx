@@ -10,7 +10,8 @@ import {
 // 题目保留原图展示，不强制转文字；OCR 只是可选的辅助填入
 
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治']
-type Sort = 'subject' | 'time' | 'unmastered'
+type Sort = 'subject' | 'time' | 'timeAsc' | 'unmastered'
+// 排序选项（收进一个下拉按钮，不平铺）
 
 // 空表单默认值
 const blank = (profileId: string): Omit<Mistake, 'id'> => ({
@@ -22,6 +23,13 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [list, setList] = useState<Mistake[]>([])
   const [loading, setLoading] = useState(true)
   const [sort, setSort] = useState<Sort>('subject')
+  const [sortOpen, setSortOpen] = useState(false) // 排序下拉菜单
+  const SORTS: { v: Sort; label: string }[] = [
+    { v: 'subject', label: '按科目' },
+    { v: 'time', label: '最新录入' },
+    { v: 'timeAsc', label: '最早录入' },
+    { v: 'unmastered', label: '未掌握优先' },
+  ]
   const [editing, setEditing] = useState<Omit<Mistake, 'id'> & { id?: string } | null>(null)
   const [toast, setToast] = useState('')
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -41,12 +49,13 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   }
   useEffect(() => { reload() }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 排序：科目分组 / 时间倒序 / 未掌握优先
+  // 排序：科目分组 / 最新录入（后端默认倒序）/ 最早录入 / 未掌握优先
   const sorted = [...list].sort((a, b) => {
-    if (sort === 'time') return 0 // 后端默认即时间倒序
+    if (sort === 'time' || sort === 'timeAsc') return 0 // 后端默认即时间倒序
     if (sort === 'unmastered') return Number(a.mastered) - Number(b.mastered)
     return a.subject.localeCompare(b.subject, 'zh')
   })
+  if (sort === 'timeAsc') sorted.reverse() // 最早录入：把后端的倒序翻过来
 
   // 分组渲染（按科目排序时加分组标题）
   const groups: { title: string; items: Mistake[] }[] = []
@@ -167,12 +176,29 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
       <div className="work-head">
         <div className="work-kicker">学习工具</div>
         <div className="work-title">错题本</div>
+        <div className="work-desc">每次弄清一个错误，就离真正掌握更近一步</div>
       </div>
       <div className="toolbar-row" style={{ padding: '10px 0 0' }}>
-        <div className="seg" style={{ flex: 1 }}>
-          <button className={sort === 'subject' ? 'on' : ''} onClick={() => setSort('subject')}>按科目</button>
-          <button className={sort === 'time' ? 'on' : ''} onClick={() => setSort('time')}>按时间</button>
-          <button className={sort === 'unmastered' ? 'on' : ''} onClick={() => setSort('unmastered')}>未掌握优先</button>
+        {/* 排序收进一个下拉按钮：点一下展开选，不平铺占地方 */}
+        <div style={{ position: 'relative' }}>
+          <button className="btn btn-ghost" onClick={() => setSortOpen(!sortOpen)} aria-label="排序方式">
+            {SORTS.find((s) => s.v === sort)?.label}
+            <I n="chev" size={14} />
+          </button>
+          {sortOpen && (
+            <>
+              <div className="drop-mask" onClick={() => setSortOpen(false)} />
+              <div className="drop-menu">
+                {SORTS.map((o) => (
+                  <button key={o.v} className={sort === o.v ? 'on' : ''}
+                    onClick={() => { setSort(o.v); setSortOpen(false) }}>
+                    {sort === o.v ? <I n="check" size={16} /> : <span style={{ width: 16 }} />}
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

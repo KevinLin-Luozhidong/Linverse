@@ -35,12 +35,20 @@ export default function App() {
   const [gate, setGate] = useState<'loading' | 'open' | 'pass'>('loading')
   useEffect(() => {
     let alive = true
+    // 开屏加速：本地记得"没设密码"（linverse.sitePwSet=0）或有旧 token，直接放行不等后端；
+    // 后台再找后端确认，万一其实设了密码但本地没 token，再弹密码门。
+    // （Vercel 无服务器冷启动要几秒，开屏不能干等它）
+    const cachedNoPw = localStorage.getItem('linverse.sitePwSet') === '0'
+    const hasToken = !!getSiteToken()
+    if (cachedNoPw || hasToken) setGate('pass')
     siteStatus()
       .then((s) => {
+        try { localStorage.setItem('linverse.sitePwSet', s.passwordSet ? '1' : '0') } catch {}
         if (!alive) return
-        setGate(s.passwordSet && !getSiteToken() ? 'open' : 'pass')
+        if (s.passwordSet && !getSiteToken()) setGate('open')
+        else setGate('pass')
       })
-      .catch(() => { if (alive) setGate('pass') }) // 后端连不上：先放行，页面内再提示
+      .catch(() => { if (alive && !cachedNoPw && !hasToken) setGate('pass') }) // 后端连不上：先放行，页面内再提示
     const onLock = () => setGate('open')
     window.addEventListener('linverse:site-locked', onLock)
     return () => { alive = false; window.removeEventListener('linverse:site-locked', onLock) }
@@ -114,6 +122,9 @@ export default function App() {
     if (t === 'me' && tab === 'me') goMeView('profile') // 重复点个人中心：回到主页（初级菜单）
     setTab(t)
     if (t !== 'me') goMeView('profile')
+    // 外层滚动归零：个人中心页很长（要下滑找设置），外层 .main 的滚动位置会带到设置页，
+    // 导致设置菜单一打开就是"被划过"的样子。切 tab/切二级页时一律回顶，保证"摆正位置"。
+    document.querySelector('.main')?.scrollTo({ top: 0 })
   }
   // 个人中心二级页切换：同样首次挂载、之后常驻
   // 点"设置"永远回到设置初级菜单：Settings 内部 view 状态会记住子菜单，用 key 强制重挂载清掉
@@ -122,6 +133,7 @@ export default function App() {
     setVisitedMe((s) => (s.includes(v) ? s : [...s, v]))
     if (v === 'settings') setSettingsKey((k) => k + 1)
     setMeView(v)
+    document.querySelector('.main')?.scrollTo({ top: 0 })
   }
 
   // 密码门：查状态中显示空白闪屏，要输密码显示密码页，通过后进主界面

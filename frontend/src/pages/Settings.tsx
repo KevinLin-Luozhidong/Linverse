@@ -224,6 +224,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       const r = await siteSetPassword(p, pwSet ? oldPw.trim() : undefined)
       setSiteToken(r.token)
       setPwSet(true)
+      try { localStorage.setItem('linverse.sitePwSet', '1') } catch {}
       setOldPw(''); setNewPw('')
       setToast(pwSet ? '密码已修改' : '访问密码已设置，朋友打开网址要先输这个密码')
     } catch (e) {
@@ -276,8 +277,12 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
         <div className="topbar-spacer" />
       </div>
 
-      <div className="settings-view" ref={viewRef} {...swipe}>
-        <div className="settings-track" style={{ transform: `translateX(-${idx * 100}%)` }}>
+      <div className="settings-view" ref={viewRef} {...swipe.handlers}>
+        <div className="settings-track" style={{
+          // 跟手：手指拖动时轨道实时跟随；松手后 transition 恢复，自动平滑归位/退回菜单
+          transform: `translateX(calc(${-idx * 100}% + ${swipe.dragX}px))`,
+          transition: swipe.dragging ? 'none' : undefined,
+        }}>
           {/* 一级菜单：三组多彩圆角入口 */}
           <div className="settings-page">
             <div className="set-group">

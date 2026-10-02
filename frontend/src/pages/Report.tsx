@@ -21,7 +21,12 @@ export default function Report({ profileId, onBack }: {
   const swipe = useSwipeBack(onBack)
 
   return (
-    <div className="settings" style={{ height: '100%' }} {...swipe}>
+    <div className="settings" style={{
+      height: '100%',
+      // 跟手：右滑时整页跟随手指，松手后平滑归位/返回
+      transform: swipe.dragging ? `translateX(${swipe.dragX}px)` : undefined,
+      transition: swipe.dragging ? 'none' : undefined,
+    }} {...swipe.handlers}>
       <div className="topbar">
         <button className="icon-btn" onClick={onBack} aria-label="返回"><I n="back" /></button>
         <div className="topbar-title">学习报告</div>

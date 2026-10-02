@@ -9,3 +9,5 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+// React 已接管：撤掉 index.html 里的原生启动屏
+;(window as unknown as { __hideSplash?: () => void }).__hideSplash?.()

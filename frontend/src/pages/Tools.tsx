@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Mistakes from './Mistakes'
 import Notes from './Notes'
 import Dictionary from './Dictionary'
-import { I, Toast } from '../components'
+import { I, Toast, DailyQuote } from '../components'
 import { getStats, type Stats } from '@api'
 
 // 学习工具页：三张大卡片横向滑动选择 + 底部指示点
@@ -114,6 +114,9 @@ export default function Tools({ profileId }: { profileId: string | null }) {
         <div className="dots">
           {TOOLS.map((t, i) => <span key={t.id} className={'dot' + (i === dotIdx ? ' on' : '')} />)}
         </div>
+        <div className="tools-quote-fixed" style={{ marginTop: 'auto' }}>
+          <DailyQuote />
+        </div>
         <Toast msg={toast} />
       </div>
     )
@@ -152,6 +155,10 @@ export default function Tools({ profileId }: { profileId: string | null }) {
           style={{ display: active === 'dict' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
           <Dictionary profileId={profileId} />
         </div>
+      </div>
+      {/* 每日一句：钉在学习工具底部，不随三个板块切换而消失，点一下换一句 */}
+      <div className="tools-quote-fixed">
+        <DailyQuote />
       </div>
       {fly && flyTool && (
         <div
