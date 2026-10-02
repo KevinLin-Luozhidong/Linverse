@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Switch, Toast, Spin, Empty } from '../components'
 import {
   ask, listConversations, getConversation, deleteConversation,
-  getSettings, getAiKey, uploadImage, imgSrc,
+  getSettings, getAiKey, uploadImage, imgSrc, createMistake,
   type ConversationMeta, type ChatMsg,
 } from '../api'
+import { toggleFav, isFav } from '../favs'
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉
+// 视觉对齐演示版：顶部汉堡 + 模型胶囊 + 状态胶囊，回答无边框、重点蓝高亮
 
 const MODELS = [
   { v: 'demo', label: '演示' },
@@ -16,8 +18,136 @@ const MODELS = [
   { v: 'custom', label: '自定义' },
 ]
 
-// 打字机消息：逐块显示文本，"直接回答"一键显示全文
-function TypeMsg({ text, onDone }: { text: string; onDone: () => void }) {
+// ---- 轻量富文本渲染：标题 / 列表 / **重点**（重点变蓝色） ----
+function renderRich(text: string): ReactNode[] {
+  const out: ReactNode[] = []
+  const lines = text.split('\n')
+  let listBuf: { ordered: boolean; items: string[] } | null = null
+  const flushList = () => {
+    if (!listBuf) return
+    const L = listBuf.ordered ? 'ol' : 'ul'
+    out.push(<L key={'l' + out.length}>{listBuf.items.map((t, i) => <li key={i}>{inline(t)}</li>)}</L>)
+    listBuf = null
+  }
+  // 行内：**重点** 转蓝色高亮
+  function inline(s: string): ReactNode {
+    const parts = s.split(/(\*\*[^*]+\*\*)/g)
+    return parts.map((p, i) =>
+      p.startsWith('**') && p.endsWith('**') && p.length > 4
+        ? <span key={i} className="hl">{p.slice(2, -2)}</span>
+        : <span key={i}>{p}</span>,
+    )
+  }
+  lines.forEach((raw, i) => {
+    const line = raw.trim()
+    const ol = line.match(/^\d+[.、]\s*(.*)/)
+    const ul = line.match(/^[-*•]\s+(.*)/)
+    if (line.startsWith('##')) {
+      flushList()
+      out.push(<h4 key={i}>{inline(line.replace(/^#+\s*/, ''))}</h4>)
+    } else if (ol || ul) {
+      const ordered = !!ol
+      const item = (ol ? ol[1] : ul![1])
+      if (!listBuf || listBuf.ordered !== ordered) { flushList(); listBuf = { ordered, items: [] } }
+      listBuf.items.push(item)
+    } else if (!line) {
+      flushList()
+    } else {
+      flushList()
+      out.push(<p key={i}>{inline(line)}</p>)
+    }
+  })
+  flushList()
+  return out
+}
+
+// 拆出"相关知识点"行：单独渲染成演示版样式的知识点行
+function splitKnowledge(text: string): { body: string; know: string[] } {
+  const lines = text.split('\n')
+  const know: string[] = []
+  const rest = lines.filter((l) => {
+    const m = l.trim().match(/^相关知识点[:：]\s*(.*)/)
+    if (m && m[1]) {
+      know.push(...m[1].split(/[、，,]/).map((s) => s.trim()).filter(Boolean))
+      return false
+    }
+    return true
+  })
+  return { body: rest.join('\n'), know }
+}
+
+// AI 回答卡片：富文本 + 相关知识点 + 胶囊按钮（复制 / 存入错题本 / 收藏）
+function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onToast }: {
+  text: string; question: string; profileId: string | null;
+  thinkText: string; typing: boolean; onSkip: () => void; onToast: (m: string) => void;
+}) {
+  const [favTick, setFavTick] = useState(0)
+  const fav = profileId ? isFav(profileId, question, text) : false
+  void favTick
+  const { body, know } = splitKnowledge(text)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      onToast('已复制')
+    } catch {
+      onToast('复制失败')
+    }
+  }
+  // 存入错题本：问题进题目，答案进正确答案
+  const saveToMistakes = async () => {
+    if (!profileId) return
+    try {
+      await createMistake({
+        profileId, subject: '数学',
+        questionText: question || '（AI 问答）',
+        questionImageUrl: '', answerText: text, answerImageUrl: '', reason: '', mastered: false,
+      })
+      onToast('已存入错题本')
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : '存入失败')
+    }
+  }
+  const favToggle = () => {
+    if (!profileId) return
+    const liked = toggleFav(profileId, question, text)
+    setFavTick((t) => t + 1)
+    onToast(liked ? '已收藏' : '已取消收藏')
+  }
+
+  return (
+    <div className="answer">
+      <div className="rich">{renderRich(body)}{typing && <span className="caret" />}</div>
+      {know.length > 0 && (
+        <div className="ans-know">
+          <b>相关知识点：</b>
+          {know.map((k, i) => <span key={i} className="k">{k}{i < know.length - 1 ? '、' : ''}</span>)}
+        </div>
+      )}
+      {thinkText && <div className="ans-think">{thinkText}</div>}
+      {!typing && (
+        <div className="ans-actions">
+          <button className="cap-btn" onClick={copy}><I n="copy" size={14} />复制</button>
+          <button className="cap-btn" onClick={saveToMistakes}><I n="notebook" size={14} />存入错题本</button>
+          <button className={'cap-btn' + (fav ? ' liked' : '')} onClick={favToggle}>
+            <I n="heart" size={14} />{fav ? '已收藏' : '收藏'}
+          </button>
+        </div>
+      )}
+      {typing && (
+        <div className="type-tools">
+          <button className="cap-btn" onClick={onSkip}>直接回答</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 打字机：逐块显示文本
+function TypeMsg(props: Omit<Parameters<typeof AnswerCard>[0], 'typing' | 'onSkip' | 'thinkText'> & {
+  onDone: () => void; onSkipDone: () => void; text: string;
+}) {
+  const { text, onDone, onSkipDone, ...rest } = props
   const [n, setN] = useState(0)
   const done = n >= text.length
   useEffect(() => {
@@ -28,17 +158,7 @@ function TypeMsg({ text, onDone }: { text: string; onDone: () => void }) {
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done, text])
-  return (
-    <div className="bubble">
-      {text.slice(0, n)}
-      {!done && <span className="caret" />}
-      {!done && (
-        <div className="msg-tools">
-          <button className="mini-btn" onClick={() => setN(text.length)}>直接回答</button>
-        </div>
-      )}
-    </div>
-  )
+  return <AnswerCard {...rest} text={text.slice(0, n)} typing={!done} thinkText="" onSkip={() => { setN(text.length); onSkipDone() }} />
 }
 
 export default function Assistant({ profileId }: { profileId: string | null }) {
@@ -49,11 +169,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [sending, setSending] = useState(false)
   const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
-  const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭
+  const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
+  const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
   const [toast, setToast] = useState('')
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
   const [uploading, setUploading] = useState(false)
-  const [typing, setTyping] = useState(true) // 当前 AI 消息是否还在打字
+  const [typing, setTyping] = useState(false) // 当前 AI 消息是否还在打字
   const [thinkSec, setThinkSec] = useState(0) // 深度思考耗时
   const [deletingId, setDeletingId] = useState('') // 二次确认删除的会话
   const fileRef = useRef<HTMLInputElement>(null)
@@ -72,12 +193,18 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     if (!profileId) return
     listConversations(profileId).then(setConvs).catch(() => {})
   }
-  useEffect(() => { reloadConvs() }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    reloadConvs()
+    // 截图调试用：?conv=会话id 自动打开该会话
+    const cid = new URLSearchParams(location.search).get('conv')
+    if (cid) openConv(cid)
+  }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 打开会话：加载历史消息
   const openConv = async (id: string) => {
+    if (!profileId) return
     try {
-      const c = await getConversation(id)
+      const c = await getConversation(id, profileId)
       setConvId(id)
       setMsgs(c.messages)
       setTyping(false)
@@ -99,9 +226,10 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
 
   // 删除会话：点两次确认
   const delConv = async (id: string) => {
+    if (!profileId) return
     if (deletingId !== id) { setDeletingId(id); return }
     try {
-      await deleteConversation(id)
+      await deleteConversation(id, profileId)
       setDeletingId('')
       setConvs((v) => v.filter((c) => c.id !== id))
       if (convId === id) newConv()
@@ -164,36 +292,54 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       }])
       reloadConvs()
     } catch (e) {
-      setMsgs((v) => [...v, {
-        role: 'assistant', content: '', createdAt: new Date().toISOString(),
-      }])
-      setToast(e instanceof Error ? e.message : '发送失败')
-      // 出错时移除刚才的空消息，保持界面干净
+      // 出错时移除刚才的用户消息，保持界面干净
       setMsgs((v) => v.slice(0, -1))
       setTyping(false)
+      setToast(e instanceof Error ? e.message : '发送失败')
     } finally {
       setSending(false)
     }
   }
 
   const lastAiIdx = msgs.map((m) => m.role).lastIndexOf('assistant')
+  const modelLabel = MODELS.find((m) => m.v === model)?.label || '演示'
+  // 右上状态胶囊：演示模式 / 已填 Key 接入 / 非演示但没填 Key
+  const statusCap = model === 'demo'
+    ? { t: '演示版', cls: 'demo' }
+    : getAiKey()
+      ? { t: '已接入', cls: 'live' }
+      : { t: '未填 Key', cls: 'demo' }
 
   return (
     <div className="chat-wrap">
-      {/* 顶栏：汉堡 / 模型选择 / 深度思考开关 */}
-      <div className="topbar">
+      {/* 顶栏：汉堡 / 模型胶囊 / 状态胶囊 */}
+      <div className="chat-topbar">
         <button className="icon-btn" onClick={() => setDrawerOpen(true)} aria-label="会话列表">
           <I n="menu" />
         </button>
-        <div className="topbar-spacer" style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-          <select className="model-select" value={model}
-            onChange={(e) => { setModel(e.target.value); localStorage.setItem('linverse.model', e.target.value) }}
-            aria-label="选择模型">
-            {MODELS.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}
-          </select>
+        <div className="model-wrap">
+          <button className="model-pill" onClick={() => setMenuOpen((v) => !v)} aria-label="选择模型">
+            {modelLabel}<I n="chev" size={14} />
+          </button>
+          {menuOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setMenuOpen(false)} />
+              <div className="model-menu" style={{ zIndex: 50 }}>
+                {MODELS.map((m) => (
+                  <button key={m.v} className={m.v === model ? 'on' : ''}
+                    onClick={() => {
+                      setModel(m.v)
+                      localStorage.setItem('linverse.model', m.v)
+                      setMenuOpen(false)
+                    }}>
+                    {m.v === model && <I n="check" size={15} />}{m.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
-        <span className="deep-label">深度思考</span>
-        <Switch on={deepThink} onChange={(v) => { setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }} />
+        <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
       </div>
 
       {/* 左侧抽屉：新建会话 + 历史列表，默认关闭不闪现 */}
@@ -223,39 +369,58 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       {/* 聊天区 */}
       <div className="chat-list" ref={listRef}>
         {msgs.length === 0 && (
-          <Empty text="随时问我问题，拍照也能问" />
+          <div className="chat-welcome">
+            <div className="w-title">随时问问题</div>
+            <div className="w-sub">打字问或拍照问，我会按考试的规矩一步步讲</div>
+          </div>
         )}
         {msgs.map((m, i) => (
-          <div key={i} className={'msg ' + (m.role === 'user' ? 'user' : 'msg-ai')}>
+          <div key={i} className={'msg ' + (m.role === 'user' ? 'user' : '')}>
             {m.role === 'user' ? (
-              <div className="bubble">
+              <div className="user-bubble">
                 {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" />}
                 {m.content}
               </div>
             ) : i === lastAiIdx && typing ? (
               // 只有最新一条 AI 消息用打字机效果
-              <TypeMsg text={m.content} onDone={() => setTyping(false)} />
+              <TypeMsg
+                text={m.content}
+                question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
+                profileId={profileId}
+                onDone={() => setTyping(false)}
+                onSkipDone={() => setTyping(false)}
+                onToast={setToast}
+              />
             ) : (
-              <div className="bubble">{m.content}</div>
+              <AnswerCard
+                text={m.content}
+                question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
+                profileId={profileId}
+                thinkText={i === lastAiIdx && deepThink && thinkSec > 0 && !typing ? `已深度思考 · ${thinkSec} 秒` : ''}
+                typing={false}
+                onSkip={() => {}}
+                onToast={setToast}
+              />
             )}
           </div>
         ))}
         {sending && <Spin />}
-        {/* 深度思考完成后显示耗时 */}
-        {deepThink && !typing && thinkSec > 0 && msgs.length > 0 && (
-          <div className="msg msg-ai">
-            <span className="think-tag">已深度思考 · {thinkSec} 秒</span>
-          </div>
-        )}
       </div>
 
-      {/* 底部输入区：独立拍照按钮 + 输入框 + 发送 */}
-      <div className="chat-input-bar">
+      {/* 深度思考开关胶囊 */}
+      <div className="deep-row">
+        <span className={'deep-cap' + (deepThink ? ' on' : '')}>
+          深度思考
+          <Switch on={deepThink} onChange={(v) => { setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }} />
+        </span>
+      </div>
+
+      {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}
+      <div className="composer">
         <input ref={fileRef} type="file" accept="image/*" capture="environment"
           style={{ display: 'none' }} onChange={(e) => onPickImage(e.target.files?.[0])} />
-        <button className="icon-btn" onClick={() => fileRef.current?.click()}
-          aria-label="拍照提问" style={{ color: 'var(--blue)' }}>
-          {uploading ? <Spin /> : <I n="camera" size={26} />}
+        <button className="cam-btn" onClick={() => fileRef.current?.click()} aria-label="拍照提问">
+          {uploading ? <Spin /> : <I n="camera" size={24} />}
         </button>
         {imgUrl && (
           <div className="photo-preview">
@@ -263,14 +428,16 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
             <button onClick={() => setImgUrl('')} aria-label="移除图片">×</button>
           </div>
         )}
-        <textarea className="chat-input" rows={1} value={input}
-          placeholder="输入问题…"
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
-        <button className="send-btn" onClick={send}
-          disabled={sending || (!input.trim() && !imgUrl)} aria-label="发送">
-          <I n="send" size={20} />
-        </button>
+        <div className="composer-box">
+          <textarea className="chat-input" rows={1} value={input}
+            placeholder="随时问问题"
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
+          <button className="send-btn" onClick={send}
+            disabled={sending || (!input.trim() && !imgUrl)} aria-label="发送">
+            <I n="send" size={18} />
+          </button>
+        </div>
       </div>
       <Toast msg={toast} />
     </div>

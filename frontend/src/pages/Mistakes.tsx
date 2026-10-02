@@ -158,7 +158,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
           {g.items.map((m) => (
             <div key={m.id} className="m-card">
               <span className="m-subject">{m.subject}</span>
-              {m.mastered && <span className="mastered-tag" style={{ marginLeft: 8 }}><I n="check" size={14} />已掌握</span>}
+              {!!m.mastered && <span className="mastered-tag" style={{ marginLeft: 8 }}><I n="check" size={14} />已掌握</span>}
               {m.questionImageUrl && <img className="m-img" src={imgSrc(m.questionImageUrl)} alt="题目原图" />}
               {m.questionText && <div className="m-q">{m.questionText}</div>}
               {m.answerImageUrl && <img className="m-img" src={imgSrc(m.answerImageUrl)} alt="答案图" />}

@@ -1,13 +1,15 @@
-// 后端 API 封装：所有请求走 /api，由 Vite 代理转发到 http://localhost:3001
+// 后端 API 封装：请求地址 = VITE_API_URL + /api/...
+// 本地开发不设 VITE_API_URL 时走相对路径 /api/...，由 Vite 代理转发到 http://localhost:3001
+// 部署到 Vercel 后在环境变量里填 VITE_API_URL=https://<Railway 后端网址>，前端直连云端后端
 // 字段名与后端契约保持一致，不做改动
 
-const BASE = '/api'
+const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(BASE + path, {
+    res = await fetch(`${BASE}/api${path}`, {
       headers: { 'Content-Type': 'application/json' },
       ...init,
     })
@@ -75,9 +77,10 @@ export interface Settings {
 
 export interface Profile { id: string; name: string }
 
-// 图片地址归一化：相对路径直接用（Vite 已代理 /uploads），http 开头原样返回
+// 图片地址归一化：/uploads/... 拼上后端地址（本地 BASE 为空走 Vite 代理，部署后走 VITE_API_URL），http 开头原样返回
 export function imgSrc(url?: string): string {
   if (!url) return ''
+  if (url.startsWith('/uploads/')) return `${BASE}${url}`
   return url
 }
 
@@ -87,7 +90,7 @@ export async function uploadImage(file: File): Promise<string> {
   fd.append('file', file) // 字段名固定为 file
   let res: Response
   try {
-    res = await fetch(BASE + '/upload', { method: 'POST', body: fd })
+    res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: fd })
   } catch {
     throw new Error('连不上后端服务，确认后端已启动')
   }
@@ -136,8 +139,11 @@ function demoAnswer(q: string): string {
 // ---- 会话 ----
 export const listConversations = (profileId: string) =>
   get<ConversationMeta[]>(`/conversations?profileId=${encodeURIComponent(profileId)}`)
-export const getConversation = (id: string) => get<Conversation>(`/conversations/${id}`)
-export const deleteConversation = (id: string) => del(`/conversations/${id}`)
+// 后端详情/删除接口要求带 profileId 做数据隔离，这里按后端契约拼接（字段名不变）
+export const getConversation = (id: string, profileId: string) =>
+  get<Conversation>(`/conversations/${id}?profileId=${encodeURIComponent(profileId)}`)
+export const deleteConversation = (id: string, profileId: string) =>
+  del(`/conversations/${id}?profileId=${encodeURIComponent(profileId)}`)
 
 // ---- 错题 ----
 export const listMistakes = (profileId: string, subject?: string) =>
@@ -150,10 +156,25 @@ export const deleteMistake = (id: string) => del(`/mistakes/${id}`)
 export const ocr = (imageUrl: string) => post<{ text: string }>('/ocr', { imageUrl })
 
 // ---- 笔记 ----
-export const listNotes = (profileId: string, q = '', tag = '', archived = '') =>
-  get<Note[]>(`/notes?profileId=${encodeURIComponent(profileId)}&q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&archived=${archived}`)
-export const createNote = (n: Omit<Note, 'id'>) => post<Note>('/notes', n)
-export const updateNote = (id: string, n: Partial<Note>) => put<Note>(`/notes/${id}`, n)
+// 后端把 tags/images 存成 JSON 字符串，前端按数组用，这里归一化（字段名不变）
+function normNote(n: Note): Note {
+  const t = (n as unknown as { tags: unknown }).tags
+  const im = (n as unknown as { images: unknown }).images
+  const arr = (v: unknown): string[] => {
+    if (Array.isArray(v)) return v as string[]
+    if (typeof v === 'string') {
+      try { const p = JSON.parse(v); return Array.isArray(p) ? p : [] } catch { return [] }
+    }
+    return []
+  }
+  return { ...n, tags: arr(t), images: arr(im) }
+}
+export const listNotes = async (profileId: string, q = '', tag = '', archived = '') => {
+  const ns = await get<Note[]>(`/notes?profileId=${encodeURIComponent(profileId)}&q=${encodeURIComponent(q)}&tag=${encodeURIComponent(tag)}&archived=${archived}`)
+  return ns.map(normNote)
+}
+export const createNote = async (n: Omit<Note, 'id'>) => normNote(await post<Note>('/notes', n))
+export const updateNote = async (id: string, n: Partial<Note>) => normNote(await put<Note>(`/notes/${id}`, n))
 export const deleteNote = (id: string) => del(`/notes/${id}`)
 
 // ---- 词典 ----

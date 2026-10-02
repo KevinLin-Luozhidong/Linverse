@@ -3,16 +3,23 @@ import Assistant from './pages/Assistant'
 import Tools from './pages/Tools'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
+import Report from './pages/Report'
+import Favorites from './pages/Favorites'
 import { I, Toast } from './components'
 import { listProfiles, createProfile, getSettings } from './api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
-// 个人中心内嵌设置二级页；负责账号初始化与外观偏好应用
+// 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
 type Tab = 'assistant' | 'tools' | 'me'
+type MeView = 'profile' | 'settings' | 'report' | 'favorites'
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('assistant')
-  const [inSettings, setInSettings] = useState(false) // 个人中心内是否打开设置
+  // 截图调试用：?tab=tools&view=settings 可直接定位页面，日常使用无影响
+  const qp = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null
+  const initTab = (qp?.get('tab') as Tab) || 'assistant'
+  const initView = (qp?.get('view') as MeView) || 'profile'
+  const [tab, setTab] = useState<Tab>(['assistant', 'tools', 'me'].includes(initTab) ? initTab : 'assistant')
+  const [meView, setMeView] = useState<MeView>(initView) // 个人中心内当前视图
   const [profileId, setProfileId] = useState<string | null>(() => localStorage.getItem('linverse.profileId'))
   const [toast, setToast] = useState('')
 
@@ -47,6 +54,9 @@ export default function App() {
         if (theme === 'system') document.documentElement.removeAttribute('data-theme')
         else document.documentElement.setAttribute('data-theme', theme)
         document.documentElement.setAttribute('data-fontsize', s.fontSize || 'medium')
+        // 截图调试用：?forceTheme=dark 强制深浅色
+        const ft = qp?.get('forceTheme')
+        if (ft) document.documentElement.setAttribute('data-theme', ft)
       })
       .catch(() => {})
   }, [profileId])
@@ -55,7 +65,7 @@ export default function App() {
   const switchProfile = (id: string) => {
     localStorage.setItem('linverse.profileId', id)
     setProfileId(id)
-    setInSettings(false)
+    setMeView('profile')
   }
 
   const tabs: { id: Tab; label: string; icon: 'chat' | 'grid' | 'user' }[] = [
@@ -75,9 +85,21 @@ export default function App() {
         )}
         {tab === 'me' && (
           <div className="tabview" key={'m' + profileId}>
-            {inSettings
-              ? <Settings profileId={profileId} onBack={() => setInSettings(false)} onProfileChange={switchProfile} />
-              : <Profile profileId={profileId} onOpenSettings={() => setInSettings(true)} />}
+            {meView === 'profile' && (
+              <Profile profileId={profileId}
+                onOpenSettings={() => setMeView('settings')}
+                onOpenReport={() => setMeView('report')}
+                onOpenFavorites={() => setMeView('favorites')} />
+            )}
+            {meView === 'settings' && (
+              <Settings profileId={profileId} onBack={() => setMeView('profile')} onProfileChange={switchProfile} />
+            )}
+            {meView === 'report' && (
+              <Report profileId={profileId} onBack={() => setMeView('profile')} />
+            )}
+            {meView === 'favorites' && (
+              <Favorites profileId={profileId} onBack={() => setMeView('profile')} />
+            )}
           </div>
         )}
       </div>
@@ -85,7 +107,7 @@ export default function App() {
         {tabs.map((t) => (
           <button key={t.id}
             className={'tab' + (tab === t.id ? ' active' : '')}
-            onClick={() => { setTab(t.id); if (t.id !== 'me') setInSettings(false) }}>
+            onClick={() => { setTab(t.id); if (t.id !== 'me') setMeView('profile') }}>
             <I n={t.icon} size={24} />
             <span>{t.label}</span>
           </button>
