@@ -1,0 +1,21 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+
+# 上传的图片（本地开发用，不提交）
+uploads/
+backend/uploads/
+
+# SQLite 数据库文件（本地数据，不提交）
+*.db
+*.db-wal
+*.db-shm
+backend/data/
+
+# 环境变量（含 AI Key，绝不提交）
+.env
+.env.*
+!.env.example
