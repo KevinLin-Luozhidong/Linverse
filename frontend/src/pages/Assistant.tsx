@@ -85,7 +85,9 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   const [favTick, setFavTick] = useState(0)
   const fav = profileId ? isFav(profileId, question, text) : false
   void favTick
-  const { body, know } = splitKnowledge(text)
+  // 兜底：去掉 AI 可能输出的 LaTeX 标记（\(x\) → x，\[...\] → ...），看着清爽
+  const cleanText = text.replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '')
+  const { body, know } = splitKnowledge(cleanText)
 
   const copy = async () => {
     try {

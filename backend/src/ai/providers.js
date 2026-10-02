@@ -70,7 +70,7 @@ userContent = question;
 return {
 model: modelName,
 messages: [
-{ role: 'system', content: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解，语言通俗易懂。'},
+{ role: 'system', content: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解，语言通俗易懂。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。'},
 { role: 'user', content: userContent},
 ],
 };
@@ -128,7 +128,7 @@ const res = await fetch(
 method: 'POST',
 headers: { 'Content-Type': 'application/json'},
 body: JSON.stringify({
-systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。'}]},
+systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。'}]},
 contents: [{ parts}],
 }),
 }
