@@ -21,8 +21,9 @@ let _ready = false;
 
 module.exports = async (req, res) => {
   if (!_ready) {
-    await initDb();
-    _ready = true;
+    // 只有建表成功才标记 ready；失败的话下次请求会再试一次，
+    // 不会因为一次冷启动失败就永久跳过建表
+    _ready = await initDb();
   }
   app(req, res);
 };

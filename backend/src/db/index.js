@@ -31,20 +31,24 @@ pool.on('error', (err) => {
 
 // ---------- 建表 SQL（Postgres 语法） ----------
 // 说明：
-// - id 用 GENERATED ALWAYS AS IDENTITY（Postgres 主流自增主键写法）
+// - id 用 SERIAL PRIMARY KEY（Postgres 最传统的自增主键写法）。
+//   注意：不要换成 GENERATED ALWAYS AS IDENTITY——2026-10-03 线上实测，
+//   这种写法经过 Supabase 连接池（Supavisor，6543 端口）会被报
+//   syntax error at or near "ALWAYS"。SERIAL 走任何代理都兼容，
+//   对我们（只让数据库自动生成 id，从不手填 id）行为完全等价。
 // - 0/1 开关字段（mastered/pinned/archived）继续用 INTEGER 存 0/1，
 //   和原来 SQLite 的行为完全一致，前端不用改
 // - 时间统一用 TIMESTAMPTZ，默认 now()；打卡日期/复习日期用 TEXT 存 YYYY-MM-DD，
 //   方便直接做字符串比较（和原来一致）
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS profiles (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   title TEXT NOT NULL DEFAULT '新的对话',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -52,7 +56,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   "conversationId" INTEGER NOT NULL,
   role TEXT NOT NULL,
@@ -62,7 +66,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE TABLE IF NOT EXISTS mistakes (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   subject TEXT NOT NULL DEFAULT '',
   "questionText" TEXT NOT NULL DEFAULT '',
@@ -76,7 +80,7 @@ CREATE TABLE IF NOT EXISTS mistakes (
 );
 
 CREATE TABLE IF NOT EXISTS notes (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   title TEXT NOT NULL DEFAULT '',
   content TEXT NOT NULL DEFAULT '',
@@ -91,7 +95,7 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE TABLE IF NOT EXISTS vocabulary (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   word TEXT NOT NULL,
   phonetic TEXT NOT NULL DEFAULT '',
@@ -105,7 +109,7 @@ CREATE TABLE IF NOT EXISTS vocabulary (
 );
 
 CREATE TABLE IF NOT EXISTS word_history (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   word TEXT NOT NULL,
   looked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -114,7 +118,7 @@ CREATE TABLE IF NOT EXISTS word_history (
 );
 
 CREATE TABLE IF NOT EXISTS checkins (
-  id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   "profileId" INTEGER NOT NULL,
   date TEXT NOT NULL,
   UNIQUE ("profileId", date),
@@ -142,7 +146,11 @@ async function query(text, params) {
 }
 
 // 建表（幂等）：serverless 冷启动 / 本地启动时调一次
-// 建表失败不抛错（只打日志），具体的连库错误会在第一次真实查询时暴露出来
+// 返回 true=建表成功（或表已存在），false=失败
+// 注意两点：
+//  1. 建表语句拆成一条一条单独执行——哪张表失败日志里直接点名，
+//     也避开某些连接池对"多语句拼成一串"的解析 quirks；
+//  2. 失败不抛错（只打日志），调用方根据返回值决定下次请求是否重试。
 let _initPromise = null;
 function initDb() {
   if (_initPromise) return _initPromise;
@@ -150,13 +158,28 @@ function initDb() {
     if (!process.env.DATABASE_URL) {
       // 没配 DATABASE_URL（比如只做 require 验收）时跳过，保证 require 不炸
       console.warn('[db] 未设置 DATABASE_URL，跳过建表');
-      return;
+      return true; // 不算失败：本地验收场景
     }
-    await pool.query(SCHEMA_SQL);
-    console.log('[db] 建表检查完成');
+    // 按分号切出每条 CREATE TABLE，逐条执行（语句里没有函数体，不会有多余的分号）
+    const statements = SCHEMA_SQL.split(';').map((s) => s.trim()).filter(Boolean);
+    for (const sql of statements) {
+      const firstLine = sql.split('\n')[0]; // 日志里只打印 CREATE TABLE xxx 这一行
+      try {
+        await pool.query(sql);
+        console.log('[db] 建表 OK：', firstLine);
+      } catch (err) {
+        console.error('[db] 建表失败：', firstLine, '→', err.message);
+        return false;
+      }
+    }
+    console.log('[db] 建表检查完成，共', statements.length, '条语句');
+    return true;
   })().catch((err) => {
-    _initPromise = null; // 失败了下次请求再试一次
-    console.error('[db] 建表失败：', err.message);
+    console.error('[db] 建表异常：', err.message);
+    return false;
+  }).then((ok) => {
+    if (!ok) _initPromise = null; // 失败了下次请求再试一次，不是一次失败就永久放弃
+    return ok;
   });
   return _initPromise;
 }
