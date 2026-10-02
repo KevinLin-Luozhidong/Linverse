@@ -341,7 +341,9 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 {offlineHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线缓存</span>}
                 {offlinePkgHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线词典</span>}
               </div>
-              {result.phonetic && <div className="dict-phonetic">/{result.phonetic}/</div>}
+              {result.phonetic && <div className="dict-phonetic">{
+                result.phonetic.startsWith('/') ? result.phonetic : `/${result.phonetic}/`
+              }</div>}
               {/* 词形变化：复数/过去式/比较级等 */}
               {result.wordForms && result.wordForms.length > 0 && (
                 <div style={{ margin: '8px 0' }}>

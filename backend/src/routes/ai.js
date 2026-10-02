@@ -179,12 +179,9 @@ router.get('/dictionary', ah(async (req, res) => {
       endpoint = s.aiEndpoint;
       modelName = s.aiModel;
     }
-    const prompt = `你是牛津词典编纂专家。请为词语「${word}」生成完整词典词条，只返回 JSON，不要任何多余文字，不要 markdown 代码块标记：
-{"phonetic":"音标，如 /wɜːd/（中文词填空字符串）","wordForms":[{"form":"变形","label":"说明，如复数/过去式/过去分词/比较级/第三人称单数"}],"meanings":[{"pos":"词性，如 n./v./adj./adv.","zh":"中文释义","en":"英文释义","examples":[{"en":"英文例句","zh":"中文翻译"}]}],"synonyms":["同义词"],"antonyms":["反义词"],"phrases":[{"phrase":"常用搭配短语","zh":"中文意思"}]}
-要求：
-- meanings 3-5 条按常用度排序，每条配 1-2 个例句，例句必须有中文翻译
-- wordForms：英文单词给复数/过去式/过去分词/比较级等；中文词填空数组
-- phrases 给 2-4 个常用搭配；synonyms 4-6 个，antonyms 2-4 个（没有就空数组）`;
+    const prompt = `你是简明英汉词典。用 JSON 解释「${word}」，只返回 JSON，不要多余文字：
+{"phonetic":"/wɜːd/","meanings":[{"pos":"n.","zh":"中文","en":"英文","ex":["英文例句","中文翻译"]}],"synonyms":["同义词"]}
+要求：meanings 2-3 条，每条 1 个例句（带中文翻译），synonyms 3-5 个。`;
     const { answer } = await ask({
       model, question: prompt, deepThink: false, aiKey, endpoint, modelName,
     });
@@ -199,22 +196,12 @@ router.get('/dictionary', ah(async (req, res) => {
     const result = {
       word,
       phonetic: parsed.phonetic || '',
-      wordForms: (parsed.wordForms || []).slice(0, 8).map((w) => ({
-        form: w.form || '', label: w.label || '',
-      })).filter((w) => w.form),
-      meanings: (parsed.meanings || []).slice(0, 5).map((m) => ({
+      meanings: (parsed.meanings || []).slice(0, 3).map((m) => ({
         pos: m.pos || '', zh: m.zh || '', en: m.en || '',
-        examples: (m.examples || []).slice(0, 2).map((e) => ({
-          en: e.en || '', zh: e.zh || '',
-        })).filter((e) => e.en),
+        examples: (m.ex && m.ex[0] ? [{ en: m.ex[0], zh: m.ex[1] || '' }] : []),
       })),
-      // 兼容旧前端：examples 拍平成字符串数组
-      examples: (parsed.meanings || []).flatMap((m) => (m.examples || []).slice(0, 2).map((e) => e.en || '')).filter(Boolean).slice(0, 6),
-      synonyms: (parsed.synonyms || []).slice(0, 6),
-      antonyms: (parsed.antonyms || []).slice(0, 4),
-      phrases: (parsed.phrases || []).slice(0, 4).map((p) => ({
-        phrase: p.phrase || '', zh: p.zh || '',
-      })).filter((p) => p.phrase),
+      examples: (parsed.meanings || []).flatMap((m) => (m.ex && m.ex[0] ? [m.ex[0]] : [])).slice(0, 3),
+      synonyms: (parsed.synonyms || []).slice(0, 5),
     };
     if (req.query.profileId) {
       await dao.recordWordHistory(req.query.profileId, result.word);

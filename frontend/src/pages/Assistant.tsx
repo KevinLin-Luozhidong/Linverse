@@ -193,6 +193,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
   const [uploading, setUploading] = useState(false)
   const [typing, setTyping] = useState(false) // 当前 AI 消息是否还在打字
+  // 正在打字的消息下标：避免新回答还没到时，上一条 AI 消息被误当成打字机重播
+  const [typingIdx, setTypingIdx] = useState(-1)
   const [thinkSec, setThinkSec] = useState(0) // 深度思考耗时
   const [deletingId, setDeletingId] = useState('') // 二次确认删除的会话
   const fileRef = useRef<HTMLInputElement>(null)
@@ -227,6 +229,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       setConvId(id)
       setMsgs(c.messages)
       setTyping(false)
+      setTypingIdx(-1)
       setThinkSec(0)
       setDrawerOpen(false)
     } catch (e) {
@@ -240,6 +243,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     setMsgs([])
     setThinkSec(0)
     setTyping(false)
+    setTypingIdx(-1)
     setDrawerOpen(false)
   }
 
@@ -306,14 +310,20 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       })
       setConvId(r.conversationId)
       setThinkSec(r.thinkSeconds || 0)
-      setMsgs((v) => [...v, {
-        role: 'assistant', content: r.answer, createdAt: new Date().toISOString(),
-      }])
+      setMsgs((v) => {
+        const next: ChatMsg[] = [...v, {
+          role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
+        }]
+        // 新 AI 消息的下标就是它，其他消息不用打字机
+        setTypingIdx(next.length - 1)
+        return next
+      })
       reloadConvs()
     } catch (e) {
       // 出错时移除刚才的用户消息，保持界面干净
       setMsgs((v) => v.slice(0, -1))
       setTyping(false)
+      setTypingIdx(-1)
       setToast(e instanceof Error ? e.message : '发送失败')
     } finally {
       setSending(false)
@@ -431,14 +441,14 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" />}
                 {m.content}
               </div>
-            ) : i === lastAiIdx && typing ? (
-              // 只有最新一条 AI 消息用打字机效果
+            ) : i === typingIdx && typing ? (
+              // 只有正在打字的那条 AI 消息用打字机效果（按下标，不按"最后一条"，避免重播上一条）
               <TypeMsg
                 text={m.content}
                 question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
                 profileId={profileId}
-                onDone={() => setTyping(false)}
-                onSkipDone={() => setTyping(false)}
+                onDone={() => { setTyping(false); setTypingIdx(-1) }}
+                onSkipDone={() => { setTyping(false); setTypingIdx(-1) }}
                 onToast={setToast}
               />
             ) : (

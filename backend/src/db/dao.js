@@ -398,7 +398,7 @@ async function recordWordHistory(profileId, word) {
 
 async function listWordHistory(profileId) {
   const r = await query(
-    'SELECT * FROM word_history WHERE "profileId" = $1 ORDER BY looked_at DESC',
+    'SELECT word, looked_at AS "createdAt" FROM word_history WHERE "profileId" = $1 ORDER BY looked_at DESC',
     [profileId]
   );
   return r.rows;
