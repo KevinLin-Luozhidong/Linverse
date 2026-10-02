@@ -15,6 +15,10 @@ const HASH_KEY = 'site_password_hash';
 // 所有者密码：只有用户本人知道，专管"清空所有数据"这种危险操作。
 // 访问密码是发给朋友的"大门钥匙"，所有者密码是只属于本人的"保险柜钥匙"。
 const DANGER_KEY = 'danger_password_hash';
+// 新账号注册开关：'1'=允许新设备自动建账号（默认），'0'=关闭。
+// 用户不想走登录系统、又不想让拿到网址的人随便建账号时，关掉它。
+// 关掉后新设备打不开 App，只看到"站长未开放注册"；已建好的账号不受影响。
+const ALLOW_SIGNUP_KEY = 'allow_signup';
 
 // 密码 → 哈希：固定加一段应用前缀再算 SHA256，避免和其它地方的哈希撞车
 function hashPw(pw) {
@@ -89,6 +93,25 @@ router.post('/reset', ah(async (req, res) => {
   if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
   await dao.resetAll();
   res.json({ ok: true });
+}));
+
+// 新账号注册开关：是否允许新设备自动建账号
+// 公开接口：新设备靠它决定展示 App 还是"站长未开放注册"
+// 默认允许（库里没这个键时），用户关掉后才拒绝
+router.get('/signup-status', ah(async (req, res) => {
+  const v = await dao.getSiteConfig(ALLOW_SIGNUP_KEY);
+  res.json({ allow: v !== '0' });
+}));
+
+// 改开关：只有所有者密码能改（朋友知道访问密码也改不了）
+router.post('/signup-allow', ah(async (req, res) => {
+  const dh = await dao.getSiteConfig(DANGER_KEY);
+  if (need(res, dh, '请先去设置 → 访问密码里设置所有者密码')) return;
+  const pw = (req.body.dangerPassword || '').trim();
+  if (need(res, pw && hashPw(pw) === dh, '所有者密码不对：只有本人能改这个开关')) return;
+  const allow = req.body.allow === true;
+  await dao.setSiteConfig(ALLOW_SIGNUP_KEY, allow ? '1' : '0');
+  res.json({ ok: true, allow });
 }));
 
 module.exports = router;

@@ -5,6 +5,7 @@ import {
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
   siteStatus, siteSetPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
+  signupStatus, setSignupAllow,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -249,6 +250,25 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     }
   }
 
+  // 新账号注册总闸：关掉后新设备不能自动建账号，只有所有者密码能改
+  const [signupAllow, setSignupAllowUi] = useState(true)
+  const [signupPw, setSignupPw] = useState('')
+  useEffect(() => {
+    signupStatus().then((s) => setSignupAllowUi(s.allow)).catch(() => {})
+  }, [])
+  const toggleSignup = async () => {
+    const p = signupPw.trim()
+    if (!p) { setToast('请输入所有者密码'); return }
+    try {
+      const r = await setSignupAllow(!signupAllow, p)
+      setSignupAllowUi(r.allow)
+      setSignupPw('')
+      setToast(r.allow ? '已允许新账号注册' : '已关闭新账号注册，新设备打不开了')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '设置失败')
+    }
+  }
+
   // 所有者密码：只属于本人的密码，专管"清空所有数据"。朋友知道访问密码也动不了数据。
   const [dangerSet, setDangerSet] = useState(false)
   const [oldDanger, setOldDanger] = useState('')
@@ -451,6 +471,20 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <button className="btn" style={{ width: '100%' }} onClick={saveDangerPw}>
   {dangerSet ? '修改所有者密码' : '设置所有者密码'}
   </button>
+  {/* 新账号注册总闸：只有所有者密码能改。关掉后，新设备打不开 App（显示"未开放注册"），已建好的账号不受影响 */}
+  <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
+  {signupAllow
+    ? '新账号注册：开着。新设备打开网址会自动建账号'
+    : '新账号注册：关着。新设备打不开，只有已建好的账号能用'}
+  </div>
+  <div className="field">
+  <div className="field-label">所有者密码（改这个开关要验证）</div>
+  <input className="input" type="password" value={signupPw}
+  onChange={(e) => setSignupPw(e.target.value)} placeholder="输入所有者密码" />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={toggleSignup}>
+  {signupAllow ? '关闭新账号注册' : '允许新账号注册'}
+  </button>
   </>),
 
   about: (<>
@@ -461,7 +495,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   <div className="set-row" style={{ cursor: 'default' }}>
   <span className="sr-label">版本</span>
-  <span className="set-val">v0.1.8</span>
+  <span className="set-val">v0.1.9</span>
   </div>
   </div>
   </>),

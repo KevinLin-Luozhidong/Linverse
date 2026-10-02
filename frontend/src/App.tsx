@@ -22,6 +22,8 @@ export default function App() {
   const [meView, setMeView] = useState<MeView>(initView) // 个人中心内当前视图
   const [profileId, setProfileId] = useState<string | null>(() => localStorage.getItem('linverse.profileId'))
   const [toast, setToast] = useState('')
+  // 新账号被站长关掉时：新设备显示"未开放注册"，不进 App
+  const [signupBlocked, setSignupBlocked] = useState(false)
   // 访问过的 tab：首次进入时挂载，之后常驻不卸载。
   // 切 tab 只切换 display 显隐——AI 的对话、输入框、请求中的回答都保留，
   // 也避免每次切 tab 重新拉数据（serverless 冷启动慢）
@@ -87,11 +89,21 @@ export default function App() {
           return
         }
         // 新浏览器，或存的账号已被删除：建新账号
-        const p = await createProfile('我')
-        if (!alive) return
-        const newId = String(p.id) // 统一存成字符串，后面所有比较都不再踩类型坑
-        localStorage.setItem('linverse.profileId', newId)
-        setProfileId(newId)
+        // 如果站长关了注册总闸，后端会 403，前端显示"未开放"不进 App
+        try {
+          const p = await createProfile('我')
+          if (!alive) return
+          const newId = String(p.id) // 统一存成字符串，后面所有比较都不再踩类型坑
+          localStorage.setItem('linverse.profileId', newId)
+          setProfileId(newId)
+        } catch (e) {
+          if (!alive) return
+          if (e instanceof Error && e.message.includes('未开放')) {
+            setSignupBlocked(true)
+          } else {
+            setToast('后端未连接，部分功能不可用')
+          }
+        }
       } catch {
         if (alive) setToast('后端未连接，部分功能不可用')
       }
@@ -151,6 +163,15 @@ export default function App() {
   // 密码门：查状态中显示空白闪屏，要输密码显示密码页，通过后进主界面
   if (gate === 'loading') return <div className="app"><div className="gate"><div className="gate-title">Linverse</div></div></div>
   if (gate === 'open') return <div className="app"><SiteGate onPass={() => setGate('pass')} /></div>
+  // 注册总闸关了：新设备不让进，只显示一句话
+  if (signupBlocked) return (
+    <div className="app"><div className="gate">
+      <div className="gate-title">Linverse</div>
+      <div style={{ color: 'var(--ink2)', fontSize: 'calc(14px * var(--fss))', marginTop: 12 }}>
+        站长暂未开放新账号注册
+      </div>
+    </div></div>
+  )
 
   return (
     <div className="app">

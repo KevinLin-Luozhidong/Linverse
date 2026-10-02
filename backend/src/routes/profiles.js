@@ -12,6 +12,11 @@ router.get('/', ah(async (req, res) => {
 
 // 新建账号
 router.post('/', ah(async (req, res) => {
+  // 注册总闸：站长关掉后，新设备不能再自动建账号（已建好的账号不受影响）
+  const allow = await dao.getSiteConfig('allow_signup');
+  if (allow === '0') {
+    return res.status(403).json({ error: '站长暂未开放新账号注册' });
+  }
   if (need(res, req.body.name && req.body.name.trim(), 'name 不能为空')) return;
   res.status(201).json(await dao.createProfile(req.body.name.trim()));
 }));

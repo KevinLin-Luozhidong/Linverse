@@ -283,3 +283,8 @@ export const siteReset = (danger: string) => post<{ ok: boolean }>('/site/reset'
 export const dangerStatus = () => get<{ dangerSet: boolean }>('/site/danger-status')
 export const setDangerPassword = (password: string, oldPassword?: string) =>
   post<{ ok: boolean }>('/site/danger-password', { password, oldPassword })
+// 新账号注册总闸：关掉后新设备不能自动建账号（已建好的不受影响）
+// 只有所有者密码能改这个开关
+export const signupStatus = () => get<{ allow: boolean }>('/site/signup-status')
+export const setSignupAllow = (allow: boolean, dangerPassword: string) =>
+  post<{ ok: boolean; allow: boolean }>('/site/signup-allow', { allow, dangerPassword })
