@@ -174,13 +174,31 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 {offlineHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线缓存</span>}
               </div>
               {result.phonetic && <div className="dict-phonetic">/{result.phonetic}/</div>}
+              {/* 词形变化：复数/过去式/比较级等 */}
+              {result.wordForms && result.wordForms.length > 0 && (
+                <div style={{ margin: '8px 0' }}>
+                  {result.wordForms.map((w, i) => (
+                    <span key={i} className="tag" style={{ marginRight: 6, marginBottom: 6 }}>
+                      {w.form}{w.label ? <span style={{ opacity: 0.7 }}> {w.label}</span> : null}
+                    </span>
+                  ))}
+                </div>
+              )}
               {result.meanings.map((m, i) => (
                 <div key={i} className="dict-meaning">
                   <span className="dict-pos">{m.pos}</span>
                   <span>{m.zh}{m.en ? <span style={{ color: 'var(--ink3)', fontSize: 13 }}> · {m.en}</span> : null}</span>
+                  {/* 每条释义下的例句（带中文翻译） */}
+                  {m.examples && m.examples.map((e, j) => (
+                    <div key={j} className="dict-ex" style={{ marginTop: 4 }}>
+                      <div>{e.en}</div>
+                      {e.zh && <div style={{ color: 'var(--ink2)', fontSize: 13 }}>{e.zh}</div>}
+                    </div>
+                  ))}
                 </div>
               ))}
-              {result.examples.length > 0 && (
+              {/* 旧格式兼容：如果 meanings 里没例句，显示顶层 examples */}
+              {result.examples.length > 0 && !result.meanings.some((m) => m.examples && m.examples.length) && (
                 <>
                   <div className="dict-sec-h">例句</div>
                   {result.examples.map((e, i) => <div key={i} className="dict-ex">{e}</div>)}
@@ -190,6 +208,23 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 <>
                   <div className="dict-sec-h">同义词</div>
                   <div>{result.synonyms.map((s) => <span key={s} className="tag">{s}</span>)}</div>
+                </>
+              )}
+              {result.antonyms && result.antonyms.length > 0 && (
+                <>
+                  <div className="dict-sec-h">反义词</div>
+                  <div>{result.antonyms.map((s) => <span key={s} className="tag">{s}</span>)}</div>
+                </>
+              )}
+              {result.phrases && result.phrases.length > 0 && (
+                <>
+                  <div className="dict-sec-h">常用搭配</div>
+                  {result.phrases.map((p, i) => (
+                    <div key={i} className="dict-meaning">
+                      <span style={{ fontWeight: 600 }}>{p.phrase}</span>
+                      {p.zh && <span style={{ color: 'var(--ink2)', marginLeft: 8 }}>{p.zh}</span>}
+                    </div>
+                  ))}
                 </>
               )}
               <button className="btn btn-ghost" style={{ width: '100%', marginTop: 14 }} onClick={joinVocab}>

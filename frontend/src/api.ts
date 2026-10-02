@@ -77,10 +77,16 @@ export interface Note {
   images: string[]; tags: string[]; color?: string; pinned: boolean; archived?: boolean;
 }
 
-export interface DictMeaning { pos: string; zh: string; en: string }
+export interface DictMeaning {
+  pos: string; zh: string; en: string;
+  examples?: { en: string; zh: string }[];
+}
 export interface DictResult {
   word: string; phonetic?: string; meanings: DictMeaning[];
   examples: string[]; synonyms: string[];
+  wordForms?: { form: string; label: string }[];
+  antonyms?: string[];
+  phrases?: { phrase: string; zh: string }[];
 }
 
 export interface VocabWord {
