@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { I, Toast, useSwipeBack } from '../components'
+import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
@@ -30,7 +30,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   profileId: string | null; onBack: () => void; onProfileChange: (id: string) => void
 }) {
   const [view, setView] = useState<View>('menu')
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
   // 正在退出的子页面：保留一帧做"向右滑出"动画，露出底下菜单
   const [leaving, setLeaving] = useState<Exclude<View, 'menu'> | null>(null)
   const [leaveFrom, setLeaveFrom] = useState(0) // 退出动画起点（右滑松手时的手指位置）
@@ -112,7 +112,11 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const changeAppearance = (fs: string, th: string) => {
     setFontSize(fs); setTheme(th)
     applyAppearance(fs, th)
-    if (profileId) saveSettings({ profileId, fontSize: fs, theme: th }).catch(() => {})
+    if (profileId) {
+      saveSettings({ profileId, fontSize: fs, theme: th })
+        .then(() => setToast('已保存'))
+        .catch(() => setToast('保存失败'))
+    }
   }
 
   // 账号操作
@@ -549,7 +553,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
           </div>
         )}
       </div>
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

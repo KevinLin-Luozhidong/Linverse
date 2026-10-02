@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { I, Toast, Spin, Empty } from '../components'
+import { I, Toast, Spin, Empty, useToast} from '../components'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
@@ -189,7 +189,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     removeFav(profileId, id)
     setFavs((v) => v.filter((f) => f.id !== id))
   }
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
   const [uploading, setUploading] = useState(false)
   const [typing, setTyping] = useState(false) // 当前 AI 消息是否还在打字
@@ -481,7 +481,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           </button>
         </div>
       </div>
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

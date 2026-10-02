@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { I, Toast, Spin, Empty } from '../components'
+import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
   lookupWord, getWordHistory, listVocab, addVocab, reviewVocab,
   dueVocab, checkin, getAiKey, type DictResult, type DictSource, type VocabWord,
@@ -83,7 +83,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     return (s === 'ai' || s === 'offline' || s === 'dict') ? s : 'dict'
   })
   const [history, setHistory] = useState<{ word: string; createdAt: string }[]>([])
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
 
   // 生词本状态
   const [due, setDue] = useState<VocabWord[]>([])
@@ -480,7 +480,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           )}
         </>
       )}
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

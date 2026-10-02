@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { I, Toast, Spin } from '../components'
+import { I, Toast, Spin, useToast} from '../components'
 import { getStats, getBadges, listMistakes, listProfiles, setAvatar, uploadImage, imgSrc, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
@@ -61,7 +61,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   const avatarInput = useRef<HTMLInputElement>(null)
   const [mastered, setMastered] = useState(0)
   const [totalMistakes, setTotalMistakes] = useState(0)
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
 
   useEffect(() => {
     if (!profileId) return
@@ -271,7 +271,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
           <span className="chev"><I n="chev" size={16} /></span>
         </button>
       </div>
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

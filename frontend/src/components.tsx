@@ -68,19 +68,25 @@ export function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) =
 }
 
 // 顶部提示条：轻量反馈，2 秒自动消失
-export function Toast({ msg }: { msg: string }) {
+// Toast hook：解决连续相同文字不弹的问题
+// 用法：const [toastMsg, toastKey, setToast] = useToast()
+// 每次 setToast 都+1，保证同样文字连点也能重新弹出
+export function useToast() {
+  const [state, setState] = useState({ msg: '', n: 0 })
+  const show = (msg: string) => setState((s) => ({ msg, n: s.n + 1 }))
+  return [state.msg, state.n, show] as const
+}
+
+export function Toast({ msg, tkey }: { msg: string; tkey?: number }) {
   const [show, setShow] = useState(false)
-  const [tick, setTick] = useState(0) // 每次 msg 变化都+1，保证同样文字连点两次也能重新弹出
   useEffect(() => {
     if (!msg) return
-    setTick((t) => t + 1)
     setShow(true)
     const t = setTimeout(() => setShow(false), 2000)
     return () => clearTimeout(t)
-  }, [msg])
-  // 用 tick 做 key：同样文字再次触发时强制重新挂载，动画重播
-  if (!show) return null
-  return <div className="toast" key={tick}>{msg}</div>
+  }, [msg, tkey])
+  if (!show || !msg) return null
+  return <div className="toast" key={tkey ?? msg}>{msg}</div>
 }
 
 // 底部弹窗：表单编辑用，从下往上滑入

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { I, Toast, Spin, useSwipeBack } from '../components'
+import { I, Toast, Spin, useSwipeBack, useToast} from '../components'
 import { getStats, getBadges, type Stats, type Badge } from '@api'
 
 // 学习报告：学习数据一览（统计展示 + 徽章进度），不是空壳
@@ -9,7 +9,7 @@ export default function Report({ profileId, onBack }: {
 }) {
   const [stats, setStats] = useState<Stats | null>(null)
   const [badges, setBadges] = useState<Badge[]>([])
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
 
   useEffect(() => {
     if (!profileId) return
@@ -72,7 +72,7 @@ export default function Report({ profileId, onBack }: {
           </>
         )}
       </div>
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { I, Toast, Empty } from '../components'
+import { I, Toast, Empty, useToast} from '../components'
 import { listFavs, removeFav, type Fav } from '../favs'
 
 // 我的收藏：AI 回答卡片的收藏列表（本地存储，按账号隔离）
@@ -10,7 +10,7 @@ export default function Favorites({ profileId, onBack }: {
 }) {
   const [favs, setFavs] = useState<Fav[]>([])
   const [openId, setOpenId] = useState('')
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
 
   useEffect(() => {
     if (profileId) setFavs(listFavs(profileId))
@@ -55,7 +55,7 @@ export default function Favorites({ profileId, onBack }: {
           </div>
         ))}
       </div>
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

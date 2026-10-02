@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { I, Toast, Spin, Empty, Sheet } from '../components'
+import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
 import Cropper from '../Cropper'
 import {
   listMistakes, createMistake, updateMistake, deleteMistake,
@@ -31,7 +31,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     { v: 'unmastered', label: '未掌握优先' },
   ]
   const [editing, setEditing] = useState<Omit<Mistake, 'id'> & { id?: string } | null>(null)
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
   const [ocrBusy, setOcrBusy] = useState(false)
   const [uploading, setUploading] = useState<'q' | 'a' | ''>('') // 正在上传哪张图
   const [delId, setDelId] = useState('') // 二次确认删除
@@ -316,7 +316,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
       {cropSrc && (
         <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
       )}
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

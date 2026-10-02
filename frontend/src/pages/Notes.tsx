@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { I, Toast, Spin, Empty, Sheet } from '../components'
+import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
 import {
   listNotes, createNote, updateNote, deleteNote,
   uploadImage, imgSrc, type Note,
@@ -22,7 +22,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   const [grid, setGrid] = useState(true)
   const [editing, setEditing] = useState<Omit<Note, 'id'> & { id?: string } | null>(null)
   const [tagInput, setTagInput] = useState('') // 编辑中的标签输入
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
   const [uploading, setUploading] = useState(false)
   const [delId, setDelId] = useState('') // 二次确认删除
   const fileRef = useRef<HTMLInputElement>(null)
@@ -247,7 +247,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
           </>
         )}
       </Sheet>
-      <Toast msg={toast} />
+      <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Mistakes from './Mistakes'
 import Notes from './Notes'
 import Dictionary from './Dictionary'
-import { I, Toast, DailyQuote } from '../components'
+import { I, Toast, DailyQuote, useToast} from '../components'
 import { getStats, type Stats } from '@api'
 
 // 学习工具页：三张大卡片横向滑动选择 + 底部指示点
@@ -24,7 +24,7 @@ export default function Tools({ profileId }: { profileId: string | null }) {
     initTool === 'mistakes' || initTool === 'notes' || initTool === 'dict' ? initTool : null)
   const [dotIdx, setDotIdx] = useState(0) // 当前居中的卡片
   const [stats, setStats] = useState<Stats | null>(null)
-  const [toast, setToast] = useState('')
+  const [toastMsg, toastKey, setToast] = useToast()
   const streamRef = useRef<HTMLDivElement>(null)
 
   // ---- 卡片缩小飞入左上角（FLIP 动画） ----
@@ -117,7 +117,7 @@ export default function Tools({ profileId }: { profileId: string | null }) {
         <div className="tools-quote-fixed" style={{ marginTop: 'auto' }}>
           <DailyQuote />
         </div>
-        <Toast msg={toast} />
+        <Toast msg={toastMsg} tkey={toastKey} />
       </div>
     )
   }
