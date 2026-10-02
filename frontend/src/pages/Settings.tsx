@@ -5,7 +5,7 @@ import {
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
   siteStatus, siteSetPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
-  signupStatus, setSignupAllow,
+  signupStatus, setSignupAllow, clearPid,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -217,7 +217,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     setConfirmWipe(false)
     try {
       await siteReset(d)
-      localStorage.removeItem('linverse.profileId')
+      clearPid()
       setWipePw('')
       setToast('已清空，重新开始')
       setTimeout(() => location.reload(), 900)
@@ -495,7 +495,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   <div className="set-row" style={{ cursor: 'default' }}>
   <span className="sr-label">版本</span>
-  <span className="set-val">v0.1.10</span>
+  <span className="set-val">v0.1.11</span>
   </div>
   </div>
   </>),

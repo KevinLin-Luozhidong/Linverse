@@ -268,6 +268,38 @@ export const setAiKey = (k: string) => {
   else localStorage.removeItem(AI_KEY)
 }
 
+// 账号 ID 双存储：localStorage 为主，cookie 为备。
+// iOS 桌面端 PWA 在版本更新时可能被当成新应用重装、清空 localStorage，
+// cookie 是另一套存储机制，互为备份，提高找回概率。
+const PID_KEY = 'linverse.profileId'
+const PID_COOKIE = 'linverse_pid'
+export function getPid(): string | null {
+  try {
+    const ls = localStorage.getItem(PID_KEY)
+    if (ls) return ls
+    // localStorage 没了，试试 cookie
+    const m = document.cookie.match(new RegExp('(?:^|; )' + PID_COOKIE + '=([^;]*)'))
+    if (m) {
+      const id = decodeURIComponent(m[1])
+      // 从 cookie 找回，顺手恢复到 localStorage
+      try { localStorage.setItem(PID_KEY, id) } catch {}
+      return id
+    }
+  } catch {}
+  return null
+}
+export function setPid(id: string) {
+  try { localStorage.setItem(PID_KEY, id) } catch {}
+  try {
+    // cookie 备份：10 年有效期
+    document.cookie = `${PID_COOKIE}=${encodeURIComponent(id)}; max-age=315360000; path=/; SameSite=Lax`
+  } catch {}
+}
+export function clearPid() {
+  try { localStorage.removeItem(PID_KEY) } catch {}
+  try { document.cookie = `${PID_COOKIE}=; max-age=0; path=/` } catch {}
+}
+
 // ---- 全站访问密码 ----
 // token 就是密码哈希本身：验证通过后存本地，每次请求自动带上；改密码后旧 token 自动失效
 const SITE_TOKEN = 'linverse.siteToken'

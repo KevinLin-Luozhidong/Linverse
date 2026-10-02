@@ -6,7 +6,7 @@ import Settings from './pages/Settings'
 import Report from './pages/Report'
 import SiteGate from './SiteGate'
 import { I, Toast } from './components'
-import { listProfiles, createProfile, getSettings, siteStatus, getSiteToken } from '@api'
+import { listProfiles, createProfile, getSettings, siteStatus, getSiteToken, getPid, setPid } from '@api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
@@ -20,7 +20,7 @@ export default function App() {
   const initView = (qp?.get('view') as MeView) || 'profile'
   const [tab, setTab] = useState<Tab>(['assistant', 'tools', 'me'].includes(initTab) ? initTab : 'assistant')
   const [meView, setMeView] = useState<MeView>(initView) // 个人中心内当前视图
-  const [profileId, setProfileId] = useState<string | null>(() => localStorage.getItem('linverse.profileId'))
+  const [profileId, setProfileId] = useState<string | null>(() => getPid())
   const [toast, setToast] = useState('')
   // 新账号被站长关掉时：新设备显示"未开放注册"，不进 App
   const [signupBlocked, setSignupBlocked] = useState(false)
@@ -78,7 +78,7 @@ export default function App() {
     let alive = true
     ;(async () => {
       try {
-        const saved = localStorage.getItem('linverse.profileId')
+        const saved = getPid()
         const ps = await listProfiles()
         if (!alive) return
         // 注意：数据库返回的 id 可能是数字（如 1），localStorage 里永远是字符串（如 "1")。
@@ -94,7 +94,7 @@ export default function App() {
           const p = await createProfile('我')
           if (!alive) return
           const newId = String(p.id) // 统一存成字符串，后面所有比较都不再踩类型坑
-          localStorage.setItem('linverse.profileId', newId)
+          setPid(newId)
           setProfileId(newId)
         } catch (e) {
           if (!alive) return
@@ -129,7 +129,7 @@ export default function App() {
 
   // 切换账号：更新本地记录并通知各页重新拉数据
   const switchProfile = (id: string) => {
-    localStorage.setItem('linverse.profileId', id)
+    setPid(id)
     setProfileId(id)
     setMeView('profile')
   }
