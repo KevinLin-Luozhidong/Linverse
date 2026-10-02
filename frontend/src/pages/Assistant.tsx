@@ -170,6 +170,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [sending, setSending] = useState(false)
   const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
+  // 自定义模型的真实名字（比如 glm-4v-flash），显示在模型选择器上，替代干巴巴的"自定义"
+  const [customModelName, setCustomModelName] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
   // 抽屉标签：会话列表 / 我的收藏（原来在个人中心"更多"里，现挪到这里和历史会话放一起）
@@ -194,11 +196,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // 读设置里的默认模型
+  // 读设置里的默认模型 + 自定义模型名
   useEffect(() => {
     if (!profileId) return
     getSettings(profileId).then((s) => {
       if (s.aiProvider && !localStorage.getItem('linverse.model')) setModel(s.aiProvider)
+      if (s.aiModel) setCustomModelName(s.aiModel)
     }).catch(() => {})
   }, [profileId])
 
@@ -316,7 +319,10 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   }
 
   const lastAiIdx = msgs.map((m) => m.role).lastIndexOf('assistant')
-  const modelLabel = MODELS.find((m) => m.v === model)?.label || '演示'
+  // 模型名显示：选了"自定义"且填了模型名，就显示真实名字（比如 glm-4v-flash），一眼知道接的是谁
+  const modelLabel = model === 'custom' && customModelName
+    ? customModelName
+    : (MODELS.find((m) => m.v === model)?.label || '演示')
   // 右上状态胶囊：演示模式 / 已填 Key 接入 / 非演示但没填 Key
   const statusCap = model === 'demo'
     ? { t: '演示版', cls: 'demo' }
@@ -346,7 +352,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                       localStorage.setItem('linverse.model', m.v)
                       setMenuOpen(false)
                     }}>
-                    {m.v === model && <I n="check" size={15} />}{m.label}
+                    {m.v === model && <I n="check" size={15} />}{m.v === 'custom' && customModelName ? customModelName : m.label}
                   </button>
                 ))}
               </div>
