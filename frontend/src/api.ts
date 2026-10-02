@@ -20,7 +20,11 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Prom
       // 20 秒还没回来就放弃，别让界面一直转圈（国内连 Vercel 有时会 hang 住）
       signal: init?.signal || AbortSignal.timeout(timeoutMs),
     })
-  } catch {
+  } catch (e) {
+    // 超时（AbortError）和断网分开提示，别让用户以为后端挂了
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('请求超时了，网络有点慢，重试一次试试')
+    }
     // 网络层失败（后端没跑）：抛可展示的错误
     throw new Error('连不上后端服务，确认后端已启动')
   }
@@ -49,8 +53,8 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Prom
 }
 
 const get = <T>(p: string) => req<T>(p)
-const post = <T>(p: string, body?: unknown) =>
-  req<T>(p, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+const post = <T>(p: string, body?: unknown, timeoutMs?: number) =>
+  req<T>(p, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }, timeoutMs)
 const put = <T>(p: string, body: unknown) =>
   req<T>(p, { method: 'PUT', body: JSON.stringify(body) })
 const del = <T>(p: string) => req<T>(p, { method: 'DELETE' })
@@ -132,7 +136,8 @@ export interface AskParams {
 
 export async function ask(p: AskParams): Promise<AskResult> {
   try {
-    return await post<AskResult>('/ask', p)
+    // AI 回答（尤其深度思考+看图）经常超过 20 秒，单独给 120 秒超时，别误杀
+    return await post<AskResult>('/ask', p, 120000)
   } catch (e) {
     // 演示模型在后端连不上时用本地假数据，保证界面可体验
     if (p.model === 'demo' && e instanceof Error && e.message.includes('连不上后端')) {

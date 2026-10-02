@@ -495,7 +495,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   <div className="set-row" style={{ cursor: 'default' }}>
   <span className="sr-label">版本</span>
-  <span className="set-val">v0.1.9</span>
+  <span className="set-val">v0.1.10</span>
   </div>
   </div>
   </>),

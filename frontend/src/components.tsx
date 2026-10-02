@@ -152,7 +152,9 @@ export function useSwipeBack(onBack: (fromX?: number) => void, enabled = true) {
         const d = drag
         start.current = null
         setDrag({ x: 0, active: false })
-        if (d.active && d.x > 90) onBack(d.x) // 把手指位置传给调用方，退出动画从这里接着滑
+        // enabled 可能在拖拽中途变 false（比如页面已切走），此时不触发返回，
+        // 避免误触退出整个设置页
+        if (enabled && d.active && d.x > 90) onBack(d.x) // 把手指位置传给调用方，退出动画从这里接着滑
       },
     },
   }
