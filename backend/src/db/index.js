@@ -137,6 +137,13 @@ CREATE TABLE IF NOT EXISTS settings (
   "aiEndpoint" TEXT NOT NULL DEFAULT '',
   FOREIGN KEY ("profileId") REFERENCES profiles(id) ON DELETE CASCADE
 );
+
+-- 全站配置：key/value 键值对。现在存 site_password_hash（访问密码的 SHA256）。
+-- 没设密码 = 公开状态；设了之后所有 /api/*（除 site 相关）都要带 x-site-token。
+CREATE TABLE IF NOT EXISTS site_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
 `;
 
 // ---------- 对外接口 ----------

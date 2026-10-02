@@ -28,6 +28,23 @@ function today() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// ---------- 全站配置（site_config：访问密码等） ----------
+
+// 读配置：没有返回 null
+async function getSiteConfig(key) {
+  const r = await query('SELECT value FROM site_config WHERE key = $1', [key]);
+  return r.rows[0] ? r.rows[0].value : null;
+}
+
+// 写配置：有则更新，无则插入
+async function setSiteConfig(key, value) {
+  await query(
+    `INSERT INTO site_config (key, value) VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [key, value]
+  );
+}
+
 // ---------- 账号（profiles） ----------
 
 async function listProfiles() {
@@ -459,4 +476,5 @@ module.exports = {
   recordWordHistory, listWordHistory,
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
+  getSiteConfig, setSiteConfig,
 };

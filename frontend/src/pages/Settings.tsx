@@ -3,16 +3,18 @@ import { I, Toast } from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
+  siteStatus, siteSetPassword, setSiteToken,
 } from '@api'
 
-// 设置页：七个多彩圆角入口，点进二级页用横向推入转场（苹果味）
+// 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
 // AI 的 Key 只存前端 localStorage，不经过后端
 
-type View = 'menu' | 'profile' | 'accounts' | 'ai' | 'appearance' | 'font' | 'storage' | 'about'
-const ORDER: View[] = ['menu', 'profile', 'accounts', 'ai', 'appearance', 'font', 'storage', 'about']
+type View = 'menu' | 'profile' | 'accounts' | 'ai' | 'appearance' | 'font' | 'storage' | 'about' | 'sitepw'
+const ORDER: View[] = ['menu', 'profile', 'accounts', 'ai', 'appearance', 'font', 'storage', 'about', 'sitepw']
 const TITLES: Record<View, string> = {
   menu: '设置', profile: '个人资料', accounts: '多账号', ai: 'AI 接口',
   appearance: '外观', font: '字体大小', storage: '存储空间', about: '关于',
+  sitepw: '访问密码',
 }
 
 const PROVIDERS = [
@@ -173,12 +175,35 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     setToast('已清理')
   }
 
+  // 访问密码：网站大门的密码锁。设好后别人打开网址要先输对密码才能用。
+  // 密码只存后端的 SHA256，前端不存原文；验证通过后存 token，后续请求自动带上
+  const [pwSet, setPwSet] = useState(false)
+  const [oldPw, setOldPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  useEffect(() => {
+    siteStatus().then((s) => setPwSet(s.passwordSet)).catch(() => {})
+  }, [])
+  const saveSitePw = async () => {
+    const p = newPw.trim()
+    if (p.length < 4) { setToast('密码至少 4 位'); return }
+    try {
+      // 没设过：直接设；已设：必须带对旧密码才能改
+      const r = await siteSetPassword(p, pwSet ? oldPw.trim() : undefined)
+      setSiteToken(r.token)
+      setPwSet(true)
+      setOldPw(''); setNewPw('')
+      setToast(pwSet ? '密码已修改' : '访问密码已设置，朋友打开网址要先输这个密码')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '设置失败')
+    }
+  }
+
   const idx = ORDER.indexOf(view)
   const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || '演示'
   const themeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色'
   const fontLabel = fontSize === 'small' ? '小' : fontSize === 'large' ? '大' : '标准'
 
-  const row = (v: View, icon: 'user' | 'key' | 'users' | 'moon' | 'textsize' | 'db' | 'info',
+  const row = (v: View, icon: 'user' | 'key' | 'users' | 'moon' | 'textsize' | 'db' | 'info' | 'lock',
     sq: 'blue' | 'green' | 'orange' | 'gray', label: string, val?: string) => (
     <button className="set-row" onClick={() => setView(v)}>
       <span className={'sq ' + sq}><I n={icon} size={21} /></span>
@@ -210,6 +235,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
             <div className="set-group">
               {row('appearance', 'moon', 'blue', '外观', themeLabel)}
               {row('font', 'textsize', 'green', '字体大小', fontLabel)}
+              {row('sitepw', 'lock', 'gray', '访问密码', pwSet ? '已设置' : '未设置')}
               {row('storage', 'db', 'orange', '存储空间', `缓存 ${cacheMB()} MB`)}
             </div>
             <div className="set-group">
@@ -333,6 +359,30 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
             <button className={'btn ' + (confirmClear ? 'btn-danger' : 'btn-ghost')}
               style={{ width: '100%', marginTop: 12 }} onClick={clearCache}>
               {confirmClear ? '再点一次确认清理' : '清理缓存'}
+            </button>
+          </div>
+
+          {/* 访问密码 */}
+          <div className="settings-page">
+            <div className="safe-note" style={{ marginBottom: 12 }}>
+              {pwSet
+                ? '已设置访问密码：别人打开网址要先输对密码才能用'
+                : '设一个访问密码：之后朋友打开网址要先输这个密码，把密码告诉他们就行'}
+            </div>
+            {pwSet && (
+              <div className="field">
+                <div className="field-label">旧密码</div>
+                <input className="input" type="password" value={oldPw}
+                  onChange={(e) => setOldPw(e.target.value)} placeholder="输入旧密码" />
+              </div>
+            )}
+            <div className="field">
+              <div className="field-label">{pwSet ? '新密码' : '访问密码'}（至少 4 位）</div>
+              <input className="input" type="password" value={newPw}
+                onChange={(e) => setNewPw(e.target.value)} placeholder={pwSet ? '输入新密码' : '定一个密码'} />
+            </div>
+            <button className="btn" style={{ width: '100%' }} onClick={saveSitePw}>
+              {pwSet ? '修改密码' : '设置密码'}
             </button>
           </div>
 

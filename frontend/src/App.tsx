@@ -5,8 +5,9 @@ import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import Report from './pages/Report'
 import Favorites from './pages/Favorites'
+import SiteGate from './SiteGate'
 import { I, Toast } from './components'
-import { listProfiles, createProfile, getSettings } from '@api'
+import { listProfiles, createProfile, getSettings, siteStatus, getSiteToken } from '@api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
@@ -29,12 +30,30 @@ export default function App() {
   // 个人中心二级页同理：首次进入挂载，之后常驻
   const [visitedMe, setVisitedMe] = useState<MeView[]>([initView])
 
-  // 启动时确定账号
+  // 访问密码门：启动时先问后端有没有设密码。
+  // loading=查状态中，open=要输密码，pass=通过（没设密码也算通过）
+  // 密码是主人自己在"设置 → 访问密码"里定的；token 过期被后端 401 时也会弹回门
+  const [gate, setGate] = useState<'loading' | 'open' | 'pass'>('loading')
+  useEffect(() => {
+    let alive = true
+    siteStatus()
+      .then((s) => {
+        if (!alive) return
+        setGate(s.passwordSet && !getSiteToken() ? 'open' : 'pass')
+      })
+      .catch(() => { if (alive) setGate('pass') }) // 后端连不上：先放行，页面内再提示
+    const onLock = () => setGate('open')
+    window.addEventListener('linverse:site-locked', onLock)
+    return () => { alive = false; window.removeEventListener('linverse:site-locked', onLock) }
+  }, [])
+
+  // 启动时确定账号（只在过门后执行，避免没密码时乱建账号）
   // 隐私原则：只认本浏览器 localStorage 里存的账号 ID。
   // 新浏览器（没存过）永远新建账号，绝不自动认领库里已有的账号——
   // 否则陌生人打开网址会直接看到第一个人的错题本和笔记。
   // 换设备找回：个人中心顶部展示"账号 ID"，在设置-多账号里输入旧 ID 即可找回
   useEffect(() => {
+    if (gate !== 'pass') return // 没过密码门不初始化，避免陌生人触发建账号
     let alive = true
     ;(async () => {
       try {
@@ -59,7 +78,7 @@ export default function App() {
       }
     })()
     return () => { alive = false }
-  }, [])
+  }, [gate])
 
   // 应用外观偏好：主题跟随系统时不写 data-theme，交给 CSS 媒体查询
   useEffect(() => {
@@ -101,6 +120,10 @@ export default function App() {
     setVisitedMe((s) => (s.includes(v) ? s : [...s, v]))
     setMeView(v)
   }
+
+  // 密码门：查状态中显示空白闪屏，要输密码显示密码页，通过后进主界面
+  if (gate === 'loading') return <div className="app"><div className="gate"><div className="gate-title">Linverse</div></div></div>
+  if (gate === 'open') return <div className="app"><SiteGate onPass={() => setGate('pass')} /></div>
 
   return (
     <div className="app">

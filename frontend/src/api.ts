@@ -6,11 +6,16 @@
 const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
+// 访问密码 token 存在 localStorage，每次请求自动带在 x-site-token 头里
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
+  const token = getSiteToken()
   try {
     res = await fetch(`${BASE}/api${path}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'x-site-token': token } : {}),
+      },
       ...init,
     })
   } catch {
@@ -19,11 +24,20 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     let msg = '请求失败'
+    let code = ''
     try {
       const body = await res.json()
-      if (body && typeof body.error === 'string') msg = body.error
+      if (body && typeof body.error === 'string') { msg = body.error; code = body.error }
     } catch {
       // 解析失败就用默认文案
+    }
+    // 访问密码不对/过期：清掉本地 token，通知 App 弹密码门
+    if (res.status === 401 && code === 'need_site_password') {
+      clearSiteToken()
+      window.dispatchEvent(new Event('linverse:site-locked'))
+      const e = new Error('请输入访问密码') as Error & { needSitePassword: boolean }
+      e.needSitePassword = true
+      throw e
     }
     throw new Error(msg)
   }
@@ -89,10 +103,19 @@ export async function uploadImage(file: File): Promise<string> {
   const fd = new FormData()
   fd.append('file', file) // 字段名固定为 file
   let res: Response
+  const token = getSiteToken()
   try {
-    res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: fd })
+    res = await fetch(`${BASE}/api/upload`, {
+      method: 'POST', body: fd,
+      headers: token ? { 'x-site-token': token } : {},
+    })
   } catch {
     throw new Error('连不上后端服务，确认后端已启动')
+  }
+  if (res.status === 401) {
+    clearSiteToken()
+    window.dispatchEvent(new Event('linverse:site-locked'))
+    throw new Error('请输入访问密码')
   }
   if (!res.ok) throw new Error('图片上传失败')
   const data = await res.json()
@@ -227,3 +250,18 @@ export const setAiKey = (k: string) => {
   if (k) localStorage.setItem(AI_KEY, k)
   else localStorage.removeItem(AI_KEY)
 }
+
+// ---- 全站访问密码 ----
+// token 就是密码哈希本身：验证通过后存本地，每次请求自动带上；改密码后旧 token 自动失效
+const SITE_TOKEN = 'linverse.siteToken'
+export const getSiteToken = () => localStorage.getItem(SITE_TOKEN) || ''
+export const setSiteToken = (t: string) => {
+  if (t) localStorage.setItem(SITE_TOKEN, t)
+  else localStorage.removeItem(SITE_TOKEN)
+}
+export const clearSiteToken = () => localStorage.removeItem(SITE_TOKEN)
+export const siteStatus = () => get<{ passwordSet: boolean }>('/site/status')
+export const siteVerify = (password: string) =>
+  post<{ ok: boolean; token: string }>('/site/verify', { password })
+export const siteSetPassword = (password: string, oldPassword?: string) =>
+  post<{ ok: boolean; token: string }>('/site/password', { password, oldPassword })

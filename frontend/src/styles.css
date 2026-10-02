@@ -910,3 +910,17 @@ body {
   padding: 14px 18px calc(18px + env(safe-area-inset-bottom));
 }
 .crop-foot .mini-btn { color: #fff; border-color: rgba(255, 255, 255, 0.25); }
+/* 访问密码门：全屏居中，App 图标 + 密码输入 */
+.gate {
+  min-height: 100dvh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px; gap: 6px;
+  background: var(--bg);
+  animation: msgIn 0.25s var(--ease);
+}
+.gate-icon { width: 84px; height: 84px; border-radius: 20px; margin-bottom: 10px; box-shadow: var(--shadow); }
+.gate-title { font-size: 26px; font-weight: 800; letter-spacing: 0.5px; }
+.gate-sub { color: var(--ink3); font-size: 14px; margin: 4px 0 14px; }
+.gate-input { width: 100%; max-width: 300px; text-align: center; }
+.gate-err { color: var(--red); font-size: 13px; min-height: 18px; }
+.gate-btn { width: 100%; max-width: 300px; margin-top: 8px; }
