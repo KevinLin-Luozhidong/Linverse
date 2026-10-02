@@ -11,8 +11,8 @@ const router = express.Router();
 // 打卡：同一天重复打卡只记一次（数据库 UNIQUE 约束保证）
 router.post('/checkin', ah(async (req, res) => {
   if (need(res, req.body.profileId, 'profileId 必填')) return;
-  const checkinDays = dao.checkin(req.body.profileId);
-  res.json({ ok: true, checkinDays, streakDays: dao.streakDays(req.body.profileId) });
+  const checkinDays = await dao.checkin(req.body.profileId);
+  res.json({ ok: true, checkinDays, streakDays: await dao.streakDays(req.body.profileId) });
 }));
 
 // 个人中心统计
@@ -20,11 +20,11 @@ router.get('/stats', ah(async (req, res) => {
   if (need(res, req.query.profileId, 'profileId 必填')) return;
   const { profileId } = req.query;
   res.json({
-    streakDays: dao.streakDays(profileId),      // 连续打卡天数
-    checkinDays: dao.countCheckinDays(profileId), // 累计打卡天数
-    mistakeCount: dao.countMistakes(profileId),   // 错题数
-    noteCount: dao.countNotes(profileId),         // 笔记数
-    wordCount: dao.countWords(profileId),          // 生词数
+    streakDays: await dao.streakDays(profileId),      // 连续打卡天数
+    checkinDays: await dao.countCheckinDays(profileId), // 累计打卡天数
+    mistakeCount: await dao.countMistakes(profileId),   // 错题数
+    noteCount: await dao.countNotes(profileId),         // 笔记数
+    wordCount: await dao.countWords(profileId),          // 生词数
   });
 }));
 
@@ -32,8 +32,8 @@ router.get('/stats', ah(async (req, res) => {
 router.get('/badges', ah(async (req, res) => {
   if (need(res, req.query.profileId, 'profileId 必填')) return;
   const { profileId } = req.query;
-  const mistakeCount = dao.countMistakes(profileId);
-  const streak = dao.streakDays(profileId);
+  const mistakeCount = await dao.countMistakes(profileId);
+  const streak = await dao.streakDays(profileId);
   res.json([
     { id: 'first-mistake', name: '第一道错题', desc: '记录第一道错题', unlocked: mistakeCount >= 1 },
     { id: 'streak-3', name: '坚持三天', desc: '连续打卡 3 天', unlocked: streak >= 3 },

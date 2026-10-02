@@ -1,42 +1,7 @@
-// ============================================================================
-// 数据库连接 + 建表（Supabase Postgres）
-//
-// 连接：读环境变量 DATABASE_URL（Supabase 后台 → Database → Connection string
-// → Transaction pooler，6543 端口）。serverless 函数必须走 pooler，不能直连
-// 5432，否则函数实例一多会把数据库连接数打满。
-//
-// 建表：启动 / 冷启动时自动执行一次 CREATE TABLE IF NOT EXISTS（幂等），
-// 表已存在就直接跳过。supabase/schema.sql 里还有一份同样的建表 SQL，
-// 万一自动建表没跑成，可以去 Supabase 的 SQL 编辑器里手动执行兜底。
-//
-// 注意：Postgres 里不加引号的字段名会自动转成小写（profileId 会变成
-// profileid，前端收到的字段名就变了）。所以下面所有驼峰字段名都用双引号
-// 包起来（"profileId"），保证和原来 SQLite 版的字段名一字不差。
-// ============================================================================
-const { Pool } = require('pg');
+-- Linverse 数据库建表 SQL（Supabase Postgres）
+-- 用法：Supabase 后台 → SQL Editor → 粘贴执行
+-- 注意：后端冷启动时会自动执行同样的建表（幂等），这里是手动兜底
 
-// 连接池：serverless 环境下每个函数实例是短命的，池子不用大，
-// 空闲连接及时回收，避免占着 Supabase 的连接数不放
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // 没配也不炸：用到时才真正连库
-  max: 5, // 单实例最大连接数
-  idleTimeoutMillis: 10000, // 空闲 10 秒就回收
-  connectionTimeoutMillis: 10000, // 连不上 10 秒就报错，不无限卡住
-});
-
-// 池子自己抛错（比如网络断了）时只打日志，不让整个进程崩掉
-pool.on('error', (err) => {
-  console.error('[db] 连接池错误：', err.message);
-});
-
-// ---------- 建表 SQL（Postgres 语法） ----------
-// 说明：
-// - id 用 GENERATED ALWAYS AS IDENTITY（Postgres 主流自增主键写法）
-// - 0/1 开关字段（mastered/pinned/archived）继续用 INTEGER 存 0/1，
-//   和原来 SQLite 的行为完全一致，前端不用改
-// - 时间统一用 TIMESTAMPTZ，默认 now()；打卡日期/复习日期用 TEXT 存 YYYY-MM-DD，
-//   方便直接做字符串比较（和原来一致）
-const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS profiles (
   id GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name TEXT NOT NULL,
@@ -131,34 +96,3 @@ CREATE TABLE IF NOT EXISTS settings (
   "aiEndpoint" TEXT NOT NULL DEFAULT '',
   FOREIGN KEY ("profileId") REFERENCES profiles(id) ON DELETE CASCADE
 );
-`;
-
-// ---------- 对外接口 ----------
-
-// 通用查询：dao.js 里所有 SQL 都走这里
-// 用法：await query('SELECT * FROM profiles WHERE id = $1', [id])
-async function query(text, params) {
-  return pool.query(text, params);
-}
-
-// 建表（幂等）：serverless 冷启动 / 本地启动时调一次
-// 建表失败不抛错（只打日志），具体的连库错误会在第一次真实查询时暴露出来
-let _initPromise = null;
-function initDb() {
-  if (_initPromise) return _initPromise;
-  _initPromise = (async () => {
-    if (!process.env.DATABASE_URL) {
-      // 没配 DATABASE_URL（比如只做 require 验收）时跳过，保证 require 不炸
-      console.warn('[db] 未设置 DATABASE_URL，跳过建表');
-      return;
-    }
-    await pool.query(SCHEMA_SQL);
-    console.log('[db] 建表检查完成');
-  })().catch((err) => {
-    _initPromise = null; // 失败了下次请求再试一次
-    console.error('[db] 建表失败：', err.message);
-  });
-  return _initPromise;
-}
-
-module.exports = { pool, query, initDb, SCHEMA_SQL };

@@ -8,12 +8,12 @@ const router = express.Router();
 
 router.get('/', ah(async (req, res) => {
   if (need(res, req.query.profileId, 'profileId 必填')) return;
-  res.json(dao.getSettings(req.query.profileId));
+  res.json(await dao.getSettings(req.query.profileId));
 }));
 
 router.put('/', ah(async (req, res) => {
   if (need(res, req.body.profileId, 'profileId 必填')) return;
-  res.json(dao.updateSettings(req.body.profileId, req.body));
+  res.json(await dao.updateSettings(req.body.profileId, req.body));
 }));
 
 module.exports = router;

@@ -1,7 +1,6 @@
 // Express 应用组装：中间件 + 静态托管 + 路由挂载 + 错误处理
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
 
@@ -10,12 +9,9 @@ app.use(cors());
 // 解析 JSON 请求体（问答、错题等接口都用 JSON）
 app.use(express.json({ limit: '10mb' }));
 
-// 静态托管上传的图片：POST /api/upload 返回的 /uploads/xxx.jpg 能直接访问
-// 云端（Railway）设了 DATA_DIR 时，图片也写进 Volume，和数据库放一起
-const uploadDir = process.env.DATA_DIR
-  ? path.join(process.env.DATA_DIR, 'uploads')
-  : path.join(__dirname, '../uploads');
-app.use('/uploads', express.static(uploadDir));
+// 注意：上传的图片现在直接存 Supabase Storage，返回的是 https 公开链接，
+// 前端直接拿去显示，不再经过我们服务器，所以这里不需要静态托管 /uploads。
+// （原来那行 express.static(…/uploads) 已删除：serverless 函数没有本地磁盘）
 
 // 路由挂载（URL 和字段名按 API 契约，原样不动）
 app.use('/api/profiles', require('./routes/profiles'));

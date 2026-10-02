@@ -7,26 +7,26 @@ const router = express.Router();
 
 // 所有账号列表
 router.get('/', ah(async (req, res) => {
-  res.json(dao.listProfiles());
+  res.json(await dao.listProfiles());
 }));
 
 // 新建账号
 router.post('/', ah(async (req, res) => {
   if (need(res, req.body.name && req.body.name.trim(), 'name 不能为空')) return;
-  res.status(201).json(dao.createProfile(req.body.name.trim()));
+  res.status(201).json(await dao.createProfile(req.body.name.trim()));
 }));
 
 // 改名
 router.put('/:id', ah(async (req, res) => {
   if (need(res, req.body.name && req.body.name.trim(), 'name 不能为空')) return;
-  const p = dao.updateProfile(req.params.id, req.body.name.trim());
+  const p = await dao.updateProfile(req.params.id, req.body.name.trim());
   if (!p) return res.status(404).json({ error: '账号不存在' });
   res.json(p);
 }));
 
 // 删除账号（连带删除该账号所有数据：外键 CASCADE）
 router.delete('/:id', ah(async (req, res) => {
-  const n = dao.deleteProfile(req.params.id);
+  const n = await dao.deleteProfile(req.params.id);
   if (!n) return res.status(404).json({ error: '账号不存在' });
   res.json({ ok: true });
 }));

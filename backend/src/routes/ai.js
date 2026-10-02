@@ -3,34 +3,45 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const dao = require('../db/dao');
 const { ask } = require('../ai/providers');
 const { ah, need } = require('./helpers');
 
 const router = express.Router();
 
-// ---------- 图片上传 ----------
-// 安全限制：只收图片（jpeg/png/gif/webp），单文件上限 5MB
-// 云端（Railway）设了 DATA_DIR 时，和数据库一起写进 Volume，重新部署不丢
-const uploadDir = process.env.DATA_DIR
-  ? path.join(process.env.DATA_DIR, 'uploads')
-  : path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// ---------- Supabase Storage ----------
+// 图片不再存本地磁盘（serverless 函数的磁盘是临时的，重启就丢），
+// 改存 Supabase Storage。需要环境变量：SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY
+// （service_role 的 Key 权限大，只能放服务端，绝不能给前端）
+function getSupabase() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return null;
+  }
+  // 懒加载：require 时不初始化，保证没配环境变量时 require 不炸
+  const { createClient } = require('@supabase/supabase-js');
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  // 文件名：时间戳 + 随机数 + 原扩展名，避免重名和路径注入
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-  },
-});
+const BUCKET = 'linverse-uploads'; // 图片 bucket 名
 
+// 确保 bucket 存在且公开可读；不存在就自动建一个，
+// 建失败就报错提示用户去 Supabase 后台手动建（Storage → New bucket → Public）
+async function ensureBucket(supabase) {
+  const { data } = await supabase.storage.getBucket(BUCKET);
+  if (data) return;
+  const { error } = await supabase.storage.createBucket(BUCKET, { public: true });
+  if (error) {
+    throw new Error(
+      `图片存储空间不存在且自动创建失败，请去 Supabase 后台手动创建公开 bucket：${BUCKET}（${error.message}）`
+    );
+  }
+}
+
+// ---------- 图片上传 ----------
+// 安全限制：只收图片（jpeg/png/gif/webp），单文件上限 5MB
+// 用 memoryStorage：文件先放内存，再上传到 Supabase Storage（serverless 无本地磁盘）
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     // 只允许图片类型
@@ -44,25 +55,28 @@ const upload = multer({
 
 router.post('/upload', upload.single('file'), ah(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请选择要上传的图片（字段名 file）' });
-  res.json({ url: `/uploads/${req.file.filename}` });
+  const supabase = getSupabase();
+  if (!supabase) {
+    return res.status(500).json({ error: '未配置 Supabase（SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）' });
+  }
+  await ensureBucket(supabase);
+  // 文件名：时间戳 + 随机数 + 原扩展名，避免重名和路径注入
+  const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+  const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(filename, req.file.buffer, { contentType: req.file.mimetype });
+  if (error) throw new Error(`上传失败：${error.message}`);
+  // 公开 URL，前端直接拿去显示，不用再过我们服务器
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
+  res.json({ url: data.publicUrl });
 }));
 
 // ---------- 小工具：把 imageUrl 转成各家 vision 接口能用的格式 ----------
-// - 本地 /uploads/xxx.jpg → 读文件转成 base64 data URI（云端 AI 访问不到我们内网地址，必须转 base64）
-// - http(s) 链接 / data: 开头 → 原样返回
+// - Supabase 的 https 链接 / data: 开头 → 原样返回
+// - 兼容老数据的 /uploads/xxx.jpg → 原样返回（新上传不再产生这种地址）
 function resolveImageForVision(imageUrl) {
   if (!imageUrl) return '';
-  if (/^data:image\//.test(imageUrl) || /^https?:\/\//.test(imageUrl)) {
-    return imageUrl;
-  }
-  if (imageUrl.startsWith('/uploads/')) {
-    const filePath = path.join(uploadDir, path.basename(imageUrl)); // basename 防目录穿越
-    if (!fs.existsSync(filePath)) return imageUrl;
-    const ext = path.extname(filePath).toLowerCase().slice(1);
-    const mime = ext === 'jpg' ? 'jpeg' : ext; // jpg → jpeg
-    const base64 = fs.readFileSync(filePath).toString('base64');
-    return `data:image/${mime};base64,${base64}`;
-  }
   return imageUrl;
 }
 
@@ -78,7 +92,7 @@ router.post('/ask', ah(async (req, res) => {
   let endpoint = '';
   let modelName = '';
   if (model === 'custom') {
-    const s = dao.getSettings(profileId);
+    const s = await dao.getSettings(profileId);
     endpoint = s.aiEndpoint;
     modelName = s.aiModel;
   }
@@ -98,14 +112,14 @@ router.post('/ask', ah(async (req, res) => {
   let cid = conversationId;
   if (cid) {
     // 防止串到别人的对话：必须同时匹配 profileId
-    const conv = dao.getConversation(cid, profileId);
+    const conv = await dao.getConversation(cid, profileId);
     if (!conv) return res.status(404).json({ error: '对话不存在' });
   } else {
     const title = question.trim().slice(0, 12) || '新的对话';
-    cid = dao.createConversation(profileId, title).id;
+    cid = (await dao.createConversation(profileId, title)).id;
   }
-  dao.addMessage(profileId, cid, 'user', question.trim());
-  dao.addMessage(profileId, cid, 'assistant', answer);
+  await dao.addMessage(profileId, cid, 'user', question.trim());
+  await dao.addMessage(profileId, cid, 'assistant', answer);
 
   res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo' });
 }));
@@ -196,7 +210,7 @@ router.get('/dictionary', ah(async (req, res) => {
 
   // 写入查词历史（同一账号同一词只保留一条）
   if (req.query.profileId) {
-    dao.recordWordHistory(req.query.profileId, result.word);
+    await dao.recordWordHistory(req.query.profileId, result.word);
   }
 
   res.json(result);

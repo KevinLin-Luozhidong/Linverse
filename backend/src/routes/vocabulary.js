@@ -10,20 +10,20 @@ const router = express.Router();
 // 生词列表
 router.get('/', ah(async (req, res) => {
   if (need(res, req.query.profileId, 'profileId 必填')) return;
-  res.json(dao.listVocabulary(req.query.profileId));
+  res.json(await dao.listVocabulary(req.query.profileId));
 }));
 
 // 今天到期的词（nextReview <= 今天 且未掌握）
 router.get('/due', ah(async (req, res) => {
   if (need(res, req.query.profileId, 'profileId 必填')) return;
-  res.json(dao.listDueVocabulary(req.query.profileId));
+  res.json(await dao.listDueVocabulary(req.query.profileId));
 }));
 
 // 添加生词
 router.post('/', ah(async (req, res) => {
   if (need(res, req.body.profileId, 'profileId 必填')) return;
   if (need(res, req.body.word && req.body.word.trim(), 'word 不能为空')) return;
-  res.status(201).json(dao.createVocabulary({
+  res.status(201).json(await dao.createVocabulary({
     profileId: req.body.profileId,
     word: req.body.word.trim(),
     phonetic: req.body.phonetic,
@@ -35,7 +35,7 @@ router.post('/', ah(async (req, res) => {
 router.put('/:id', ah(async (req, res) => {
   if (need(res, req.query.profileId || req.body.profileId, 'profileId 必填')) return;
   const profileId = req.query.profileId || req.body.profileId;
-  const v = dao.setVocabularyMastered(req.params.id, profileId, req.body.mastered);
+  const v = await dao.setVocabularyMastered(req.params.id, profileId, req.body.mastered);
   if (!v) return res.status(404).json({ error: '单词不存在' });
   res.json(v);
 }));
@@ -45,7 +45,7 @@ router.post('/:id/review', ah(async (req, res) => {
   if (need(res, req.query.profileId || req.body.profileId, 'profileId 必填')) return;
   if (need(res, typeof req.body.known === 'boolean', 'known 必填且为布尔值')) return;
   const profileId = req.query.profileId || req.body.profileId;
-  const v = dao.reviewVocabulary(req.params.id, profileId, req.body.known);
+  const v = await dao.reviewVocabulary(req.params.id, profileId, req.body.known);
   if (!v) return res.status(404).json({ error: '单词不存在' });
   res.json(v);
 }));
