@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { I, Toast, Spin } from '../components'
+import { I, Toast } from '../components'
 import { getStats, getBadges, listMistakes, listProfiles, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
@@ -66,7 +66,8 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
     getStats(profileId).then(setStats).catch((e) => setToast(e instanceof Error ? e.message : '加载失败'))
     getBadges(profileId).then(setBadges).catch(() => {})
     listProfiles().then((ps) => {
-      const me = ps.find((p) => p.id === profileId)
+      // 同 App.tsx：数据库 id 可能是数字，比较前统一转字符串
+      const me = ps.find((p) => String(p.id) === String(profileId))
       if (me) setName(me.name)
     }).catch(() => {})
     // 已掌握 x/y：从错题列表里数 mastered
@@ -91,6 +92,17 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
   const unlockedCount = stats ? BADGE_DEFS.filter((b) => unlockedOf(b, stats)).length : 0
   const avatarChar = (name || '我').slice(0, 1)
 
+  // 复制账号 ID：换设备时凭它在设置-多账号里找回数据
+  const copyId = async () => {
+    if (!profileId) return
+    try {
+      await navigator.clipboard.writeText(profileId)
+      setToast('账号 ID 已复制，换设备时凭它找回')
+    } catch {
+      setToast('复制失败，长按手动复制')
+    }
+  }
+
   return (
     <div className="me-sec">
       {/* 顶部：圆形头像 + 个人中心/昵称 */}
@@ -102,7 +114,28 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
         </div>
       </div>
 
-      {!stats ? <Spin /> : (<>
+      {/* 账号 ID：本浏览器认的就是它，换设备时输入它找回 */}
+      {profileId && (
+        <button className="me-idrow" onClick={copyId} aria-label="复制账号 ID">
+          <span className="me-idtext">账号 ID {profileId}</span>
+          <span className="me-idcopy"><I n="copy" size={13} />复制</span>
+        </button>
+      )}
+
+      {!stats ? (
+        // 骨架屏：占位块尺寸位置与最终布局一致，数据回来只填文字，布局不跳变
+        <div className="me-skel" aria-hidden>
+          <div className="me-stat-card"><div className="sk" style={{ height: 84 }} /></div>
+          <div className="me-week-card"><div className="sk" style={{ height: 118 }} /></div>
+          <div className="me-sec-kicker">成长记录</div>
+          <div className="me-sec-title">成就徽章</div>
+          <div className="me-badge-row">
+            <div className="sk" style={{ flex: '0 0 150px', height: 168, borderRadius: 22 }} />
+            <div className="sk" style={{ flex: '0 0 150px', height: 168, borderRadius: 22 }} />
+            <div className="sk" style={{ flex: '0 0 150px', height: 168, borderRadius: 22 }} />
+          </div>
+        </div>
+      ) : (<>
         {/* 双栏统计卡：连续打卡 / 累计刷题 */}
         <div className="me-stat-card">
           <div className="me-stat">
@@ -153,7 +186,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport, onOpe
                     ? { background: `${b.color}26`, color: b.color }
                     : { background: 'var(--blue-soft)', color: 'var(--ink3)' }}
                 >
-                  <I n={b.icon} size={30} />
+                  <I n={b.icon} size={24} />
                 </div>
                 <div className="me-badge-name">{b.name}</div>
                 <div className="me-badge-desc">{b.desc}</div>

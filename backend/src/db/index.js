@@ -33,9 +33,11 @@ pool.on('error', (err) => {
 // 说明：
 // - id 用 SERIAL PRIMARY KEY（Postgres 最传统的自增主键写法）。
 //   注意：不要换成 GENERATED ALWAYS AS IDENTITY——2026-10-03 线上实测，
-//   这种写法经过 Supabase 连接池（Supavisor，6543 端口）会被报
-//   syntax error at or near "ALWAYS"。SERIAL 走任何代理都兼容，
-//   对我们（只让数据库自动生成 id，从不手填 id）行为完全等价。
+//   当时写的 `id GENERATED ALWAYS AS IDENTITY PRIMARY KEY` 少了列类型
+//   （合法写法应是 `id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY`），
+//   报 syntax error at or near "ALWAYS"。SERIAL 已经过线上验证、
+//   走任何代理都兼容，对我们（只让数据库自动生成 id，从不手填 id）
+//   行为完全等价，所以就用 SERIAL，不折腾。
 // - 0/1 开关字段（mastered/pinned/archived）继续用 INTEGER 存 0/1，
 //   和原来 SQLite 的行为完全一致，前端不用改
 // - 时间统一用 TIMESTAMPTZ，默认 now()；打卡日期/复习日期用 TEXT 存 YYYY-MM-DD，

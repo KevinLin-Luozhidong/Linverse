@@ -32,6 +32,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 账号
   const [profiles, setProfiles] = useState<P[]>([])
   const [newName, setNewName] = useState('')
+  const [findId, setFindId] = useState('') // 输入账号 ID 找回
   const [editingId, setEditingId] = useState('')
   const [editingName, setEditingName] = useState('')
   const [delId, setDelId] = useState('')
@@ -48,10 +49,14 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [key, setKey] = useState('')
 
   // 读账号列表 + 设置
+  // 统一把账号 ID 转成字符串：数据库返回的 id 可能是数字，localStorage 里是字符串，
+  // 入口处归一一次，后面所有比较/改名/删除都不用再操心类型
+  const normProfiles = (ps: P[]) => ps.map((p) => ({ ...p, id: String(p.id) }))
   useEffect(() => {
     listProfiles().then((ps) => {
-      setProfiles(ps)
-      const me = ps.find((p) => p.id === profileId)
+      const list = normProfiles(ps)
+      setProfiles(list)
+      const me = list.find((p) => p.id === profileId)
       if (me) setDisplayName(me.name)
     }).catch(() => {})
     setKey(getAiKey()) // Key 只从本地读
@@ -80,8 +85,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // 账号操作
   const reloadProfiles = () => listProfiles().then((ps) => {
-    setProfiles(ps)
-    const me = ps.find((p) => p.id === profileId)
+    const list = normProfiles(ps)
+    setProfiles(list)
+    const me = list.find((p) => p.id === profileId)
     if (me) setDisplayName(me.name)
   }).catch(() => {})
   const addProfile = async () => {
@@ -91,7 +97,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       const p = await createProfile(n)
       setNewName('')
       reloadProfiles()
-      onProfileChange(p.id) // 新建后直接切换过去
+      onProfileChange(String(p.id)) // 新建后直接切换过去：转字符串，和 localStorage 口径一致
     } catch (e) { setToast(e instanceof Error ? e.message : '创建失败') }
   }
   const doRename = async (id: string) => {
@@ -102,6 +108,18 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setEditingId('')
       reloadProfiles()
     } catch (e) { setToast(e instanceof Error ? e.message : '改名失败') }
+  }
+  // 输入账号 ID 找回：换设备/清数据后，凭个人中心复制的 ID 找回原账号
+  const doFind = async () => {
+    const id = findId.trim()
+    if (!id) { setToast('先输入账号 ID'); return }
+    try {
+      const ps = await listProfiles()
+      // 用户手输的是字符串，数据库 id 可能是数字：两边转字符串再比
+      if (!ps.some((p) => String(p.id) === String(id))) { setToast('没找到这个账号 ID'); return }
+      setFindId('')
+      onProfileChange(id) // 切过去，App 会记入本浏览器
+    } catch (e) { setToast(e instanceof Error ? e.message : '找回失败') }
   }
   // 个人资料：改当前账号的显示名
   const saveDisplayName = async () => {
@@ -236,6 +254,13 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
               <input className="input" value={newName} placeholder="新账号名字"
                 onChange={(e) => setNewName(e.target.value)} />
               <button className="btn" onClick={addProfile}>添加</button>
+            </div>
+            {/* 换设备找回：输入旧账号 ID */}
+            <div className="field-label" style={{ marginTop: 14 }}>换设备时输入旧账号 ID 找回</div>
+            <div className="btn-row" style={{ marginTop: 6 }}>
+              <input className="input" value={findId} placeholder="账号 ID"
+                onChange={(e) => setFindId(e.target.value)} />
+              <button className="btn" onClick={doFind}>找回</button>
             </div>
           </div>
 
