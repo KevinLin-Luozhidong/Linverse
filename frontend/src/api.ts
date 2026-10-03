@@ -326,9 +326,6 @@ export const siteVerify = (password: string) =>
   post<{ ok: boolean; token: string }>('/site/verify', { password })
 export const siteSetPassword = (password: string, oldPassword?: string) =>
   post<{ ok: boolean; token: string }>('/site/password', { password, oldPassword })
-// 清除访问密码：用所有者密码验证（忘记访问密码时的逃生通道）
-export const siteClearPassword = (dangerPassword: string) =>
-  post<{ ok: boolean }>('/site/password/clear', { dangerPassword })
 // 清空所有数据：后端要求 token + 二次确认，成功后账号 ID 从 1 重来
 export const siteReset = (danger: string) => post<{ ok: boolean }>('/site/reset', { confirm: 'RESET', danger })
 // 所有者密码：只属于本人的密码，清空数据时必须输对

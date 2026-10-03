@@ -52,9 +52,6 @@ async function setSiteConfig(key, value) {
   );
 }
 
-async function deleteSiteConfig(key) {
-  await query(`DELETE FROM site_config WHERE key = $1`, [key]);
-}
 
 // ---------- 账号（profiles） ----------
 
@@ -494,5 +491,5 @@ module.exports = {
   recordWordHistory, listWordHistory,
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
-  getSiteConfig, setSiteConfig, deleteSiteConfig, resetAll,
+  getSiteConfig, setSiteConfig, resetAll,
 };

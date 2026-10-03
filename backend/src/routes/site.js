@@ -57,18 +57,6 @@ router.post('/password', ah(async (req, res) => {
   res.json({ ok: true, token: h });
 }));
 
-// 清除访问密码：用所有者密码验证（防止忘记访问密码时卡死）
-// 如果没设过所有者密码，则不允许清除（安全起见）
-router.post('/password/clear', ah(async (req, res) => {
-  const dangerHash = await dao.getSiteConfig(DANGER_KEY);
-  if (!dangerHash) return res.status(400).json({ error: '先设置所有者密码，才能清除访问密码' });
-  const dangerPw = (req.body.dangerPassword || '').trim();
-  if (!dangerPw) return res.status(400).json({ error: '请输入所有者密码' });
-  if (hashPw(dangerPw) !== dangerHash) return res.status(401).json({ error: '所有者密码不对' });
-  await dao.deleteSiteConfig(HASH_KEY);
-  res.json({ ok: true });
-}));
-
 // 所有者密码：设置/修改。第一次直接设；之后必须带对旧的所有者密码。
 // 这个密码只属于用户本人，朋友知道访问密码也清空不了数据。
 router.post('/danger-password', ah(async (req, res) => {
