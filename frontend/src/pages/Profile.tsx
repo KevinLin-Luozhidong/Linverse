@@ -171,8 +171,8 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
     <div className="me-sec">
       {/* 顶部：圆形头像（点一下换头像） + 个人中心/昵称 */}
       <div className="me-top">
-        <button className="me-avatar" onClick={() => avatarInput.current?.click()}
-          aria-label="更换头像" style={{ padding: 0, overflow: 'hidden', border: 0, cursor: 'pointer' }}>
+        <button className="me-avatar" onClick={() => { if (!uploadingAvatar) avatarInput.current?.click() }}
+          aria-label="更换头像" style={{ padding: 0, overflow: 'hidden', border: 0, cursor: uploadingAvatar ? 'default' : 'pointer', opacity: uploadingAvatar ? 0.6 : 1 }}>
           {avatar
             ? <img src={imgSrc(avatar)} alt="头像" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : uploadingAvatar ? <Spin /> : avatarChar}

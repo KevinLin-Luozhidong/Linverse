@@ -160,16 +160,20 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
       await deleteMistake(id, profileId || undefined)
       setDelId('')
       reload()
+      setToast('已删除')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '删除失败')
     }
   }
 
   const toggleMastered = async (m: Mistake) => {
+    const next = !m.mastered
+    // 先改本地（响应快），失败再回滚
+    setList((v) => v.map((x) => x.id === m.id ? { ...x, mastered: next } : x))
     try {
-      await updateMistake(m.id, { mastered: !m.mastered }, profileId || undefined)
-      setList((v) => v.map((x) => x.id === m.id ? { ...x, mastered: !x.mastered } : x))
+      await updateMistake(m.id, { mastered: next }, profileId || undefined)
     } catch (e) {
+      setList((v) => v.map((x) => x.id === m.id ? { ...x, mastered: !next } : x))
       setToast(e instanceof Error ? e.message : '更新失败')
     }
   }

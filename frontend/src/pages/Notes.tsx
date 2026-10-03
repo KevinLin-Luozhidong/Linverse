@@ -108,7 +108,10 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     setCropSrc('')
   }
 
+  const [deleting, setDeleting] = useState(false)
   const remove = async (id: string) => {
+    if (deleting) return
+    setDeleting(true)
     try {
       await deleteNote(id, profileId || undefined)
       setDelId('')
@@ -117,26 +120,32 @@ export default function Notes({ profileId }: { profileId: string | null }) {
       setToast('已删除')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '删除失败')
-    }
+    } finally { setDeleting(false) }
   }
 
-  // 批量删除选中
+  // 批量删除选中：逐个删，成功的从选中集合剔除，失败的留下可重试
   const batchRemove = async () => {
     if (selected.size === 0 || batchDeleting) return
     setBatchDeleting(true)
-    try {
-      for (const id of selected) {
+    const ids = [...selected]
+    const failed: string[] = []
+    for (const id of ids) {
+      try {
         await deleteNote(id, profileId || undefined)
+      } catch {
+        failed.push(id)
       }
-      setToast(`已删除 ${selected.size} 条`)
-      setSelected(new Set())
-      setSelectMode(false)
-      reload()
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : '删除失败')
-    } finally {
-      setBatchDeleting(false)
     }
+    const okCount = ids.length - failed.length
+    setSelected(new Set(failed))
+    if (failed.length === 0) {
+      setSelectMode(false)
+      setToast(`已删除 ${okCount} 条`)
+    } else {
+      setToast(`删除 ${okCount} 条，${failed.length} 条失败可重试`)
+    }
+    reload()
+    setBatchDeleting(false)
   }
 
   // 批量归档选中

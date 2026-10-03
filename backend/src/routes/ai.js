@@ -167,56 +167,9 @@ router.post('/ocr', ah(async (req, res) => {
 // GET /api/dictionary?word=&profileId=&source=dict|ai&aiKey=&model=
 // 数据源：
 //   dict（默认）：dictionaryapi.dev（免费、无需 Key）；中文释义用 MyMemory 免费翻译（失败就保留英文，不报错）
-//   ai（AI 详解）：用用户配置的 AI 供应商解释单词，中英文、成语都行；需要 aiKey（随请求传，不存后端）
 router.get('/dictionary', ah(async (req, res) => {
   const word = (req.query.word || '').trim().toLowerCase();
   if (need(res, word, 'word 必填')) return;
-  const source = req.query.source === 'ai' ? 'ai' : 'dict';
-
-  // ---- AI 详解：走统一 ask() 入口， prompt 要求只返回 JSON ----
-  if (source === 'ai') {
-    const aiKey = req.query.aiKey || '';
-    const model = req.query.model || 'demo';
-    if (!aiKey && model !== 'demo') {
-      return res.status(400).json({ error: 'AI 详解需要先去"设置 → AI 接口"填写 Key' });
-    }
-    let endpoint = '';
-    let modelName = '';
-    if (model === 'custom' && req.query.profileId) {
-      const s = await dao.getSettings(req.query.profileId);
-      endpoint = s.aiEndpoint;
-      modelName = s.aiModel;
-    }
-    const prompt = `你是简明英汉词典。用 JSON 解释「${word}」，只返回 JSON，不要多余文字：
-{"phonetic":"/wɜːd/","meanings":[{"pos":"n.","zh":"中文","en":"英文","ex":["英文例句","中文翻译"]}],"synonyms":["同义词"]}
-要求：meanings 2-3 条，每条 1 个例句（带中文翻译），synonyms 3-5 个。`;
-    const { answer } = await ask({
-      model, question: prompt, deepThink: false, aiKey, endpoint, modelName,
-    });
-    // AI 可能包一层 ```json ... ```，先剥掉再解析
-    const jsonText = String(answer || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch {
-      return res.status(502).json({ error: 'AI 返回格式异常，换个词或稍后再试' });
-    }
-    const result = {
-      word,
-      phonetic: parsed.phonetic || '',
-      meanings: (parsed.meanings || []).slice(0, 3).map((m) => ({
-        pos: m.pos || '', zh: m.zh || '', en: m.en || '',
-        examples: (m.ex && m.ex[0] ? [{ en: m.ex[0], zh: m.ex[1] || '' }] : []),
-      })),
-      examples: (parsed.meanings || []).flatMap((m) => (m.ex && m.ex[0] ? [m.ex[0]] : [])).slice(0, 3),
-      synonyms: (parsed.synonyms || []).slice(0, 5),
-    };
-    if (req.query.profileId) {
-      await dao.recordWordHistory(req.query.profileId, result.word);
-    }
-    return res.json(result);
-  }
-
   // 默认词典：dictionaryapi.dev 在国内经常连不上，加 6 秒超时，失败就快速报错（前端会试离线缓存）
   let r
   try {
@@ -224,7 +177,7 @@ router.get('/dictionary', ah(async (req, res) => {
       signal: AbortSignal.timeout(6000),
     })
   } catch {
-    return res.status(502).json({ error: '词典接口连不上，试试切换到 AI 详解或看离线缓存' })
+    return res.status(502).json({ error: '词典接口连不上，看看离线缓存' })
   }
   if (!r.ok) {
     return res.status(404).json({ error: '查不到这个单词' });

@@ -97,6 +97,8 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   const cleanText = text
     .replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '')
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2') // \frac{1}{x} → 1/x
+    .replace(/\\text\{([^{}]*)\}/g, '$1') // \text{当 x≥1} → 当 x≥1
+    .replace(/\\(quad|qquad)\b/g, ' ') // \quad → 空格
     .replace(/\\([a-zA-Z]+)/g, (_m, w) => SYMS[w] || w) // \cdot → ·，\neq → ≠，\ln → ln
     .replace(/([a-zA-Z])_(\d+)/g, (_m, ch, ds) => ch + ds.split('').map((d: string) => SUBS[d] || d).join('')) // x_1 → x₁
     .replace(/\{([^{}]*)\}/g, '$1') // 去掉多余的花括号
@@ -111,8 +113,10 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
     }
   }
   // 存入错题本：问题进题目，答案进正确答案
+  const [savingMistake, setSavingMistake] = useState(false)
   const saveToMistakes = async () => {
-    if (!profileId) return
+    if (!profileId || savingMistake) return
+    setSavingMistake(true)
     try {
       await createMistake({
         profileId, subject: '数学',
@@ -122,7 +126,7 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
       onToast('已存入错题本')
     } catch (e) {
       onToast(e instanceof Error ? e.message : '存入失败')
-    }
+    } finally { setSavingMistake(false) }
   }
   const favToggle = () => {
     if (!profileId) return
@@ -144,7 +148,7 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
       {!typing && (
         <div className="ans-actions">
           <button className="cap-btn" onClick={copy}><I n="copy" size={14} />复制</button>
-          <button className="cap-btn" onClick={saveToMistakes}><I n="notebook" size={14} />存入错题本</button>
+          <button className="cap-btn" onClick={saveToMistakes} disabled={savingMistake}><I n="notebook" size={14} />{savingMistake ? '存入中…' : '存入错题本'}</button>
           <button className={'cap-btn' + (fav ? ' liked' : '')} onClick={favToggle}>
             <I n="heart" size={14} />{fav ? '已收藏' : '收藏'}
           </button>
@@ -183,6 +187,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const sendConvRef = useRef<string | null>(null) // 发送请求时的会话ID，防止切会话后消息串台
   const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
   // 自定义模型的真实名字（比如 glm-4v-flash），显示在模型选择器上，替代干巴巴的"自定义"
@@ -320,9 +325,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     }
     setMsgs((v) => [...v, userMsg])
     setInput('')
-    setImgUrl('')
     setSending(true)
     setTyping(true)
+    sendConvRef.current = convId // 记住这次请求属于哪个会话
+    const savedImgUrl = userMsg.imageUrl // 失败时恢复图片用
+    setImgUrl('')
     try {
       localStorage.setItem('linverse.model', model)
       const r = await ask({
@@ -334,20 +341,25 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         deepThink,
         aiKey: getAiKey() || undefined, // Key 只从本地读，随请求带给后端
       })
-      setConvId(r.conversationId)
-      setThinkSec(r.thinkSeconds || 0)
-      setMsgs((v) => {
-        const next: ChatMsg[] = [...v, {
-          role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
-        }]
-        // 新 AI 消息的下标就是它，其他消息不用打字机
-        setTypingIdx(next.length - 1)
-        return next
-      })
+      // 只有还在同一个会话里，才把回答追加到当前消息列表（防止切会话后串台）
+      if (sendConvRef.current === convId) {
+        setConvId(r.conversationId)
+        setThinkSec(r.thinkSeconds || 0)
+        setMsgs((v) => {
+          const next: ChatMsg[] = [...v, {
+            role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
+          }]
+          setTypingIdx(next.length - 1)
+          return next
+        })
+      }
       reloadConvs()
     } catch (e) {
-      // 出错时移除刚才的用户消息，保持界面干净
-      setMsgs((v) => v.slice(0, -1))
+      // 出错时：如果还在同一会话，移除用户消息并恢复图片；已切走就不动
+      if (sendConvRef.current === convId) {
+        setMsgs((v) => v.slice(0, -1))
+        if (savedImgUrl) setImgUrl(savedImgUrl)
+      }
       setTyping(false)
       setTypingIdx(-1)
       setToast(e instanceof Error ? e.message : '发送失败')

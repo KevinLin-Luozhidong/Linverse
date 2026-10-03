@@ -244,12 +244,14 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   }
 
   // 加入生词本：取第一条中文释义
+  const [joining, setJoining] = useState(false)
   const joinVocab = async () => {
-    if (!result || !profileId) return
+    if (!result || !profileId || joining) return
     if (all.some((v) => v.word.toLowerCase() === result.word.toLowerCase())) {
       setToast('已经在生词本里了')
       return
     }
+    setJoining(true)
     try {
       await addVocab({
         profileId,
@@ -261,13 +263,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       loadVocab()
     } catch (e) {
       setToast(e instanceof Error ? e.message : '加入失败')
-    }
+    } finally { setJoining(false) }
   }
 
   // 复习反馈：懂 / 不懂
   const review = async (v: VocabWord, known: boolean) => {
     try {
-      await reviewVocab(v.id, known)
+      await reviewVocab(v.id, known, profileId || undefined)
       setDue((list) => list.filter((x) => x.id !== v.id))
       setRevealed((r) => ({ ...r, [v.id]: true }))
       if (due.length <= 1) setToast('今日复习完成')
@@ -397,8 +399,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   ))}
                 </>
               )}
-              <button className="btn btn-ghost" style={{ width: '100%', marginTop: 14 }} onClick={joinVocab}>
-                加入生词本
+              <button className="btn btn-ghost" style={{ width: '100%', marginTop: 14 }} onClick={joinVocab} disabled={joining}>
+                {joining ? '加入中…' : '加入生词本'}
               </button>
             </div>
           )}

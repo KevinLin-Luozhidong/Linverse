@@ -247,8 +247,8 @@ export const addVocab = (v: { profileId: string; word: string; phonetic?: string
   post<VocabWord>('/vocabulary', v)
 export const updateVocab = (id: string, v: Partial<VocabWord>, profileId?: string) =>
   put<VocabWord>(`/vocabulary/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, v)
-export const reviewVocab = (id: string, known: boolean) =>
-  post(`/vocabulary/${id}/review`, { known })
+export const reviewVocab = (id: string, known: boolean, profileId?: string) =>
+  post(`/vocabulary/${id}/review${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, { known })
 export const dueVocab = (profileId: string) =>
   get<VocabWord[]>(`/vocabulary/due?profileId=${encodeURIComponent(profileId)}`)
 

@@ -132,15 +132,19 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     const me = list.find((p) => p.id === profileId)
     if (me) setDisplayName(me.name)
   }).catch(() => {})
+  const [addingProfile, setAddingProfile] = useState(false)
   const addProfile = async () => {
     const n = newName.trim()
     if (!n) { setToast('先输入名字'); return }
+    if (addingProfile) return
+    setAddingProfile(true)
     try {
       const p = await createProfile(n)
       setNewName('')
       reloadProfiles()
       onProfileChange(String(p.id)) // 新建后直接切换过去：转字符串，和 localStorage 口径一致
     } catch (e) { setToast(e instanceof Error ? e.message : '创建失败') }
+    finally { setAddingProfile(false) }
   }
   const doRename = async (id: string) => {
     const n = editingName.trim()
@@ -165,17 +169,19 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   }
   // 个人资料：改当前账号的显示名
   const saveDisplayName = async () => {
-    if (!profileId) return
+    if (!profileId || savingName) return
+    setSavingName(true)
     const n = displayName.trim() || '学习者'
     try {
       await renameProfile(profileId, n)
       setDisplayName(n)
       setToast('已保存')
     } catch (e) { setToast(e instanceof Error ? e.message : '保存失败') }
+    finally { setSavingName(false) }
   }
   const doDelete = async (id: string) => {
     if (delId !== id) { setDelId(id); return }
-    if (profiles.length <= 1) { setToast('至少保留一个账号'); return }
+    if (profiles.length <= 1) { setToast('至少保留一个账号'); setDelId(''); return }
     try {
       await deleteProfile(id)
       setDelId('')
@@ -188,13 +194,15 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // 保存 AI 设置：Key 写 localStorage，其余写后端
   const saveAi = async () => {
-    if (!profileId) return
+    if (!profileId || savingAi) return
+    setSavingAi(true)
     setAiKey(key.trim())
     try {
       await saveSettings({ profileId, aiProvider: provider, aiModel: aiModel.trim(), aiEndpoint: endpoint.trim() })
       localStorage.setItem('linverse.model', provider)
       setToast('已保存')
     } catch (e) { setToast(e instanceof Error ? e.message : '保存失败') }
+    finally { setSavingAi(false) }
   }
 
   // 存储空间：统计 localStorage 占用，清理只清界面偏好缓存
@@ -239,6 +247,10 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 访问密码：网站大门的密码锁。设好后别人打开网址要先输对密码才能用。
   // 密码只存后端的 SHA256，前端不存原文；验证通过后存 token，后续请求自动带上
   const [pwSet, setPwSet] = useState(false)
+  const [savingName, setSavingName] = useState(false)
+  const [savingAi, setSavingAi] = useState(false)
+  const [savingSitePw, setSavingSitePw] = useState(false)
+  const [savingDangerPw, setSavingDangerPw] = useState(false)
   const [oldPw, setOldPw] = useState('')
   const [newPw, setNewPw] = useState('')
   useEffect(() => {
@@ -247,6 +259,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const saveSitePw = async () => {
     const p = newPw.trim()
     if (p.length < 4) { setToast('密码至少 4 位'); return }
+    if (savingSitePw) return
+    setSavingSitePw(true)
     try {
       // 没设过：直接设；已设：必须带对旧密码才能改
       const r = await siteSetPassword(p, pwSet ? oldPw.trim() : undefined)
@@ -257,7 +271,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setToast(pwSet ? '密码已修改' : '访问密码已设置，朋友打开网址要先输这个密码')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '设置失败')
-    }
+    } finally { setSavingSitePw(false) }
   }
 
   // 新账号注册总闸：关掉后新设备不能自动建账号，只有所有者密码能改
@@ -266,9 +280,12 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   useEffect(() => {
     signupStatus().then((s) => setSignupAllowUi(s.allow)).catch(() => {})
   }, [])
+  const [togglingSignup, setTogglingSignup] = useState(false)
   const toggleSignup = async () => {
     const p = signupPw.trim()
     if (!p) { setToast('请输入所有者密码'); return }
+    if (togglingSignup) return
+    setTogglingSignup(true)
     try {
       const r = await setSignupAllow(!signupAllow, p)
       setSignupAllowUi(r.allow)
@@ -276,7 +293,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setToast(r.allow ? '已允许新账号注册' : '已关闭新账号注册，新设备打不开了')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '设置失败')
-    }
+    } finally { setTogglingSignup(false) }
   }
 
   // 所有者密码：只属于本人的密码，专管"清空所有数据"。朋友知道访问密码也动不了数据。
@@ -289,6 +306,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const saveDangerPw = async () => {
     const p = newDanger.trim()
     if (p.length < 4) { setToast('密码至少 4 位'); return }
+    if (savingDangerPw) return
+    setSavingDangerPw(true)
     try {
       await setDangerPassword(p, dangerSet ? oldDanger.trim() : undefined)
       setDangerSet(true)
@@ -296,7 +315,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setToast(dangerSet ? '所有者密码已修改' : '所有者密码已设置：清空数据时必须输对它')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '设置失败')
-    }
+    } finally { setSavingDangerPw(false) }
   }
 
   const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || '演示'
@@ -321,7 +340,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <input className="input" value={displayName}
   onChange={(e) => setDisplayName(e.target.value)} />
   </div>
-  <button className="btn" style={{ width: '100%' }} onClick={saveDisplayName}>保存</button>
+  <button className="btn" style={{ width: '100%' }} onClick={saveDisplayName} disabled={savingName}>{savingName ? '保存中…' : '保存'}</button>
   </>),
 
   accounts: (<>
@@ -349,7 +368,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <div className="btn-row" style={{ marginTop: 6 }}>
   <input className="input" value={newName} placeholder="新账号名字"
   onChange={(e) => setNewName(e.target.value)} />
-  <button className="btn" onClick={addProfile}>添加</button>
+  <button className="btn" onClick={addProfile} disabled={addingProfile}>{addingProfile ? '添加中…' : '添加'}</button>
   </div>
   {/* 换设备找回：输入旧账号 ID */}
   <div className="field-label" style={{ marginTop: 14 }}>换设备时输入旧账号 ID 找回</div>
@@ -389,7 +408,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   onChange={(e) => setKey(e.target.value)} autoComplete="off" />
   <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写</div>
   </div>
-  <button className="btn" style={{ width: '100%' }} onClick={saveAi}>保存</button>
+  <button className="btn" style={{ width: '100%' }} onClick={saveAi} disabled={savingAi}>{savingAi ? '保存中…' : '保存'}</button>
   </>),
 
   appearance: (<>
@@ -457,8 +476,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <input className="input" type="password" value={newPw}
   onChange={(e) => setNewPw(e.target.value)} placeholder={pwSet ? '输入新密码' : '定一个密码'} />
   </div>
-  <button className="btn" style={{ width: '100%' }} onClick={saveSitePw}>
-  {pwSet ? '修改密码' : '设置密码'}
+  <button className="btn" style={{ width: '100%' }} onClick={saveSitePw} disabled={savingSitePw}>
+  {savingSitePw ? '保存中…' : (pwSet ? '修改密码' : '设置密码')}
   </button>
   {/* 所有者密码：只有本人知道，清空数据时必须输对 */}
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
@@ -478,8 +497,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <input className="input" type="password" value={newDanger}
   onChange={(e) => setNewDanger(e.target.value)} placeholder={dangerSet ? '输入新密码' : '定一个只有你知道的密码'} />
   </div>
-  <button className="btn" style={{ width: '100%' }} onClick={saveDangerPw}>
-  {dangerSet ? '修改所有者密码' : '设置所有者密码'}
+  <button className="btn" style={{ width: '100%' }} onClick={saveDangerPw} disabled={savingDangerPw}>
+  {savingDangerPw ? '保存中…' : (dangerSet ? '修改所有者密码' : '设置所有者密码')}
   </button>
   {/* 新账号注册总闸：只有所有者密码能改。关掉后，新设备打不开 App（显示"未开放注册"），已建好的账号不受影响 */}
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
@@ -492,8 +511,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <input className="input" type="password" value={signupPw}
   onChange={(e) => setSignupPw(e.target.value)} placeholder="输入所有者密码" />
   </div>
-  <button className="btn" style={{ width: '100%' }} onClick={toggleSignup}>
-  {signupAllow ? '关闭新账号注册' : '允许新账号注册'}
+  <button className="btn" style={{ width: '100%' }} onClick={toggleSignup} disabled={togglingSignup}>
+  {togglingSignup ? '设置中…' : (signupAllow ? '关闭新账号注册' : '允许新账号注册')}
   </button>
   </>),
 
@@ -505,7 +524,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   <div className="set-row" style={{ cursor: 'default' }}>
   <span className="sr-label">版本</span>
-  <span className="set-val">v0.1.11</span>
+  <span className="set-val">v{__APP_VERSION__}</span>
   </div>
   </div>
   </>),
