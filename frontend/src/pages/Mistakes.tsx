@@ -120,6 +120,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
         ...e,
         ...(fileTarget === 'q' ? { questionImageUrl: upUrl } : { answerImageUrl: upUrl }),
       } : e)
+      setToast('图片已添加，填完信息点保存')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '上传失败')
     } finally {
