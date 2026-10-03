@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import Cropper from '../Cropper'
+import { cleanLatex } from '../latex'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
@@ -86,24 +87,8 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   const [favTick, setFavTick] = useState(0)
   const fav = profileId ? isFav(profileId, question, text) : false
   void favTick
-  // 兜底：把 AI 可能输出的 LaTeX 转成能直接看的 plain text
-  // \(x\) → x，\frac{1}{x} → 1/x，x_1 → x₁，\cdot → ·，\neq → ≠
-  const SUBS: Record<string, string> = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' }
-  const SYMS: Record<string, string> = {
-    cdot: '·', times: '×', div: '÷', pm: '±', neq: '≠', leq: '≤', geq: '≥',
-    approx: '≈', infty: '∞', alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ',
-    theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', phi: 'φ', omega: 'ω',
-  }
-  const cleanText = text
-    .replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '')
-    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2') // \frac{1}{x} → 1/x
-    .replace(/\\text\{([^{}]*)\}/g, '$1') // \text{当 x≥1} → 当 x≥1
-    .replace(/\\(quad|qquad)\b/g, ' ') // \quad → 空格
-    .replace(/\\([a-zA-Z]+)/g, (_m, w) => SYMS[w] || w) // \cdot → ·，\neq → ≠，\ln → ln
-    .replace(/\\[,;:!]/g, '') // \, \; \: \! 间距命令直接去掉
-    .replace(/([a-zA-Z])_\{(\d+)\}/g, (_m, ch, ds) => ch + ds.split('').map((d: string) => SUBS[d] || d).join('')) // x_{12} → x₁₂
-    .replace(/([a-zA-Z])_(\d+)/g, (_m, ch, ds) => ch + ds.split('').map((d: string) => SUBS[d] || d).join('')) // x_1 → x₁
-    .replace(/\{([^{}]*)\}/g, '$1') // 去掉多余的花括号
+  // 兜底：把 AI 可能输出的 LaTeX 转成能直接看的 plain text（公共函数，OCR 也用它）
+  const cleanText = cleanLatex(text)
   const { body, know } = splitKnowledge(cleanText)
 
   const copy = async () => {

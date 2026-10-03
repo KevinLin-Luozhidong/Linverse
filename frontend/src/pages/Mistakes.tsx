@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
 import Cropper from '../Cropper'
+import { cleanLatex } from '../latex'
 import {
   listMistakes, createMistake, updateMistake, deleteMistake,
   uploadImage, ocr, imgSrc, getAiKey, type Mistake,
@@ -145,7 +146,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
         setToast(r.error || '没识别出文字，换张更清晰的图试试')
         return
       }
-      setEditing((e) => e ? { ...e, questionText: e.questionText ? e.questionText + '\n' + r.text : r.text } : e)
+      setEditing((e) => e ? { ...e, questionText: e.questionText ? e.questionText + '\n' + cleanLatex(r.text) : cleanLatex(r.text) } : e)
       setToast('识别完成')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '识别失败')
