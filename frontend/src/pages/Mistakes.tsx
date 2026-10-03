@@ -37,6 +37,9 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [uploading, setUploading] = useState<'q' | 'a' | ''>('') // 正在上传哪张图
   const [delId, setDelId] = useState('') // 二次确认删除
   const [saving, setSaving] = useState(false) // 保存中：防连点
+  const [selectMode, setSelectMode] = useState(false) // 批量选择模式
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchBusy, setBatchBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileTarget, setFileTarget] = useState<'q' | 'a'>('q')
   const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片本地地址，有值就弹出裁剪器
@@ -167,6 +170,36 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     }
   }
 
+  // 批量删除选中
+  const batchRemove = async () => {
+    if (selected.size === 0 || batchBusy) return
+    setBatchBusy(true)
+    const ids = [...selected]
+    const failed: string[] = []
+    for (const id of ids) {
+      try { await deleteMistake(id, profileId || undefined) }
+      catch { failed.push(id) }
+    }
+    const okCount = ids.length - failed.length
+    setSelected(new Set(failed))
+    if (failed.length === 0) {
+      setSelectMode(false)
+      setToast(`已删除 ${okCount} 条`)
+    } else {
+      setToast(`删除 ${okCount} 条，${failed.length} 条失败可重试`)
+    }
+    reload()
+    setBatchBusy(false)
+  }
+  const toggleSelect = (id: string) => {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const toggleMastered = async (m: Mistake) => {
     const next = !m.mastered
     // 先改本地（响应快），失败再回滚
@@ -210,6 +243,10 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
             </>
           )}
         </div>
+        <button className={'mini-chip' + (selectMode ? ' active' : '')}
+          onClick={() => { setSelectMode(!selectMode); setSelected(new Set()) }}>
+          {selectMode ? '取消选择' : '批量选择'}
+        </button>
       </div>
 
       {loading ? <Spin /> : list.length === 0 ? (
@@ -218,33 +255,83 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
         <div key={g.title || 'all'}>
           {g.title && <div className="sec-title">{g.title}</div>}
           {g.items.map((m) => (
-            <div key={m.id} className="m-card">
-              <span className="m-subject">{m.subject}</span>
-              {!!m.mastered && <span className="mastered-tag" style={{ marginLeft: 8 }}><I n="check" size={14} />已掌握</span>}
-              {m.questionImageUrl && <img className="m-img" src={imgSrc(m.questionImageUrl)} alt="题目原图" />}
-              {m.questionText && <div className="m-q">{m.questionText}</div>}
-              {m.answerImageUrl && <img className="m-img" src={imgSrc(m.answerImageUrl)} alt="答案图" />}
-              {m.answerText && <div className="m-a">答案：{m.answerText}</div>}
-              {m.reason && <div className="m-reason">错因：{m.reason}</div>}
-              <div className="m-foot">
-                <button className="mini-btn" onClick={() => toggleMastered(m)}>
-                  {m.mastered ? '标为未掌握' : '标为已掌握'}
-                </button>
-                <button className="mini-btn" onClick={() => setEditing({ ...m })}>编辑</button>
-                {delId === m.id
-                  ? <button className="mini-btn" style={{ color: 'var(--red)' }} onClick={() => remove(m.id)}>确认删除</button>
-                  : <button className="mini-btn" style={{ color: 'var(--ink3)' }} onClick={() => remove(m.id)}>删除</button>}
+            <div key={m.id} className={'m-card' + (selected.has(m.id) ? ' selected' : '')}
+              style={{ position: 'relative' }}
+              onClick={() => selectMode ? toggleSelect(m.id) : setEditing({ ...m })}>
+              {selectMode && (
+                <div style={{
+                  position: 'absolute', top: 10, right: 10, width: 24, height: 24,
+                  borderRadius: '50%', border: '2px solid var(--blue)',
+                  background: selected.has(m.id) ? 'var(--blue)' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: 14, fontWeight: 700, zIndex: 2,
+                }}>
+                  {selected.has(m.id) ? '✓' : ''}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                {m.questionImageUrl && (
+                  <img src={imgSrc(m.questionImageUrl)} alt="题目"
+                    style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
+                    <span className="m-subject">{m.subject}</span>
+                    {!!m.mastered && <span className="mastered-tag" style={{ marginLeft: 8 }}><I n="check" size={14} />已掌握</span>}
+                  </div>
+                  {m.questionText && (
+                    <div className="m-q" style={{
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden', marginTop: 6,
+                    }}>
+                      {cleanLatex(m.questionText)}
+                    </div>
+                  )}
+                </div>
               </div>
+              {!selectMode && (
+                <div className="m-foot">
+                  <button className="mini-btn" onClick={(e) => { e.stopPropagation(); toggleMastered(m) }}>
+                    {m.mastered ? '标为未掌握' : '标为已掌握'}
+                  </button>
+                  <button className="mini-btn" onClick={(e) => { e.stopPropagation(); setEditing({ ...m }) }}>编辑</button>
+                  {delId === m.id
+                    ? <button className="mini-btn" style={{ color: 'var(--red)' }} onClick={(e) => { e.stopPropagation(); remove(m.id) }}>确认删除</button>
+                    : <button className="mini-btn" style={{ color: 'var(--ink3)' }} onClick={(e) => { e.stopPropagation(); remove(m.id) }}>删除</button>}
+                </div>
+              )}
             </div>
           ))}
         </div>
       ))}
 
+      {/* 批量操作栏 */}
+      {selectMode && (
+        <div style={{
+          position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))',
+          left: 16, right: 16, zIndex: 40,
+          background: 'var(--card)', border: '1px solid var(--line)',
+          borderRadius: 16, padding: '10px 12px',
+          display: 'flex', gap: 8, alignItems: 'center',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--ink2)', flex: 1 }}>
+            已选 {selected.size} 条
+          </span>
+          <button className="mini-btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+            onClick={batchRemove} disabled={selected.size === 0 || batchBusy}>
+            {batchBusy ? '删除中…' : `删除(${selected.size})`}
+          </button>
+        </div>
+      )}
+
       {/* 新建按钮 */}
-      <button className="fab" aria-label="新建错题"
-        onClick={() => profileId && setEditing(blank(profileId))}>
-        <I n="plus" size={26} />
-      </button>
+      {!selectMode && (
+        <button className="fab" aria-label="新建错题"
+          onClick={() => profileId && setEditing(blank(profileId))}>
+          <I n="plus" size={26} />
+        </button>
+      )}
 
       {/* 新建 / 编辑表单 */}
       <input ref={fileRef} type="file" accept="image/*"

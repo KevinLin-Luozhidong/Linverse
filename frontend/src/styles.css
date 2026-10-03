@@ -523,8 +523,10 @@ body {
   padding: 14px; margin-bottom: 10px;
   transition: transform 0.15s var(--ease);
   animation: msgIn 0.25s var(--ease);
+  cursor: pointer;
 }
 .m-card:active { transform: scale(0.99); }
+.m-card.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25); }
 .m-subject {
   display: inline-block; font-size: calc(12px * var(--fss)); font-weight: 700;
   background: var(--blue-soft); color: var(--blue-deep);
