@@ -81,7 +81,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     try {
       if (editing.id) {
         const { id, ...rest } = editing
-        await updateMistake(id, rest)
+        await updateMistake(id, rest, profileId || undefined)
       } else {
         await createMistake({ ...editing, profileId })
       }
@@ -156,7 +156,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const remove = async (id: string) => {
     if (delId !== id) { setDelId(id); return }
     try {
-      await deleteMistake(id)
+      await deleteMistake(id, profileId || undefined)
       setDelId('')
       reload()
     } catch (e) {
@@ -166,7 +166,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
 
   const toggleMastered = async (m: Mistake) => {
     try {
-      await updateMistake(m.id, { mastered: !m.mastered })
+      await updateMistake(m.id, { mastered: !m.mastered }, profileId || undefined)
       setList((v) => v.map((x) => x.id === m.id ? { ...x, mastered: !x.mastered } : x))
     } catch (e) {
       setToast(e instanceof Error ? e.message : '更新失败')

@@ -3,7 +3,7 @@ import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
-  siteStatus, siteSetPassword, setSiteToken, siteReset,
+  siteStatus, siteSetPassword, siteClearPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid,
 } from '@api'
@@ -460,6 +460,24 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <button className="btn" style={{ width: '100%' }} onClick={saveSitePw}>
   {pwSet ? '修改密码' : '设置密码'}
   </button>
+  {pwSet && (
+  <button className="btn btn-line" style={{ width: '100%', marginTop: 8, borderColor: 'var(--red)', color: 'var(--red)' }}
+    onClick={async () => {
+      const d = prompt('清除访问密码需要验证所有者密码，请输入：')
+      if (!d) return
+      try {
+        await siteClearPassword(d)
+        setPwSet(false)
+        setSiteToken('')
+        try { localStorage.removeItem('linverse.sitePwSet') } catch {}
+        setToast('访问密码已清除')
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : '清除失败')
+      }
+    }}>
+  清除访问密码（忘记密码时用）
+  </button>
+  )}
   {/* 所有者密码：只有本人知道，清空数据时必须输对 */}
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
   {dangerSet

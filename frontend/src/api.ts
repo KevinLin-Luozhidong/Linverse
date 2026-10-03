@@ -185,8 +185,10 @@ export const deleteConversation = (id: string, profileId: string) =>
 export const listMistakes = (profileId: string, subject?: string) =>
   get<Mistake[]>(`/mistakes?profileId=${encodeURIComponent(profileId)}${subject ? `&subject=${encodeURIComponent(subject)}` : ''}`)
 export const createMistake = (m: Omit<Mistake, 'id'>) => post<Mistake>('/mistakes', m)
-export const updateMistake = (id: string, m: Partial<Mistake>) => put<Mistake>(`/mistakes/${id}`, m)
-export const deleteMistake = (id: string) => del(`/mistakes/${id}`)
+export const updateMistake = (id: string, m: Partial<Mistake>, profileId?: string) =>
+  put<Mistake>(`/mistakes/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, m)
+export const deleteMistake = (id: string, profileId?: string) =>
+  del(`/mistakes/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`)
 
 // ---- OCR ----
 // 自动带上本地 AI Key 和当前供应商：以前只传 imageUrl，后端拿不到 Key 静默返回空文本
@@ -219,7 +221,8 @@ export const listNotes = async (profileId: string, q = '', tag = '', archived = 
   return ns.map(normNote)
 }
 export const createNote = async (n: Omit<Note, 'id'>) => normNote(await post<Note>('/notes', n))
-export const updateNote = async (id: string, n: Partial<Note>) => normNote(await put<Note>(`/notes/${id}`, n))
+export const updateNote = async (id: string, n: Partial<Note>, profileId?: string) =>
+  normNote(await put<Note>(`/notes/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, n))
 export const deleteNote = (id: string, profileId?: string) =>
   del(`/notes/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`)
 
@@ -242,7 +245,8 @@ export const listVocab = (profileId: string) =>
   get<VocabWord[]>(`/vocabulary?profileId=${encodeURIComponent(profileId)}`)
 export const addVocab = (v: { profileId: string; word: string; phonetic?: string; meaning: string }) =>
   post<VocabWord>('/vocabulary', v)
-export const updateVocab = (id: string, v: Partial<VocabWord>) => put<VocabWord>(`/vocabulary/${id}`, v)
+export const updateVocab = (id: string, v: Partial<VocabWord>, profileId?: string) =>
+  put<VocabWord>(`/vocabulary/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, v)
 export const reviewVocab = (id: string, known: boolean) =>
   post(`/vocabulary/${id}/review`, { known })
 export const dueVocab = (profileId: string) =>
@@ -322,6 +326,9 @@ export const siteVerify = (password: string) =>
   post<{ ok: boolean; token: string }>('/site/verify', { password })
 export const siteSetPassword = (password: string, oldPassword?: string) =>
   post<{ ok: boolean; token: string }>('/site/password', { password, oldPassword })
+// 清除访问密码：用所有者密码验证（忘记访问密码时的逃生通道）
+export const siteClearPassword = (dangerPassword: string) =>
+  post<{ ok: boolean }>('/site/password/clear', { dangerPassword })
 // 清空所有数据：后端要求 token + 二次确认，成功后账号 ID 从 1 重来
 export const siteReset = (danger: string) => post<{ ok: boolean }>('/site/reset', { confirm: 'RESET', danger })
 // 所有者密码：只属于本人的密码，清空数据时必须输对

@@ -69,7 +69,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     try {
       if (editing.id) {
         const { id, ...rest } = editing
-        await updateNote(id, { ...rest, tags })
+        await updateNote(id, { ...rest, tags }, profileId || undefined)
       } else {
         await createNote({ ...editing, profileId, tags })
       }
@@ -146,7 +146,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     try {
       for (const id of selected) {
         const n = notes.find((x) => x.id === id)
-        if (n) await updateNote(id, { archived: true })
+        if (n) await updateNote(id, { archived: true }, profileId || undefined)
       }
       setToast(`已归档 ${selected.size} 条`)
       setSelected(new Set())
@@ -170,7 +170,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
   const togglePin = async (n: Note) => {
     try {
-      await updateNote(n.id, { pinned: !n.pinned })
+      await updateNote(n.id, { pinned: !n.pinned }, profileId || undefined)
       reload()
     } catch (e) {
       setToast(e instanceof Error ? e.message : '更新失败')
@@ -179,7 +179,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
   const toggleArchive = async (n: Note) => {
     try {
-      await updateNote(n.id, { archived: !n.archived })
+      await updateNote(n.id, { archived: !n.archived }, profileId || undefined)
       reload()
     } catch (e) {
       setToast(e instanceof Error ? e.message : '更新失败')
