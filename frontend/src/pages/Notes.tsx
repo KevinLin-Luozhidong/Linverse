@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
+import Cropper from '../Cropper'
 import {
   listNotes, createNote, updateNote, deleteNote,
   uploadImage, imgSrc, type Note,
@@ -21,6 +22,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   const [showArchived, setShowArchived] = useState(false)
   const [grid, setGrid] = useState(true)
   const [editing, setEditing] = useState<Omit<Note, 'id'> & { id?: string } | null>(null)
+  const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片
   const [tagInput, setTagInput] = useState('') // 编辑中的标签输入
   const [toastMsg, toastKey, setToast] = useToast()
   const [uploading, setUploading] = useState(false)
@@ -75,16 +77,27 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
   const onFile = async (f: File | undefined) => {
     if (!f || !editing) return
+    if (fileRef.current) fileRef.current.value = ''
+    setCropSrc(URL.createObjectURL(f))
+  }
+  const onCropDone = async (blob: Blob) => {
+    const url = cropSrc
+    setCropSrc('')
+    if (url) URL.revokeObjectURL(url)
+    if (!editing) return
     setUploading(true)
     try {
-      const url = await uploadImage(f)
-      setEditing((e) => e ? { ...e, images: [...(e.images || []), url] } : e)
+      const upUrl = await uploadImage(new File([blob], 'crop.jpg', { type: 'image/jpeg' }))
+      setEditing((e) => e ? { ...e, images: [...(e.images || []), upUrl] } : e)
     } catch (e) {
       setToast(e instanceof Error ? e.message : '上传失败')
     } finally {
       setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
     }
+  }
+  const onCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc('')
   }
 
   const remove = async (id: string) => {
@@ -248,6 +261,9 @@ export default function Notes({ profileId }: { profileId: string | null }) {
         )}
       </Sheet>
       <Toast msg={toastMsg} tkey={toastKey} />
+      {cropSrc && (
+        <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
+      )}
     </div>
   )
 }

@@ -900,7 +900,7 @@ body {
 }
 /* 图片裁剪器：全屏覆盖，手指拖框选区，Canvas 按原图分辨率裁剪 */
 .crop-wrap {
-  position: fixed; inset: 0; z-index: 80;
+  position: fixed; inset: 0; z-index: 120;
   background: rgba(8, 14, 26, 0.96);
   display: flex; flex-direction: column;
   animation: msgIn 0.25s var(--ease);
@@ -924,7 +924,7 @@ body {
   display: flex; gap: 10px; align-items: center; justify-content: center;
   padding: 14px 18px calc(18px + env(safe-area-inset-bottom));
 }
-.crop-foot .mini-btn { color: #fff; border-color: rgba(255, 255, 255, 0.25); }
+.crop-foot .mini-btn { color: #fff; border-color: rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.12); }
 /* 访问密码门：全屏居中，App 图标 + 密码输入 */
 .gate {
   min-height: 100dvh; display: flex; flex-direction: column;

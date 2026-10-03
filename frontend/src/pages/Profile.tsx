@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, useToast} from '../components'
+import Cropper from '../Cropper'
 import { getStats, getBadges, listMistakes, listProfiles, setAvatar, uploadImage, imgSrc, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
@@ -62,6 +63,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   const [mastered, setMastered] = useState(0)
   const [totalMistakes, setTotalMistakes] = useState(0)
   const [toastMsg, toastKey, setToast] = useToast()
+  const [cropSrc, setCropSrc] = useState('')
 
   useEffect(() => {
     if (!profileId) return
@@ -128,21 +130,32 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   const unlockedCount = stats ? BADGE_DEFS.filter((b) => unlockedOf(b, stats)).length : 0
   const avatarChar = (name || '我').slice(0, 1)
 
-  // 换头像：点头像选图 → 上传到 Supabase → 存到账号上
+  // 换头像：选图 → 裁剪（可直接用原图）→ 上传到 Supabase → 存到账号上
   const changeAvatar = async (f: File | undefined) => {
     if (!f || !profileId) return
+    setCropSrc(URL.createObjectURL(f))
+  }
+  const onCropDone = async (blob: Blob) => {
+    const url = cropSrc
+    setCropSrc('')
+    if (url) URL.revokeObjectURL(url)
+    if (!profileId) return
     setUploadingAvatar(true)
     try {
-      const url = await uploadImage(f)
-      await setAvatar(profileId, url)
-      setAvatarUrl(url)
-      try { localStorage.setItem(`linverse.cache.${profileId}.avatar`, url) } catch {}
+      const upUrl = await uploadImage(new File([blob], 'avatar.jpg', { type: 'image/jpeg' }))
+      await setAvatar(profileId, upUrl)
+      setAvatarUrl(upUrl)
+      try { localStorage.setItem(`linverse.cache.${profileId}.avatar`, upUrl) } catch {}
       setToast('头像已更换')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '上传失败')
     } finally {
       setUploadingAvatar(false)
     }
+  }
+  const onCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc('')
   }
   const copyId = async () => {
     if (!profileId) return
@@ -272,6 +285,9 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
         </button>
       </div>
       <Toast msg={toastMsg} tkey={toastKey} />
+      {cropSrc && (
+        <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
+      )}
     </div>
   )
 }

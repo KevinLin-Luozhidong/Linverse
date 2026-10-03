@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
+import Cropper from '../Cropper'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
@@ -191,6 +192,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   }
   const [toastMsg, toastKey, setToast] = useToast()
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
+  const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片，有值就弹裁剪器
   const [uploading, setUploading] = useState(false)
   const [typing, setTyping] = useState(false) // 当前 AI 消息是否还在打字
   // 正在打字的消息下标：避免新回答还没到时，上一条 AI 消息被误当成打字机重播
@@ -267,19 +269,31 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [msgs, typing])
 
-  // 拍照 / 选图：先上传拿到 url，再随问题一起发
+  // 拍照 / 选图：先裁剪（可直接用原图），再上传拿到 url，随问题一起发
   const onPickImage = async (f: File | undefined) => {
     if (!f) return
+    if (fileRef.current) fileRef.current.value = ''
+    const url = URL.createObjectURL(f)
+    setCropSrc(url)
+  }
+  // 裁剪完成（或直接用原图）：上传
+  const onCropDone = async (blob: Blob) => {
+    const url = cropSrc
+    setCropSrc('')
+    if (url) URL.revokeObjectURL(url)
     setUploading(true)
     try {
-      const url = await uploadImage(f)
-      setImgUrl(url)
+      const upUrl = await uploadImage(new File([blob], 'crop.jpg', { type: 'image/jpeg' }))
+      setImgUrl(upUrl)
     } catch (e) {
       setToast(e instanceof Error ? e.message : '上传失败')
     } finally {
       setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
     }
+  }
+  const onCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc('')
   }
 
   // 发送问题
@@ -492,6 +506,9 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         </div>
       </div>
       <Toast msg={toastMsg} tkey={toastKey} />
+      {cropSrc && (
+        <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
+      )}
     </div>
   )
 }
