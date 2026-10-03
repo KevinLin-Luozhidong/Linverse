@@ -103,9 +103,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   useEffect(() => { loadHistory(); loadVocab() }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 查词
-  const search = async (w?: string) => {
+  const search = async (w?: string, src?: DictSource) => {
     const target = (w ?? word).trim().toLowerCase()
     if (!target) return
+    const source = src || dictSource
     setSearching(true)
     // 离线缓存：查过的词存本地，没网时也能看（真正的"离线词典包"基础）
     const cacheKey = `linverse.dictCache.${profileId || 'anon'}`
@@ -113,7 +114,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       try { return JSON.parse(localStorage.getItem(cacheKey) || '{}') } catch { return {} }
     }
     // 离线词典：直接查已下载的包，断网也能用
-    if (dictSource === 'offline') {
+    if (source === 'offline') {
       if (!dictPkg) {
         setToast('先下载离线词典包才能用')
         setSearching(false)
@@ -141,7 +142,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       return
     }
     try {
-      const r = await lookupWord(target, dictSource, dictSource === 'ai' ? {
+      const r = await lookupWord(target, source, source === 'ai' ? {
         aiKey: getAiKey() || undefined,
         model: localStorage.getItem('linverse.model') || 'demo',
         profileId: profileId || undefined,
@@ -240,6 +241,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const pickSource = (s: DictSource) => {
     setDictSource(s)
     localStorage.setItem('linverse.dictSource', s)
+    // 切换来源后，如果当前有查词结果，用新来源重新查一遍
+    if (result && word.trim()) {
+      search(word.trim(), s)
+    }
   }
 
   // 加入生词本：取第一条中文释义

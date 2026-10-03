@@ -30,6 +30,12 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   profileId: string | null; onBack: () => void; onProfileChange: (id: string) => void
 }) {
   const [view, setView] = useState<View>('menu')
+  // 每次进入访问密码页面都刷新状态，避免内外显示不一致
+  useEffect(() => {
+    if (view === 'sitepw') {
+      siteStatus().then((s) => setPwSet(s.passwordSet)).catch(() => {})
+    }
+  }, [view])
   const [toastMsg, toastKey, setToast] = useToast()
   // 正在退出的子页面：保留一帧做"向右滑出"动画，露出底下菜单
   const [leaving, setLeaving] = useState<Exclude<View, 'menu'> | null>(null)

@@ -26,7 +26,12 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   const [tagInput, setTagInput] = useState('') // 编辑中的标签输入
   const [toastMsg, toastKey, setToast] = useToast()
   const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false) // 保存中：防连点重复提交
   const [delId, setDelId] = useState('') // 二次确认删除
+  // 批量选择模式
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchDeleting, setBatchDeleting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<number>(0)
 
@@ -54,11 +59,12 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   }
 
   const save = async () => {
-    if (!editing || !profileId) return
+    if (!editing || !profileId || saving) return
     if (!editing.title.trim() && !editing.content.trim()) {
       setToast('标题和内容至少填一项')
       return
     }
+    setSaving(true)
     const tags = tagInput.split(/[\s,，]+/).map((t) => t.trim()).filter(Boolean)
     try {
       if (editing.id) {
@@ -72,6 +78,8 @@ export default function Notes({ profileId }: { profileId: string | null }) {
       setToast('已保存')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -101,14 +109,63 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   }
 
   const remove = async (id: string) => {
-    if (delId !== id) { setDelId(id); return }
     try {
       await deleteNote(id)
       setDelId('')
+      setEditing(null)
       reload()
+      setToast('已删除')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '删除失败')
     }
+  }
+
+  // 批量删除选中
+  const batchRemove = async () => {
+    if (selected.size === 0 || batchDeleting) return
+    setBatchDeleting(true)
+    try {
+      for (const id of selected) {
+        await deleteNote(id)
+      }
+      setToast(`已删除 ${selected.size} 条`)
+      setSelected(new Set())
+      setSelectMode(false)
+      reload()
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setBatchDeleting(false)
+    }
+  }
+
+  // 批量归档选中
+  const batchArchive = async () => {
+    if (selected.size === 0 || batchDeleting) return
+    setBatchDeleting(true)
+    try {
+      for (const id of selected) {
+        const n = notes.find((x) => x.id === id)
+        if (n) await updateNote(id, { archived: true })
+      }
+      setToast(`已归档 ${selected.size} 条`)
+      setSelected(new Set())
+      setSelectMode(false)
+      reload()
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '操作失败')
+    } finally {
+      setBatchDeleting(false)
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const togglePin = async (n: Note) => {
@@ -153,6 +210,10 @@ export default function Notes({ profileId }: { profileId: string | null }) {
           onClick={() => { const v = !showArchived; setShowArchived(v); reload(q, tag, v) }}>
           <I n="archive" size={15} />归档
         </button>
+        <button className={'mini-chip' + (selectMode ? ' active' : '')}
+          onClick={() => { setSelectMode(!selectMode); setSelected(new Set()) }}>
+          {selectMode ? '取消选择' : '批量选择'}
+        </button>
       </div>
 
       {allTags.length > 0 && (
@@ -173,9 +234,20 @@ export default function Notes({ profileId }: { profileId: string | null }) {
       ) : (
         <div className={grid ? 'notes-grid' : ''} style={{ marginTop: 12, display: grid ? undefined : 'grid', gap: 10 }}>
           {shown.map((n) => (
-            <div key={n.id} className={'note-card' + (grid ? '' : ' list')}
+            <div key={n.id} className={'note-card' + (grid ? '' : ' list') + (selected.has(n.id!) ? ' selected' : '')}
               style={{ background: n.color || undefined }}
-              onClick={() => openEdit(n)}>
+              onClick={() => selectMode ? toggleSelect(n.id!) : openEdit(n)}>
+              {selectMode && (
+                <div className="note-check" style={{
+                  position: 'absolute', top: 8, right: 8, width: 24, height: 24,
+                  borderRadius: '50%', border: '2px solid var(--blue)',
+                  background: selected.has(n.id!) ? 'var(--blue)' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: 14, fontWeight: 700,
+                }}>
+                  {selected.has(n.id!) ? '✓' : ''}
+                </div>
+              )}
               <div className="note-title">
                 {!!n.pinned && <span className="pin-flag"><I n="pin" size={14} /></span>}
                 {n.title || '无标题'}
@@ -187,9 +259,40 @@ export default function Notes({ profileId }: { profileId: string | null }) {
         </div>
       )}
 
-      <button className="fab" aria-label="新建笔记" onClick={() => openEdit()}>
-        <I n="plus" size={26} />
-      </button>
+      {/* 批量操作栏 */}
+      {selectMode && (
+        <div style={{
+          position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))',
+          left: 16, right: 16, zIndex: 40,
+          background: 'var(--card)', border: '1px solid var(--line)',
+          borderRadius: 16, padding: '10px 12px',
+          display: 'flex', gap: 8, alignItems: 'center',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--ink2)', flex: 1 }}>
+            已选 {selected.size} 条
+          </span>
+          <button className="mini-chip" onClick={() => {
+            if (selected.size === shown.length) setSelected(new Set())
+            else setSelected(new Set(shown.map((n) => n.id!)))
+          }}>
+            {selected.size === shown.length ? '全不选' : '全选'}
+          </button>
+          <button className="mini-chip" onClick={batchArchive} disabled={selected.size === 0 || batchDeleting}>
+            归档
+          </button>
+          <button className="mini-btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+            onClick={batchRemove} disabled={selected.size === 0 || batchDeleting}>
+            {batchDeleting ? '删除中…' : `删除(${selected.size})`}
+          </button>
+        </div>
+      )}
+
+      {!selectMode && (
+        <button className="fab" aria-label="新建笔记" onClick={() => openEdit()}>
+          <I n="plus" size={26} />
+        </button>
+      )}
 
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => onFile(e.target.files?.[0])} />
@@ -252,11 +355,11 @@ export default function Notes({ profileId }: { profileId: string | null }) {
                   {ed.archived ? '移出归档' : '归档'}
                 </button>
                 {delId === ed.id
-                  ? <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => { remove(ed.id!); setEditing(null) }}>确认删除</button>
+                  ? <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => remove(ed.id!)}>确认删除</button>
                   : <button className="btn btn-line" style={{ flex: 1, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setDelId(ed.id!)}>删除</button>}
               </div>
             )}
-            <button className="btn" style={{ width: '100%' }} onClick={save}>保存</button>
+            <button className="btn" style={{ width: '100%' }} onClick={save} disabled={saving}>{saving ? '保存中…' : '保存'}</button>
           </>
         )}
       </Sheet>
