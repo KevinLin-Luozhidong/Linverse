@@ -141,7 +141,7 @@ export function useSwipeBack(onBack: (fromX?: number) => void, enabled = true) {
       onTouchStart: (e: TouchEvent) => {
         if (!enabled) return
         const t = e.touches[0]
-        if (t.clientX < 64) start.current = { x: t.clientX, y: t.clientY }
+        if (t.clientX < 120) start.current = { x: t.clientX, y: t.clientY }
       },
       onTouchMove: (e: TouchEvent) => {
         const s = start.current
@@ -163,7 +163,7 @@ export function useSwipeBack(onBack: (fromX?: number) => void, enabled = true) {
         setDrag({ x: 0, active: false })
         // enabled 可能在拖拽中途变 false（比如页面已切走），此时不触发返回，
         // 避免误触退出整个设置页
-        if (enabled && d.active && d.x > 90) onBack(d.x) // 把手指位置传给调用方，退出动画从这里接着滑
+        if (enabled && d.active && d.x > 60) onBack(d.x) // 把手指位置传给调用方，退出动画从这里接着滑
       },
     },
   }

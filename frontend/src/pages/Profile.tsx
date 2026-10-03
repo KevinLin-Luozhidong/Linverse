@@ -67,6 +67,8 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
 
   useEffect(() => {
     if (!profileId) return
+    // 切账号先清空旧数据，避免闪一下上个人的信息
+    setStats(null); setBadges([]); setName(''); setAvatarUrl(''); setTotalMistakes(0); setMastered(0)
     // 秒开：先从本地缓存恢复上次的数据立刻渲染，后台再静默刷新
     // （Vercel 无服务器冷启动时要几秒，不能让用户干等）
     const ck = (k: string) => `linverse.cache.${profileId}.${k}`
@@ -125,7 +127,12 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
     d.setDate(d.getDate() - (6 - i))
     return d
   })
-  const litCount = stats ? Math.min(stats.streakDays, 7) : 0
+  // 按真实打卡日期点亮，不再按连续天数估算
+  const recentSet = new Set((stats?.recentCheckins || []) as string[])
+  const isLit = (d: Date) => {
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return recentSet.has(k)
+  }
 
   const unlockedCount = stats ? BADGE_DEFS.filter((b) => unlockedOf(b, stats)).length : 0
   const avatarChar = (name || '我').slice(0, 1)
@@ -232,7 +239,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
           <div className="me-dots">
             {weekDays.map((d, i) => (
               <div className="me-day" key={i}>
-                <span className={'me-dot' + (i >= 7 - litCount ? ' on' : '')} />
+                <span className={'me-dot' + (isLit(d) ? ' on' : '')} />
                 <span className="me-dow">{DOW[d.getDay()]}</span>
               </div>
             ))}

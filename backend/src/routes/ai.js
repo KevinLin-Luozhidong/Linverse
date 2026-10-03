@@ -97,7 +97,7 @@ router.post('/ask', ah(async (req, res) => {
     modelName = s.aiModel;
   }
 
-  // 调统一入口 ask()：内部按 model 分发到不同供应商，无 Key 自动走演示模式
+  // 先调 AI，成功后再建会话存档（失败不留空会话）
   const { answer, thinkSeconds } = await ask({
     model: model || 'demo',
     question: question.trim(),

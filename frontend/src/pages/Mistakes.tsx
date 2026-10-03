@@ -246,7 +246,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
       </button>
 
       {/* 新建 / 编辑表单 */}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+      <input ref={fileRef} type="file" accept="image/*"
         style={{ display: 'none' }} onChange={(e) => onFile(e.target.files?.[0])} />
       <Sheet open={!!ed} onClose={() => setEditing(null)} title={ed?.id ? '编辑错题' : '新建错题'}>
         {ed && (

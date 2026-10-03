@@ -93,7 +93,7 @@ export interface VocabWord {
   id: string; profileId: string; word: string; phonetic?: string; meaning: string;
 }
 
-export interface Stats { streakDays: number; checkinDays: number; mistakeCount: number; noteCount: number; wordCount: number }
+export interface Stats { streakDays: number; checkinDays: number; mistakeCount: number; noteCount: number; wordCount: number; recentCheckins?: string[] }
 export interface Badge { id: string; name: string; desc: string; unlocked: boolean }
 
 export interface Settings {

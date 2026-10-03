@@ -22,6 +22,7 @@ router.get('/stats', ah(async (req, res) => {
   res.json({
     streakDays: await dao.streakDays(profileId),      // 连续打卡天数
     checkinDays: await dao.countCheckinDays(profileId), // 累计打卡天数
+    recentCheckins: await dao.recentCheckinDates(profileId, 7), // 最近7天打卡日期（YYYY-MM-DD）
     mistakeCount: await dao.countMistakes(profileId),   // 错题数
     noteCount: await dao.countNotes(profileId),         // 笔记数
     wordCount: await dao.countWords(profileId),          // 生词数

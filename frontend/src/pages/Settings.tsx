@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
@@ -115,14 +115,18 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     if (th === 'system') document.documentElement.removeAttribute('data-theme')
     else document.documentElement.setAttribute('data-theme', th)
   }
+  const appearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const changeAppearance = (fs: string, th: string) => {
     setFontSize(fs); setTheme(th)
     applyAppearance(fs, th)
-    if (profileId) {
+    if (!profileId) return
+    // 防抖：300ms 内连点只发最后一次保存
+    if (appearTimer.current) clearTimeout(appearTimer.current)
+    appearTimer.current = setTimeout(() => {
       saveSettings({ profileId, fontSize: fs, theme: th })
         .then(() => setToast('已保存'))
         .catch(() => setToast('保存失败'))
-    }
+    }, 300)
   }
 
   // 账号操作
@@ -206,14 +210,14 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   }
 
   // 存储空间：统计 localStorage 占用，清理只清界面偏好缓存
-  const cacheMB = () => {
+  const cacheMB = useMemo(() => {
     let bytes = 0
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i) || ''
       bytes += k.length + (localStorage.getItem(k) || '').length
     }
     return (bytes / 1024 / 1024).toFixed(1)
-  }
+  }, [view])
   const [confirmClear, setConfirmClear] = useState(false)
   const clearCache = () => {
     if (!confirmClear) { setConfirmClear(true); return }
@@ -228,10 +232,13 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 必须输入所有者密码：只有本人能操作，朋友知道访问密码也清空不了
   const [confirmWipe, setConfirmWipe] = useState(false)
   const [wipePw, setWipePw] = useState('')
+  const [wiping, setWiping] = useState(false)
   const wipeAll = async () => {
     if (!confirmWipe) { setConfirmWipe(true); return }
     const d = wipePw.trim()
     if (!d) { setToast('请输入所有者密码'); return }
+    if (wiping) return
+    setWiping(true)
     setConfirmWipe(false)
     try {
       await siteReset(d)
@@ -241,7 +248,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setTimeout(() => location.reload(), 900)
     } catch (e) {
       setToast(e instanceof Error ? e.message : '清空失败')
-    }
+    } finally { setWiping(false) }
   }
 
   // 访问密码：网站大门的密码锁。设好后别人打开网址要先输对密码才能用。
@@ -438,7 +445,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   storage: (<>
   <div className="report-row">
   <span>本地缓存</span>
-  <span className="v">{cacheMB()} MB</span>
+  <span className="v">{cacheMB} MB</span>
   </div>
   <div className="safe-note">清理只清除界面偏好等临时缓存，账号、错题、笔记、生词和 Key 不受影响</div>
   <button className={'btn ' + (confirmClear ? 'btn-danger' : 'btn-ghost')}
@@ -453,8 +460,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   onChange={(e) => setWipePw(e.target.value)} placeholder="输入所有者密码" />
   </div>
   <button className={'btn ' + (confirmWipe ? 'btn-danger' : 'btn-ghost')}
-  style={{ width: '100%', marginTop: 4 }} onClick={wipeAll}>
-  {confirmWipe ? '再点一次确认清空' : '清空所有数据'}
+  style={{ width: '100%', marginTop: 4 }} onClick={wipeAll} disabled={wiping}>
+  {wiping ? '清空中…' : (confirmWipe ? '再点一次确认清空' : '清空所有数据')}
   </button>
   </>),
 
@@ -546,13 +553,13 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
             <div className="set-group">
               {row('profile', 'user', 'blue', '个人资料', displayName)}
               {row('ai', 'key', 'green', 'AI 接口', providerLabel)}
-              {row('accounts', 'users', 'orange', '多账号', displayName)}
+              {row('accounts', 'users', 'orange', '多账号', `共 ${profiles.length} 个`)}
             </div>
             <div className="set-group">
               {row('appearance', 'moon', 'blue', '外观', themeLabel)}
               {row('font', 'textsize', 'green', '字体大小', fontLabel)}
               {row('sitepw', 'lock', 'gray', '访问密码', pwSet ? '已设置' : '未设置')}
-              {row('storage', 'db', 'orange', '存储空间', `缓存 ${cacheMB()} MB`)}
+              {row('storage', 'db', 'orange', '存储空间', `缓存 ${cacheMB} MB`)}
             </div>
             <div className="set-group">
               {row('about', 'info', 'gray', '关于')}

@@ -416,6 +416,14 @@ async function checkin(profileId) {
   return countCheckinDays(profileId);
 }
 
+async function recentCheckinDates(profileId, days = 7) {
+  const r = await query(
+    'SELECT date FROM checkins WHERE "profileId" = $1 ORDER BY date DESC LIMIT $2',
+    [profileId, days]
+  );
+  return r.rows.map((x) => x.date);
+}
+
 async function countCheckinDays(profileId) {
   const r = await query(
     'SELECT COUNT(*) AS n FROM checkins WHERE "profileId" = $1',
@@ -491,5 +499,5 @@ module.exports = {
   recordWordHistory, listWordHistory,
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
-  getSiteConfig, setSiteConfig, resetAll,
+  getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
 };

@@ -100,6 +100,8 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
     .replace(/\\text\{([^{}]*)\}/g, '$1') // \text{当 x≥1} → 当 x≥1
     .replace(/\\(quad|qquad)\b/g, ' ') // \quad → 空格
     .replace(/\\([a-zA-Z]+)/g, (_m, w) => SYMS[w] || w) // \cdot → ·，\neq → ≠，\ln → ln
+    .replace(/\\[,;:!]/g, '') // \, \; \: \! 间距命令直接去掉
+    .replace(/([a-zA-Z])_\{(\d+)\}/g, (_m, ch, ds) => ch + ds.split('').map((d: string) => SUBS[d] || d).join('')) // x_{12} → x₁₂
     .replace(/([a-zA-Z])_(\d+)/g, (_m, ch, ds) => ch + ds.split('').map((d: string) => SUBS[d] || d).join('')) // x_1 → x₁
     .replace(/\{([^{}]*)\}/g, '$1') // 去掉多余的花括号
   const { body, know } = splitKnowledge(cleanText)
@@ -507,7 +509,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
 
       {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}
       <div className="composer">
-        <input ref={fileRef} type="file" accept="image/*" capture="environment"
+        <input ref={fileRef} type="file" accept="image/*"
           style={{ display: 'none' }} onChange={(e) => onPickImage(e.target.files?.[0])} />
         <button className="cam-btn" onClick={() => fileRef.current?.click()} aria-label="拍照提问">
           {uploading ? <Spin /> : <I n="camera" size={24} />}
