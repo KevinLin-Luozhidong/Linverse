@@ -586,6 +586,7 @@ body {
 .notes-sec { padding: 6px 14px 90px; }
 .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .note-card {
+  position: relative;
   border-radius: var(--radius); padding: 13px;
   border: 1px solid var(--line); background: var(--card);
   cursor: pointer;
@@ -593,6 +594,7 @@ body {
   min-height: 110px;
   animation: msgIn 0.25s var(--ease);
 }
+.note-card.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25); }
 .note-card:active { transform: scale(0.97); }
 .note-card.list { grid-column: 1 / -1; min-height: 0; }
 .note-title { font-weight: 700; font-size: calc(15px * var(--fss)); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

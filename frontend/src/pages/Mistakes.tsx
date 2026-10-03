@@ -35,6 +35,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [ocrBusy, setOcrBusy] = useState(false)
   const [uploading, setUploading] = useState<'q' | 'a' | ''>('') // 正在上传哪张图
   const [delId, setDelId] = useState('') // 二次确认删除
+  const [saving, setSaving] = useState(false) // 保存中：防连点
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileTarget, setFileTarget] = useState<'q' | 'a'>('q')
   const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片本地地址，有值就弹出裁剪器
@@ -71,11 +72,12 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
 
   // 保存（新建或编辑）
   const save = async () => {
-    if (!editing || !profileId) return
+    if (!editing || !profileId || saving) return
     if (!editing.questionText.trim() && !editing.questionImageUrl) {
       setToast('题目文字和图片至少填一项')
       return
     }
+    setSaving(true)
     try {
       if (editing.id) {
         const { id, ...rest } = editing
@@ -88,6 +90,8 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
       setToast('已保存')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -134,7 +138,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     if (!getAiKey()) { setToast('先去个人中心-设置里填写 AI Key'); return }
     setOcrBusy(true)
     try {
-      const r = await ocr(editing.questionImageUrl)
+      const r = await ocr(editing.questionImageUrl, profileId || undefined)
       // 后端无 Key 或识别失败会带 error 字段；以前没检查，空文本也报"识别完成"，这就是"读不出来"的根因
       if (r.error || !r.text.trim()) {
         setToast(r.error || '没识别出文字，换张更清晰的图试试')
@@ -308,7 +312,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
                 {ed.mastered ? '✓ 已掌握' : '未掌握'}
               </button>
             </div>
-            <button className="btn" style={{ width: '100%', marginTop: 6 }} onClick={save}>保存</button>
+            <button className="btn" style={{ width: '100%', marginTop: 6 }} onClick={save} disabled={saving}>{saving ? '保存中…' : '保存'}</button>
           </>
         )}
       </Sheet>

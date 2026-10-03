@@ -86,8 +86,14 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   const [favTick, setFavTick] = useState(0)
   const fav = profileId ? isFav(profileId, question, text) : false
   void favTick
-  // 兜底：去掉 AI 可能输出的 LaTeX 标记（\(x\) → x，\[...\] → ...），看着清爽
-  const cleanText = text.replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '')
+  // 兜底：去掉 AI 可能输出的 LaTeX 标记，看着清爽
+  // \(x\) → x，\[...\] → ...，\frac{a}{b} → a/b，\ln → ln 等
+  const cleanText = text
+    .replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '')
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2') // \frac{1}{x} → 1/x
+    .replace(/\\(ln|log|sin|cos|tan|sqrt|sum|int|lim|exp)\b/g, '$1') // \ln → ln
+    .replace(/\\([a-zA-Z]+)/g, '$1') // 其他 \xxx → xxx
+    .replace(/\{([^{}]*)\}/g, '$1') // 去掉多余的花括号
   const { body, know } = splitKnowledge(cleanText)
 
   const copy = async () => {

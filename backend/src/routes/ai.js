@@ -138,6 +138,14 @@ router.post('/ocr', ah(async (req, res) => {
 
   // OCR 走哪个供应商：请求体可指定，否则默认 deepseek（OpenAI 兼容，支持 vision）
   const model = req.body.model || 'deepseek';
+  // custom 模型：从账号设置里取 endpoint 和 modelName（前端不用每次都传）
+  let endpoint = req.body.endpoint || '';
+  let modelName = req.body.modelName || '';
+  if (model === 'custom' && req.body.profileId) {
+    const s = await dao.getSettings(req.body.profileId);
+    endpoint = endpoint || s.aiEndpoint || '';
+    modelName = modelName || s.aiModel || '';
+  }
   const started = Date.now();
   try {
     const { answer } = await ask({
@@ -146,8 +154,8 @@ router.post('/ocr', ah(async (req, res) => {
       imageUrl: resolveImageForVision(imageUrl),
       deepThink: false,
       aiKey: key,
-      endpoint: req.body.endpoint || '',
-      modelName: req.body.modelName || '',
+      endpoint,
+      modelName,
     });
     res.json({ text: answer.trim(), thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)) });
   } catch (e) {

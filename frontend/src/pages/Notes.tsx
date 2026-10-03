@@ -110,7 +110,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
   const remove = async (id: string) => {
     try {
-      await deleteNote(id)
+      await deleteNote(id, profileId || undefined)
       setDelId('')
       setEditing(null)
       reload()
@@ -126,7 +126,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     setBatchDeleting(true)
     try {
       for (const id of selected) {
-        await deleteNote(id)
+        await deleteNote(id, profileId || undefined)
       }
       setToast(`已删除 ${selected.size} 条`)
       setSelected(new Set())
