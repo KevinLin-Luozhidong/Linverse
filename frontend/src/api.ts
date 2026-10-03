@@ -227,7 +227,7 @@ export const deleteNote = (id: string, profileId?: string) =>
   del(`/notes/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`)
 
 // ---- 词典 ----
-export type DictSource = 'dict' | 'ai' | 'offline'
+export type DictSource = 'dict' | 'offline'
 export const lookupWord = (word: string, source: DictSource = 'dict', opts?: {
   aiKey?: string; model?: string; profileId?: string
 }) => {

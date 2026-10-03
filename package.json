@@ -1,1 +1,17 @@
-{"devDependencies":{"concurrently":"^9.2.0"},"name":"linverse","private":true,"scripts":{"dev":"concurrently -n backend,frontend -c blue,green \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"","install:all":"npm install","start":"npm start --workspace=backend"},"version":"0.1.0","workspaces":["frontend","backend"]}
+{
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "name": "linverse",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "install:all": "npm install",
+    "start": "npm start --workspace=backend"
+  },
+  "version": "0.1.13",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ]
+}

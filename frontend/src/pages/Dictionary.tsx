@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
   lookupWord, getWordHistory, listVocab, addVocab, reviewVocab,
-  dueVocab, checkin, getAiKey, type DictResult, type DictSource, type VocabWord,
+  dueVocab, checkin, type DictResult, type DictSource, type VocabWord,
 } from '@api'
 
 // 词典页：查词 / 生词本两个子板块
@@ -80,7 +80,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   // 词典接口：dict = 在线词典（默认），offline = 离线词典包（断网备胎），ai = AI 详解（联网、更详细）
   const [dictSource, setDictSource] = useState<DictSource>(() => {
     const s = localStorage.getItem('linverse.dictSource') as DictSource
-    return (s === 'ai' || s === 'offline' || s === 'dict') ? s : 'dict'
+    return (s === 'offline' || s === 'dict') ? s : 'dict'
   })
   const [history, setHistory] = useState<{ word: string; createdAt: string }[]>([])
   const [toastMsg, toastKey, setToast] = useToast()
@@ -142,11 +142,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       return
     }
     try {
-      const r = await lookupWord(target, source, source === 'ai' ? {
-        aiKey: getAiKey() || undefined,
-        model: localStorage.getItem('linverse.model') || 'demo',
-        profileId: profileId || undefined,
-      } : { profileId: profileId || undefined })
+      const r = await lookupWord(target, source, { profileId: profileId || undefined })
       setResult(r)
       setOfflineHit(false)
       setOfflinePkgHit(false)
@@ -321,7 +317,6 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           <div className="seg" style={{ marginTop: 10 }}>
             <button className={dictSource === 'dict' ? 'on' : ''} onClick={() => pickSource('dict')}>在线词典</button>
             <button className={dictSource === 'offline' ? 'on' : ''} onClick={() => pickSource('offline')}>离线词典</button>
-            <button className={dictSource === 'ai' ? 'on' : ''} onClick={() => pickSource('ai')}>AI 详解</button>
           </div>
           {/* 离线词典包：下载一次，断网也能查 1.4 万常用词 */}
           {dictSource === 'offline' && (

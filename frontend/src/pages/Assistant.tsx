@@ -86,13 +86,19 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   const [favTick, setFavTick] = useState(0)
   const fav = profileId ? isFav(profileId, question, text) : false
   void favTick
-  // 兜底：去掉 AI 可能输出的 LaTeX 标记，看着清爽
-  // \(x\) → x，\[...\] → ...，\frac{a}{b} → a/b，\ln → ln 等
+  // 兜底：把 AI 可能输出的 LaTeX 转成能直接看的 plain text
+  // \(x\) → x，\frac{1}{x} → 1/x，x_1 → x₁，\cdot → ·，\neq → ≠
+  const SUBS: Record<string, string> = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' }
+  const SYMS: Record<string, string> = {
+    cdot: '·', times: '×', div: '÷', pm: '±', neq: '≠', leq: '≤', geq: '≥',
+    approx: '≈', infty: '∞', alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ',
+    theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', phi: 'φ', omega: 'ω',
+  }
   const cleanText = text
     .replace(/\\\(/g, '').replace(/\\\)/g, '').replace(/\\\[/g, '').replace(/\\\]/g, '')
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2') // \frac{1}{x} → 1/x
-    .replace(/\\(ln|log|sin|cos|tan|sqrt|sum|int|lim|exp)\b/g, '$1') // \ln → ln
-    .replace(/\\([a-zA-Z]+)/g, '$1') // 其他 \xxx → xxx
+    .replace(/\\([a-zA-Z]+)/g, (_m, w) => SYMS[w] || w) // \cdot → ·，\neq → ≠，\ln → ln
+    .replace(/([a-zA-Z])_(\d+)/g, (_m, ch, ds) => ch + ds.split('').map((d: string) => SUBS[d] || d).join('')) // x_1 → x₁
     .replace(/\{([^{}]*)\}/g, '$1') // 去掉多余的花括号
   const { body, know } = splitKnowledge(cleanText)
 
