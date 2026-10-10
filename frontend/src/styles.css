@@ -953,6 +953,8 @@ body {
 }
 .think-pill:active { transform: scale(0.94); }
 .think-pill.on { border-color: var(--blue); color: var(--blue-deep); background: var(--blue-soft); }
+/* 联网搜索开关：非智谱线路时置灰（点按会提示原因） */
+.think-pill.disabled { opacity: 0.45; }
 /* 工具工作区切换：面板滑入（只用 transform/opacity，不卡） */
 .tool-panel-in { animation: panelIn 0.28s var(--ease); }
 @keyframes panelIn {

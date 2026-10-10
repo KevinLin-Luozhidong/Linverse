@@ -84,7 +84,7 @@ function resolveImageForVision(imageUrl) {
 // POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey? }
 // 返回: { answer, thinkSeconds, conversationId, model }
 router.post('/ask', ah(async (req, res) => {
-  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey } = req.body;
+  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch } = req.body;
   if (need(res, profileId, 'profileId 必填')) return;
   if (need(res, question && question.trim(), 'question 不能为空')) return;
 
@@ -98,7 +98,8 @@ router.post('/ask', ah(async (req, res) => {
   }
 
   // 先调 AI，成功后再建会话存档（失败不留空会话）
-  const { answer, thinkSeconds } = await ask({
+  // webSearch：前端"联网搜索"开关；只在智谱线路生效，其他线路后端自动忽略
+  const { answer, thinkSeconds, webSearched } = await ask({
     model: model || 'demo',
     question: question.trim(),
     imageUrl: resolveImageForVision(imageUrl),
@@ -106,6 +107,7 @@ router.post('/ask', ah(async (req, res) => {
     aiKey,
     endpoint,
     modelName,
+    webSearch: !!webSearch,
   });
 
   // 问答自动存档：有 conversationId 就续写，没有就新建（标题取问题前 12 个字）
@@ -121,7 +123,7 @@ router.post('/ask', ah(async (req, res) => {
   await dao.addMessage(profileId, cid, 'user', question.trim());
   await dao.addMessage(profileId, cid, 'assistant', answer);
 
-  res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo' });
+  res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched });
 }));
 
 // ---------- OCR：识别图片中的文字 ----------

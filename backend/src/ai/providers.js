@@ -193,9 +193,46 @@ const data = await res.json();
 return data.choices?.[0]?.message?.content || '';
 }
 
+// ---------- 智谱联网搜索 ----------
+// 独立接口（不走 /chat/completions）：POST https://open.bigmodel.cn/api/paas/v4/web_search
+// 只在"custom 供应商 + 地址是智谱 + 用户打开开关"时调用；失败不抛错，上层降级为普通问答
+async function zhipuWebSearch(query, apiKey) {
+const res = await fetch('https://open.bigmodel.cn/api/paas/v4/web_search', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
+body: JSON.stringify({
+search_engine: 'search_std', // 标准版：约 ¥0.01/次，以智谱控制台账单为准
+search_query: query,
+count: 5, // 只取 5 条：控制延迟和 prompt 长度
+search_recency_filter: 'noLimit',
+}),
+});
+if (!res.ok) throw new Error(`联网搜索失败：${res.status}`);
+const data = await res.json();
+const items = data.search_result || [];
+return items.slice(0, 5).map((it) => ({
+title: it.title || '',
+content: String(it.content || '').slice(0, 500), // 单条截断，防 prompt 爆炸
+link: it.link || '',
+})).filter((it) => it.title || it.content);
+}
+
+// 把搜索结果拼成 prompt 前缀：要求模型注明来源，提醒时效性以来源为准
+function buildSearchBlock(results) {
+const lines = results.map((r, i) => {
+let s = `${i + 1}. ${r.title}`;
+if (r.content) s += `\n   ${r.content}`;
+if (r.link) s += `\n   来源：${r.link}`;
+return s;
+});
+return '【联网搜索结果（仅供参考，时效性信息请以来源为准，回答时请注明信息来源）】\n'
++ lines.join('\n')
++ '\n\n【用户问题】\n';
+}
+
 // ---------- 统一入口 ----------
 
-async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName}) {
+async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch}) {
 // Key 优先级：请求体 aiKey > 环境变量 AI_API_KEY > 无（演示模式）
 const key = aiKey || process.env.AI_API_KEY || '';
 const started = Date.now();
@@ -207,7 +244,22 @@ if (deepThink) {
 await sleep(1000 + Math.random() * 2000);
 }
 const answer = imageUrl? demoVisionAnswer(question): demoTextAnswer(question);
-return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1))};
+return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched: false};
+}
+
+// 联网搜索（用户手动开关）：只支持智谱线路；失败自动降级，不影响正常问答
+let webSearched = false;
+if (webSearch && model === 'custom' && String(endpoint || '').includes('bigmodel.cn')) {
+try {
+const results = await zhipuWebSearch(question, key);
+if (results.length) {
+question = buildSearchBlock(results) + question;
+webSearched = true;
+}
+} catch (err) {
+// 中文注释：搜索挂了不应该导致整题答不出来，打日志然后当没开过开关继续走
+console.error('[web_search] 搜索失败，降级为普通问答：', err.message);
+}
 }
 
 // 有 Key：按供应商分发
@@ -228,7 +280,7 @@ break;
 default:
 throw new Error(`不支持的模型类型：${model}`);
 }
-return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1))};
+return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched};
 }
 
 module.exports = { ask};

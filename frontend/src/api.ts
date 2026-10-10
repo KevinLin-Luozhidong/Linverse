@@ -64,7 +64,7 @@ export interface ConversationMeta { id: string; title: string; createdAt: string
 export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
-export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string }
+export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string; webSearched?: boolean }
 
 export interface Mistake {
   id: string; profileId: string; subject: string; questionText: string;
@@ -138,6 +138,7 @@ export async function uploadImage(file: File): Promise<string> {
 export interface AskParams {
   profileId: string; conversationId?: string; question: string;
   imageUrl?: string; model: string; deepThink: boolean; aiKey?: string;
+  webSearch?: boolean; // 联网搜索开关：只在智谱线路生效，其他线路后端自动忽略
 }
 
 export async function ask(p: AskParams): Promise<AskResult> {
@@ -153,6 +154,7 @@ export async function ask(p: AskParams): Promise<AskResult> {
         thinkSeconds: p.deepThink ? 2 : 0,
         conversationId: p.conversationId || 'demo',
         model: 'demo',
+        webSearched: false,
       }
     }
     throw e

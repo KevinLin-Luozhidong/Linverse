@@ -177,6 +177,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const sendConvRef = useRef<string | null>(null) // 发送请求时的会话ID，防止切会话后消息串台
   const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
+  // 联网搜索开关：默认关，用户手动打开；只在智谱线路可用（isZhipu）
+  const [webSearch, setWebSearch] = useState(() => localStorage.getItem('linverse.webSearch') === '1')
+  const [isZhipu, setIsZhipu] = useState(false)
+  const webSearchAvailable = model === 'custom' && isZhipu
+  const [lastWebSearched, setLastWebSearched] = useState(false) // 最近一次回答是否走了联网搜索
   // 自定义模型的真实名字（比如 glm-4v-flash），显示在模型选择器上，替代干巴巴的"自定义"
   const [customModelName, setCustomModelName] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
@@ -214,6 +219,15 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       if (s.aiModel) setCustomModelName(s.aiModel)
     }).catch(() => {})
   }, [profileId])
+
+  // 联网搜索只支持智谱：custom 且 endpoint 含 bigmodel.cn 时开关才可用
+  // （设置页改了地址后切回来会自动重查，不用刷新页面）
+  useEffect(() => {
+    if (model !== 'custom' || !profileId) { setIsZhipu(false); return }
+    getSettings(profileId).then((s) => {
+      setIsZhipu(!!s.aiEndpoint && s.aiEndpoint.includes('bigmodel.cn'))
+    }).catch(() => setIsZhipu(false))
+  }, [model, profileId])
 
   // 拉会话列表
   const reloadConvs = () => {
@@ -327,11 +341,13 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         model,
         deepThink,
         aiKey: getAiKey() || undefined, // Key 只从本地读，随请求带给后端
+        webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
       })
       // 只有还在同一个会话里，才把回答追加到当前消息列表（防止切会话后串台）
       if (sendConvRef.current === convId) {
         setConvId(r.conversationId)
         setThinkSec(r.thinkSeconds || 0)
+        setLastWebSearched(!!r.webSearched)
         setMsgs((v) => {
           const next: ChatMsg[] = [...v, {
             role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
@@ -401,6 +417,15 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           onClick={() => { const v = !deepThink; setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }}
           aria-label="深度思考开关" aria-pressed={deepThink}>
           <I n="sparkle" size={14} />深度思考
+        </button>
+        {/* 联网搜索：手动开关，默认关；非智谱线路置灰，点按提示原因 */}
+        <button className={'think-pill' + (webSearch && webSearchAvailable ? ' on' : '') + (!webSearchAvailable ? ' disabled' : '')}
+          onClick={() => {
+            if (!webSearchAvailable) { setToast('联网搜索仅支持智谱线路'); return }
+            const v = !webSearch; setWebSearch(v); localStorage.setItem('linverse.webSearch', v ? '1' : '0')
+          }}
+          aria-label="联网搜索开关" aria-pressed={webSearch && webSearchAvailable}>
+          <I n="search" size={14} />联网搜索
         </button>
         <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
       </div>
@@ -481,7 +506,10 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 text={m.content}
                 question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
                 profileId={profileId}
-                thinkText={i === lastAiIdx && deepThink && thinkSec > 0 && !typing ? `已深度思考 · ${thinkSec} 秒` : ''}
+                thinkText={i === lastAiIdx && !typing ? [
+                  lastWebSearched ? '已联网搜索' : '',
+                  deepThink && thinkSec > 0 ? `已深度思考 · ${thinkSec} 秒` : '',
+                ].filter(Boolean).join(' · ') : ''}
                 typing={false}
                 onSkip={() => {}}
                 onToast={setToast}
