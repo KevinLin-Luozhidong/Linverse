@@ -82,7 +82,10 @@ console.warn('[rag] 问答库检索失败：', e.message);
 }
 const uniq = rrfFuse(vecRows, kwRows).slice(0, topK);
 if (!uniq.length && !faq) return { context: '', refs: [], faq: null };
-const fmtPage = (r) => r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
+const fmtPage = (r) => {
+if (r.page_start <= 0) return '前言'; // 前言/导引块（PDF 前 7 页，无书页码）
+return r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
+};
 // 每块正文前都带上真实出处标签，让 AI 引用时直接照抄真实书名和页码，不许自己编
 const context = uniq
 .map((r, i) => {
