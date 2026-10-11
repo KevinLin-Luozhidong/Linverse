@@ -111,7 +111,7 @@ router.post('/ask', ah(async (req, res) => {
         kbRefs = refs;
         // 标准问答命中：人工校准过的答案放最前面，优先级最高
         const faqBlock = faq
-          ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过，请优先采用它的答案作答：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
+          ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过，请优先采用它的答案作答，数学符号和公式必须原文照抄、一字不许改写（√、≤、∈、∪ 等不许"翻译"成英文单词，不许改成 LaTeX）：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
           : '';
         finalQuestion =
           faqBlock +
