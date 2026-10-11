@@ -501,6 +501,7 @@ module.exports = {
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
   kbCount, kbClear, kbInsertBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
+  kbFaqSearch, kbFaqInsertBatch,
 };
 
 // ---------- RAG 知识库 ----------
@@ -573,6 +574,43 @@ async function kbSearch(embedding, topK = 5) {
     [vec, topK]
   );
   return r.rows;
+}
+
+// 高频问答检索：把问题转成向量，在 kb_faq 里找最像的一道标准问答，
+// 返回余弦距离最小的一条（调用方按阈值决定是否采用）。
+async function kbFaqSearch(embedding) {
+  const vec = '[' + embedding.join(',') + ']';
+  const r = await query(
+    `SELECT book, chapter, question, answer, page_start, page_end,
+            (embedding <=> $1::vector) AS distance
+     FROM kb_faq
+     ORDER BY distance ASC
+     LIMIT 1`,
+    [vec]
+  );
+  return r.rows;
+}
+
+// 高频问答入库：items = [{book, chapter, question, answer, page_start, page_end, embedding:[2048]}]
+async function kbFaqInsertBatch(items) {
+  if (!items.length) return 0;
+  const vals = [];
+  const params = [];
+  items.forEach((c, i) => {
+    const b = i * 7;
+    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector)`);
+    params.push(
+      c.book || '', c.chapter || '', c.question || '', c.answer || '',
+      c.page_start || 0, c.page_end || 0,
+      '[' + (c.embedding || []).join(',') + ']'
+    );
+  });
+  const r = await query(
+    `INSERT INTO kb_faq (book, chapter, question, answer, page_start, page_end, embedding)
+     VALUES ${vals.join(',')}`,
+    params
+  );
+  return r.rowCount;
 }
 
 // 关键词检索：和向量检索互补。向量懂同义（如"定义"≈"含义"），关键词保精确

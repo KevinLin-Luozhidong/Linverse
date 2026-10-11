@@ -50,13 +50,16 @@ add(vecRows); add(kwRows);
 return [...map.values()].sort((a, b) => b.score - a.score).map((e) => e.row);
 }
 
-// 给 ai.js 用的内部检索：返回拼好的上下文 + 引用信息（书名/章节/页码）
+// 给 ai.js 用的内部检索：返回拼好的上下文 + 引用信息（书名/章节/页码）+ 标准问答命中
 // 混合检索：向量（懂同义）+ 关键词（保精确术语）RRF 融合；
+// 高频问答优先：问题向量与某道标准问答足够像（余弦距离 < 0.3）就直接采用标准答案；
 // 任一失败都不炸，另一路照常工作，全失败才返回空（上层降级为普通问答）。
+const FAQ_DISTANCE_THRESHOLD = 0.3;
 async function searchKbContext(question, topK = 5) {
+let vec = null;
 let vecRows = [];
 try {
-const vec = await embedQuery(question);
+vec = await embedQuery(question);
 vecRows = await dao.kbSearch(vec, topK + 4);
 } catch (e) {
 console.warn('[rag] 向量检索失败，降级为纯关键词检索：', e.message);
@@ -67,8 +70,18 @@ kwRows = await dao.kbKeywordSearch(question, topK + 4);
 } catch (e) {
 console.warn('[rag] 关键词检索失败：', e.message);
 }
+// 标准问答匹配：复用问题向量，不额外花钱再调一次 embedding
+let faq = null;
+if (vec) {
+try {
+const frows = await dao.kbFaqSearch(vec);
+if (frows.length && frows[0].distance < FAQ_DISTANCE_THRESHOLD) faq = frows[0];
+} catch (e) {
+console.warn('[rag] 问答库检索失败：', e.message);
+}
+}
 const uniq = rrfFuse(vecRows, kwRows).slice(0, topK);
-if (!uniq.length) return { context: '', refs: []};
+if (!uniq.length && !faq) return { context: '', refs: [], faq: null };
 const fmtPage = (r) => r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
 // 每块正文前都带上真实出处标签，让 AI 引用时直接照抄真实书名和页码，不许自己编
 const context = uniq
@@ -84,7 +97,7 @@ section: r.section,
 page_start: r.page_start,
 page_end: r.page_end,
 }));
-return { context, refs};
+return { context, refs, faq };
 }
 
 router.get('/status', ah(async (req, res) => {
@@ -127,6 +140,23 @@ return res.status(400).json({ error: '某块缺少 text，或 embedding 维度�
 }
 const n = await dao.kbInsertBatch(chunks);
 res.json({ inserted: n, total: await dao.kbCount()});
+}));
+
+// 高频问答入库：POST /api/kb/faq/ingest body: { items: [{book, chapter, question, answer, page_start, page_end, embedding}] }
+// 问答是人工校准的，一次只加几条；去重靠人工，接口只做追加。
+router.post('/faq/ingest', ah(async (req, res) => {
+const { items } = req.body;
+if (need(res, Array.isArray(items) && items.length, 'items 不能为空')) return;
+if (items.length > 50) {
+return res.status(400).json({ error: '单次最多 50 条，请分批入库'});
+}
+for (const c of items) {
+if (!c.question || !c.answer ||!Array.isArray(c.embedding) || c.embedding.length!== EMBED_DIM) {
+return res.status(400).json({ error: '某条缺少 question/answer，或 embedding 维度不是 2048'});
+}
+}
+const n = await dao.kbFaqInsertBatch(items);
+res.json({ inserted: n });
 }));
 
 router.post('/search', ah(async (req, res) => {

@@ -105,11 +105,16 @@ router.post('/ask', ah(async (req, res) => {
   if (useKb) {
     try {
       const { searchKbContext } = require('./kb');
-      const { context, refs } = await searchKbContext(question.trim(), 5);
-      if (context) {
+      const { context, refs, faq } = await searchKbContext(question.trim(), 5);
+      if (faq || context) {
         kbUsed = true;
         kbRefs = refs;
+        // 标准问答命中：人工校准过的答案放最前面，优先级最高
+        const faqBlock = faq
+          ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过，请优先采用它的答案作答：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
+          : '';
         finalQuestion =
+          faqBlock +
           `以下是教材中的相关内容（已按相关度排序，仅供参考），每段开头的【教材来源N】就是它的真实出处（书名和页码都是真的，直接照抄）：\n\n${context}\n\n---\n` +
           `用户问题：${question.trim()}\n\n` +
           `要求：优先根据以上教材内容回答；如果教材内容不足以回答，就用你自己的知识补足，但要说明哪些部分超出了教材范围；` +

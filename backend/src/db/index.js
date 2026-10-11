@@ -164,6 +164,20 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 高频问答库：人工校准的标准问答（一问一答，带页码）。
+-- 用户提问时先向量匹配这里：高置信度命中则优先采用标准答案，没命中再走普通 RAG。
+CREATE TABLE IF NOT EXISTS kb_faq (
+  id SERIAL PRIMARY KEY,
+  book TEXT NOT NULL DEFAULT '',
+  chapter TEXT NOT NULL DEFAULT '',
+  question TEXT NOT NULL DEFAULT '',
+  answer TEXT NOT NULL DEFAULT '',
+  page_start INTEGER NOT NULL DEFAULT 0,
+  page_end INTEGER NOT NULL DEFAULT 0,
+  embedding vector(2048),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- RLS（行级安全）：Supabase 公开 API 门默认敞开，没开 RLS 的表谁都能读写删。
 -- 后端走 Postgres 直连（postgres 角色不受 RLS 限制），所以只开 RLS、不建策略：
 -- 公开 API 被锁死，后端一切照常。2026-10-10 补：修 Supabase 安全告警 rls_disabled_in_public
@@ -178,6 +192,7 @@ ALTER TABLE public.checkins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;
 `;
 
 // ---------- 对外接口 ----------
