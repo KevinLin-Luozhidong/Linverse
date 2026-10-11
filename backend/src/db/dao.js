@@ -500,7 +500,7 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
-  kbCount, kbClear, kbInsertBatch, kbSearch,
+  kbCount, kbClear, kbInsertBatch, kbSearch, kbBookStats, kbDeleteBook,
 };
 
 // ---------- RAG 知识库 ----------
@@ -510,6 +510,27 @@ module.exports = {
 async function kbCount() {
   const r = await query('SELECT COUNT(*)::int AS c FROM kb_chunks');
   return r.rows[0].c;
+}
+
+// 按书统计：每本书的块数（文字/图片分开）、入库时间。知识库管理页用。
+async function kbBookStats() {
+  const r = await query(
+    `SELECT book,
+            COUNT(*)::int AS chunks,
+            SUM(CASE WHEN text LIKE '【教材插图】%' THEN 1 ELSE 0 END)::int AS fig_chunks,
+            MIN(created_at) AS first_ingest,
+            MAX(created_at) AS last_ingest
+     FROM kb_chunks
+     GROUP BY book
+     ORDER BY MIN(created_at) ASC`
+  );
+  return r.rows;
+}
+
+// 按书名删除整本书的知识块（知识库管理页的删除按钮用，前端必须二次确认）
+async function kbDeleteBook(book) {
+  const r = await query('DELETE FROM kb_chunks WHERE book = $1', [book]);
+  return r.rowCount;
 }
 
 async function kbClear() {

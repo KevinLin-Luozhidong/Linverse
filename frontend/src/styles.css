@@ -485,6 +485,23 @@ body {
 .sq-icon.blue { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
 .sq-icon.green { background: linear-gradient(135deg, #22c55e, #4ade80); }
 .sq-icon.orange { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+.sq-icon.purple { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+/* 知识库管理页 */
+.kb-page { padding: 4px 2px 24px; }
+.kb-head h3 { margin: 8px 0 4px; font-size: calc(20px * var(--fss)); font-weight: 800; }
+.kb-head p { margin: 0 0 14px; color: var(--ink2); font-size: calc(13px * var(--fss)); }
+.kb-card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px;
+  margin-bottom: 12px;
+}
+.kb-card .sq-icon { flex: none; }
+.kb-info { flex: 1; min-width: 0; }
+.kb-info h4 { margin: 0 0 4px; font-size: calc(15px * var(--fss)); font-weight: 700; }
+.kb-info p { margin: 2px 0; font-size: calc(13px * var(--fss)); color: var(--ink2); }
+.kb-info p.dim { font-size: calc(12px * var(--fss)); opacity: .75; }
+.kb-card .btn { flex: none; padding: 8px 12px; font-size: calc(13px * var(--fss)); }
+.kb-tip { margin-top: 16px; text-align: center; color: var(--ink2); font-size: calc(12px * var(--fss)); }
 .tool-slide h3 { margin: 24px 0 8px; font-size: calc(22px * var(--fss)); font-weight: 800; }
 .tool-slide p { margin: 0; font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.7; }
 .tool-slide .go { margin-top: 18px; font-size: calc(15px * var(--fss)); font-weight: 700; color: var(--blue-deep); display: flex; align-items: center; gap: 4px; }

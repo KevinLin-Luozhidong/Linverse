@@ -74,6 +74,28 @@ router.get('/status', ah(async (req, res) => {
 res.json({ count: await dao.kbCount(), model: EMBED_MODEL, dim: EMBED_DIM});
 }));
 
+// 知识库管理页：按书统计（书名/总块数/图片块数/首次入库/最近入库）
+router.get('/books', ah(async (req, res) => {
+const books = await dao.kbBookStats();
+res.json({ books: books.map((b) => ({
+book: b.book,
+chunks: b.chunks,
+fig_chunks: b.fig_chunks,
+text_chunks: b.chunks - b.fig_chunks,
+first_ingest: b.first_ingest,
+last_ingest: b.last_ingest,
+}))});
+}));
+
+// 知识库管理页：删除整本书。危险操作，前端必须二次确认。
+// book 走 query（给前端 del helper 用），也兼容 body。
+router.delete('/books', ah(async (req, res) => {
+const book = (req.query.book || (req.body || {}).book || '').trim();
+if (need(res, book, 'book 必填')) return;
+const n = await dao.kbDeleteBook(book);
+res.json({ deleted: n, book});
+}));
+
 router.post('/ingest', ah(async (req, res) => {
 const { chunks, clear} = req.body;
 if (clear) await dao.kbClear();

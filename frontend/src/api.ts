@@ -342,3 +342,12 @@ export const setDangerPassword = (password: string, oldPassword?: string) =>
 export const signupStatus = () => get<{ allow: boolean }>('/site/signup-status')
 export const setSignupAllow = (allow: boolean, dangerPassword: string) =>
   post<{ ok: boolean; allow: boolean }>('/site/signup-allow', { allow, dangerPassword })
+
+// ---- 知识库管理 ----
+export interface KbBook {
+  book: string; chunks: number; fig_chunks: number; text_chunks: number;
+  first_ingest: string | null; last_ingest: string | null;
+}
+export const kbBooks = () => get<{ books: KbBook[] }>('/kb/books')
+export const kbDeleteBook = (book: string) =>
+  del<{ deleted: number; book: string }>(`/kb/books?book=${encodeURIComponent(book)}`)

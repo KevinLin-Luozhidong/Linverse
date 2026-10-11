@@ -2,18 +2,20 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Mistakes from './Mistakes'
 import Notes from './Notes'
 import Dictionary from './Dictionary'
+import Kb from './Kb'
 import { I, Toast, DailyQuote, useToast} from '../components'
 import { getStats, type Stats } from '@api'
 
 // 学习工具页：三张大卡片横向滑动选择 + 底部指示点
 // 选中一张进入工作区：被点的卡片缩小飞入左上角变成迷你切换器（FLIP 动画）
 // 三个工作区常驻挂载（display 切换），切换时保留各自状态
-type Tool = 'mistakes' | 'notes' | 'dict'
+type Tool = 'mistakes' | 'notes' | 'dict' | 'kb'
 
-const TOOLS: { id: Tool; name: string; desc: string; icon: 'notebook' | 'edit' | 'dict'; cls: 'blue' | 'green' | 'orange' }[] = [
+const TOOLS: { id: Tool; name: string; desc: string; icon: 'notebook' | 'edit' | 'dict' | 'book'; cls: 'blue' | 'green' | 'orange' | 'purple' }[] = [
   { id: 'mistakes', name: '错题本', desc: '拍照收录错题，错因和正确答案可留白，按科目整理', icon: 'notebook', cls: 'blue' },
   { id: 'notes', name: '笔记本', desc: '课堂重点随手记，支持插图、标签和置顶', icon: 'edit', cls: 'green' },
   { id: 'dict', name: '词典', desc: '查词背词一条龙，生词本按记忆曲线复习', icon: 'dict', cls: 'orange' },
+  { id: 'kb', name: '知识库', desc: '查课本的数据来源，哪几本书、多少知识块', icon: 'book', cls: 'purple' },
 ]
 
 export default function Tools({ profileId }: { profileId: string | null }) {
@@ -21,7 +23,7 @@ export default function Tools({ profileId }: { profileId: string | null }) {
   const qp = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null
   const initTool = (qp?.get('tool') as Tool) || null
   const [active, setActive] = useState<Tool | null>(
-    initTool === 'mistakes' || initTool === 'notes' || initTool === 'dict' ? initTool : null)
+    initTool === 'mistakes' || initTool === 'notes' || initTool === 'dict' || initTool === 'kb' ? initTool : null)
   const [dotIdx, setDotIdx] = useState(0) // 当前居中的卡片
   const [stats, setStats] = useState<Stats | null>(null)
   const [toastMsg, toastKey, setToast] = useToast()
@@ -90,7 +92,8 @@ export default function Tools({ profileId }: { profileId: string | null }) {
     if (!stats) return '点开开始'
     if (id === 'mistakes') return `${stats.mistakeCount} 道错题`
     if (id === 'notes') return `${stats.noteCount} 篇笔记`
-    return `${stats.wordCount} 个生词`
+    if (id === 'dict') return `${stats.wordCount} 个生词`
+    return '点开查看'
   }
 
   // 未选中：卡片流首页
@@ -154,6 +157,10 @@ export default function Tools({ profileId }: { profileId: string | null }) {
         <div ref={(el) => { panelRefs.current['dict'] = el }}
           style={{ display: active === 'dict' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
           <Dictionary profileId={profileId} />
+        </div>
+        <div ref={(el) => { panelRefs.current['kb'] = el }}
+          style={{ display: active === 'kb' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
+          <Kb />
         </div>
       </div>
       {/* 每日一句：钉在学习工具底部，不随三个板块切换而消失，点一下换一句 */}
