@@ -37,17 +37,30 @@ return data.data[0].embedding;
 // 给 ai.js 用的内部检索：返回拼好的上下文 + 引用信息（书名/章节/页码）
 async function searchKbContext(question, topK = 5) {
 const vec = await embedQuery(question);
-const rows = await dao.kbSearch(vec, topK);
+// 多取几个候选，再按"同一页同类型只留最相关的一块"去重：
+// 避免 top5 被同一页的重复块占满，让引用覆盖更多不同页面；
+// 同一页的文字块和插图块是不同信息，可以共存。
+const rows = await dao.kbSearch(vec, topK + 4);
 if (!rows.length) return { context: '', refs: []};
+const seen = new Set();
+const uniq = [];
+for (const r of rows) {
+const kind = (r.text || '').startsWith('【教材插图】') ? 'fig' : 'txt';
+const k = r.book + '|' + r.page_start + '-' + r.page_end + '|' + kind;
+if (seen.has(k)) continue;
+seen.add(k);
+uniq.push(r);
+if (uniq.length >= topK) break;
+}
 const fmtPage = (r) => r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
 // 每块正文前都带上真实出处标签，让 AI 引用时直接照抄真实书名和页码，不许自己编
-const context = rows
+const context = uniq
 .map((r, i) => {
 const where = [r.book, r.chapter, r.section].filter(Boolean).join('｜');
 return `【教材来源${i + 1}】《${r.book}》${where}，${fmtPage(r)}：\n${r.text}`;
 })
 .join('\n\n');
-const refs = rows.map((r) => ({
+const refs = uniq.map((r) => ({
 book: r.book,
 chapter: r.chapter,
 section: r.section,
