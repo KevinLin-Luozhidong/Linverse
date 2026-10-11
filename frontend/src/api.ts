@@ -64,7 +64,7 @@ export interface ConversationMeta { id: string; title: string; createdAt: string
 export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
-export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string; webSearched?: boolean }
+export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[] }
 
 export interface Mistake {
   id: string; profileId: string; subject: string; questionText: string;
@@ -139,7 +139,10 @@ export interface AskParams {
   profileId: string; conversationId?: string; question: string;
   imageUrl?: string; model: string; deepThink: boolean; aiKey?: string;
   webSearch?: boolean; // 联网搜索开关：只在智谱线路生效，其他线路后端自动忽略
+  useKb?: boolean; // 查课本开关：RAG 检索知识库，把教材内容喂给 AI
 }
+
+export interface KbRef { book: string; chapter: string; section: string; page_start: number; page_end: number }
 
 export async function ask(p: AskParams): Promise<AskResult> {
   try {

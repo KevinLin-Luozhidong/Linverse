@@ -84,7 +84,7 @@ function resolveImageForVision(imageUrl) {
 // POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey? }
 // 返回: { answer, thinkSeconds, conversationId, model }
 router.post('/ask', ah(async (req, res) => {
-  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch } = req.body;
+  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb } = req.body;
   if (need(res, profileId, 'profileId 必填')) return;
   if (need(res, question && question.trim(), 'question 不能为空')) return;
 
@@ -97,11 +97,34 @@ router.post('/ask', ah(async (req, res) => {
     modelName = s.aiModel;
   }
 
+  // RAG 查课本：开了开关就先做向量检索，把最相关的教材块拼进问题里。
+  // 知识库是空的 / 没配 ZHIPU_API_KEY / 检索失败 → 静默降级为普通问答，不炸。
+  let kbRefs = [];
+  let kbUsed = false;
+  let finalQuestion = question.trim();
+  if (useKb) {
+    try {
+      const { searchKbContext } = require('./kb');
+      const { context, refs } = await searchKbContext(question.trim(), 5);
+      if (context) {
+        kbUsed = true;
+        kbRefs = refs;
+        finalQuestion =
+          `以下是教材中的相关内容（已按相关度排序，仅供参考）：\n\n${context}\n\n---\n` +
+          `用户问题：${question.trim()}\n\n` +
+          `要求：优先根据以上教材内容回答；如果教材内容不足以回答，就用你自己的知识补足，但要说明哪些部分超出了教材范围；` +
+          `回答末尾用"（参考：《书名》第X页）"的格式逐条标注引用来源。`;
+      }
+    } catch (e) {
+      console.warn('[rag] 检索失败，降级为普通问答：', e.message);
+    }
+  }
+
   // 先调 AI，成功后再建会话存档（失败不留空会话）
   // webSearch：前端"联网搜索"开关；只在智谱线路生效，其他线路后端自动忽略
   const { answer, thinkSeconds, webSearched } = await ask({
     model: model || 'demo',
-    question: question.trim(),
+    question: finalQuestion,
     imageUrl: resolveImageForVision(imageUrl),
     deepThink: !!deepThink,
     aiKey,
@@ -123,7 +146,7 @@ router.post('/ask', ah(async (req, res) => {
   await dao.addMessage(profileId, cid, 'user', question.trim());
   await dao.addMessage(profileId, cid, 'assistant', answer);
 
-  res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched });
+  res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched, kbUsed, kbRefs });
 }));
 
 // ---------- OCR：识别图片中的文字 ----------

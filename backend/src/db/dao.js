@@ -500,4 +500,56 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
+  kbCount, kbClear, kbInsertBatch, kbSearch,
 };
+
+// ---------- RAG 知识库 ----------
+// 表 kb_chunks：book/chapter/section/page_start/page_end/text/embedding(vector 2048)
+// 注意：embedding 用 pgvector 存，SQL 里拼成 '[0.1,0.2,...]' 字面量 + ::vector 强转。
+
+async function kbCount() {
+  const r = await query('SELECT COUNT(*)::int AS c FROM kb_chunks');
+  return r.rows[0].c;
+}
+
+async function kbClear() {
+  await query('DELETE FROM kb_chunks');
+}
+
+// 批量入库：chunks = [{book, chapter, section, page_start, page_end, text, embedding:[2048]}]
+// 一次拼多行 VALUES，单次建议 ≤100 块（Vercel 请求体 4.5MB 上限）
+async function kbInsertBatch(chunks) {
+  if (!chunks.length) return 0;
+  const vals = [];
+  const params = [];
+  chunks.forEach((c, i) => {
+    const b = i * 7;
+    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector)`);
+    params.push(
+      c.book || '', c.chapter || '', c.section || '',
+      c.page_start || 0, c.page_end || 0, c.text || '',
+      '[' + (c.embedding || []).join(',') + ']'
+    );
+  });
+  const r = await query(
+    `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding)
+     VALUES ${vals.join(',')}`,
+    params
+  );
+  return r.rowCount;
+}
+
+// 向量检索：embedding 是 2048 维数组，按余弦距离（<=>）取最相关的 topK 块。
+// 数据量小（几百块）直接全表扫，毫秒级，不建索引。
+async function kbSearch(embedding, topK = 5) {
+  const vec = '[' + embedding.join(',') + ']';
+  const r = await query(
+    `SELECT book, chapter, section, page_start, page_end, text,
+            (embedding <=> $1::vector) AS distance
+     FROM kb_chunks
+     ORDER BY distance ASC
+     LIMIT $2`,
+    [vec, topK]
+  );
+  return r.rows;
+}

@@ -182,6 +182,9 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [isZhipu, setIsZhipu] = useState(false)
   const webSearchAvailable = model === 'custom' && isZhipu
   const [lastWebSearched, setLastWebSearched] = useState(false) // 最近一次回答是否走了联网搜索
+  // 查课本开关：RAG 检索知识库，默认开；后端知识库为空时自动降级，不影响问答
+  const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
+  const [lastKbUsed, setLastKbUsed] = useState(false) // 最近一次回答是否查了课本
   // 自定义模型的真实名字（比如 glm-4v-flash），显示在模型选择器上，替代干巴巴的"自定义"
   const [customModelName, setCustomModelName] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
@@ -342,12 +345,14 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         deepThink,
         aiKey: getAiKey() || undefined, // Key 只从本地读，随请求带给后端
         webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
+        useKb, // 查课本：RAG 检索知识库
       })
       // 只有还在同一个会话里，才把回答追加到当前消息列表（防止切会话后串台）
       if (sendConvRef.current === convId) {
         setConvId(r.conversationId)
         setThinkSec(r.thinkSeconds || 0)
         setLastWebSearched(!!r.webSearched)
+        setLastKbUsed(!!r.kbUsed)
         setMsgs((v) => {
           const next: ChatMsg[] = [...v, {
             role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
@@ -426,6 +431,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           }}
           aria-label="联网搜索开关" aria-pressed={webSearch && webSearchAvailable}>
           <I n="search" size={14} />联网搜索
+        </button>
+        {/* 查课本：RAG 检索知识库，默认开；知识库为空时后端自动降级 */}
+        <button className={'think-pill' + (useKb ? ' on' : '')}
+          onClick={() => { const v = !useKb; setUseKb(v); localStorage.setItem('linverse.useKb', v ? '1' : '0') }}
+          aria-label="查课本开关" aria-pressed={useKb}>
+          <I n="book" size={14} />查课本
         </button>
         <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
       </div>
@@ -508,6 +519,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 profileId={profileId}
                 thinkText={i === lastAiIdx && !typing ? [
                   lastWebSearched ? '已联网搜索' : '',
+                  lastKbUsed ? '已查课本' : '',
                   deepThink && thinkSec > 0 ? `已深度思考 · ${thinkSec} 秒` : '',
                 ].filter(Boolean).join(' · ') : ''}
                 typing={false}

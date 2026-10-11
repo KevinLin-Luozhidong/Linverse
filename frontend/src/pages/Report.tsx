@@ -4,6 +4,30 @@ import { getStats, getBadges, type Stats, type Badge } from '@api'
 
 // 学习报告：学习数据一览（统计展示 + 徽章进度），不是空壳
 
+// 个性化学习建议：按优先级从高到低取最多 3 条（初稿由 DeepSeek 生成，已人工审查）
+export function getSuggestions(s: Stats): string[] {
+  const result: string[] = []
+  if (s.streakDays === 0) {
+    result.push('今天还没打卡，去词典页点一次每日打卡，开始攒连续天数')
+  }
+  if (s.mistakeCount >= 10) {
+    result.push(`攒了 ${s.mistakeCount} 道错题，花 10 分钟过一遍，比刷 50 道新题管用`)
+  }
+  if (s.wordCount >= 20) {
+    result.push(`生词 ${s.wordCount} 个，词典页按记忆曲线复习一轮`)
+  }
+  if (s.noteCount >= 5) {
+    result.push(`笔记 ${s.noteCount} 篇，周末花半小时整理成知识卡`)
+  }
+  if (s.streakDays >= 7) {
+    result.push(`已经连续打卡 ${s.streakDays} 天，继续保持，7 天解锁七日连击徽章`)
+  }
+  if (result.length === 0) {
+    return ['数据还不够多，先去用一用，报告会越来越准']
+  }
+  return result.slice(0, 3)
+}
+
 export default function Report({ profileId, onBack }: {
   profileId: string | null; onBack: () => void
 }) {
@@ -65,9 +89,9 @@ export default function Report({ profileId, onBack }: {
               <span>学习建议</span>
             </div>
             <div className="safe-note" style={{ marginTop: 0 }}>
-              {stats.streakDays === 0
-                ? '今天还没打卡，去词典页点一次每日打卡，开始攒连续天数'
-                : `已经连续打卡 ${stats.streakDays} 天，继续保持，7 天解锁七日连击徽章`}
+              {getSuggestions(stats).map((sug, i) => (
+                <div key={i} style={i > 0 ? { marginTop: 8 } : undefined}>{sug}</div>
+              ))}
             </div>
           </>
         )}

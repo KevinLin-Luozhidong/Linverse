@@ -147,6 +147,23 @@ CREATE TABLE IF NOT EXISTS site_config (
   value TEXT NOT NULL DEFAULT ''
 );
 
+-- pgvector 扩展：RAG 知识库向量检索用（Supabase 原生支持）
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- RAG 知识库块：教材转写文本 + 2048 维向量（智谱 embedding-3）。
+-- 一本书切成几百块存这里；问答时把问题也转成向量，按余弦相似度取最相关的几块喂给 AI。
+CREATE TABLE IF NOT EXISTS kb_chunks (
+  id SERIAL PRIMARY KEY,
+  book TEXT NOT NULL DEFAULT '',
+  chapter TEXT NOT NULL DEFAULT '',
+  section TEXT NOT NULL DEFAULT '',
+  page_start INTEGER NOT NULL DEFAULT 0,
+  page_end INTEGER NOT NULL DEFAULT 0,
+  text TEXT NOT NULL DEFAULT '',
+  embedding vector(2048),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- RLS（行级安全）：Supabase 公开 API 门默认敞开，没开 RLS 的表谁都能读写删。
 -- 后端走 Postgres 直连（postgres 角色不受 RLS 限制），所以只开 RLS、不建策略：
 -- 公开 API 被锁死，后端一切照常。2026-10-10 补：修 Supabase 安全告警 rls_disabled_in_public
@@ -160,6 +177,7 @@ ALTER TABLE public.word_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.checkins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 `;
 
 // ---------- 对外接口 ----------
