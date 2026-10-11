@@ -500,7 +500,7 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
-  kbCount, kbClear, kbInsertBatch, kbSearch, kbBookStats, kbDeleteBook,
+  kbCount, kbClear, kbInsertBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
 };
 
 // ---------- RAG 知识库 ----------
@@ -571,6 +571,31 @@ async function kbSearch(embedding, topK = 5) {
      ORDER BY distance ASC
      LIMIT $2`,
     [vec, topK]
+  );
+  return r.rows;
+}
+
+// 关键词检索：和向量检索互补。向量懂同义（如"定义"≈"含义"），关键词保精确
+// （如数学符号 card(A)、"韦恩图"这种生僻术语向量容易搜偏）。
+// 中文不分词，直接拆 2-gram 做 ILIKE 模糊匹配，按命中不同 gram 数排序。
+async function kbKeywordSearch(question, limit = 9) {
+  const t = String(question || '').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+  const grams = [];
+  const seen = new Set();
+  for (let i = 0; i + 1 < t.length && grams.length < 20; i++) {
+    const g = t.slice(i, i + 2);
+    if (!seen.has(g)) { seen.add(g); grams.push(g); }
+  }
+  if (!grams.length) return [];
+  const n = grams.length;
+  const where = grams.map((_, i) => `text ILIKE $${i + 1}`).join(' OR ');
+  const score = grams.map((_, i) => `(CASE WHEN text ILIKE $${n + i + 1} THEN 1 ELSE 0 END)`).join(' + ');
+  const params = grams.map((g) => `%${g}%`);
+  const r = await query(
+    `SELECT book, chapter, section, page_start, page_end, text, (${score}) AS hits
+     FROM kb_chunks WHERE ${where}
+     ORDER BY hits DESC, id ASC LIMIT ${Math.min(limit, 20)}`,
+    params.concat(params)
   );
   return r.rows;
 }

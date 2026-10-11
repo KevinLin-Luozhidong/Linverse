@@ -34,24 +34,41 @@ const data = await res.json();
 return data.data[0].embedding;
 }
 
-// 给 ai.js 用的内部检索：返回拼好的上下文 + 引用信息（书名/章节/页码）
-async function searchKbContext(question, topK = 5) {
-const vec = await embedQuery(question);
-// 多取几个候选，再按"同一页同类型只留最相关的一块"去重：
-// 避免 top5 被同一页的重复块占满，让引用覆盖更多不同页面；
-// 同一页的文字块和插图块是不同信息，可以共存。
-const rows = await dao.kbSearch(vec, topK + 4);
-if (!rows.length) return { context: '', refs: []};
-const seen = new Set();
-const uniq = [];
-for (const r of rows) {
-const kind = (r.text || '').startsWith('【教材插图】') ? 'fig' : 'txt';
-const k = r.book + '|' + r.page_start + '-' + r.page_end + '|' + kind;
-if (seen.has(k)) continue;
-seen.add(k);
-uniq.push(r);
-if (uniq.length >= topK) break;
+// RRF 融合：把向量榜和关键词榜的名次换算成分数相加（score = Σ 1/(60+rank)），
+// 两边都靠前的块胜出。key 带"类型"，同一页的文字块和插图块可共存，天然去重。
+function rrfFuse(vecRows, kwRows, k = 60) {
+const keyOf = (r) => r.book + '|' + r.page_start + '-' + r.page_end + '|' +
+((r.text || '').startsWith('【教材插图】') ? 'fig' : 'txt');
+const map = new Map();
+const add = (rows) => rows.forEach((r, i) => {
+const key = keyOf(r);
+const e = map.get(key) || { row: r, score: 0 };
+e.score += 1 / (k + i + 1);
+map.set(key, e);
+});
+add(vecRows); add(kwRows);
+return [...map.values()].sort((a, b) => b.score - a.score).map((e) => e.row);
 }
+
+// 给 ai.js 用的内部检索：返回拼好的上下文 + 引用信息（书名/章节/页码）
+// 混合检索：向量（懂同义）+ 关键词（保精确术语）RRF 融合；
+// 任一失败都不炸，另一路照常工作，全失败才返回空（上层降级为普通问答）。
+async function searchKbContext(question, topK = 5) {
+let vecRows = [];
+try {
+const vec = await embedQuery(question);
+vecRows = await dao.kbSearch(vec, topK + 4);
+} catch (e) {
+console.warn('[rag] 向量检索失败，降级为纯关键词检索：', e.message);
+}
+let kwRows = [];
+try {
+kwRows = await dao.kbKeywordSearch(question, topK + 4);
+} catch (e) {
+console.warn('[rag] 关键词检索失败：', e.message);
+}
+const uniq = rrfFuse(vecRows, kwRows).slice(0, topK);
+if (!uniq.length) return { context: '', refs: []};
 const fmtPage = (r) => r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
 // 每块正文前都带上真实出处标签，让 AI 引用时直接照抄真实书名和页码，不许自己编
 const context = uniq
