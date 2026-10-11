@@ -39,11 +39,12 @@ async function searchKbContext(question, topK = 5) {
 const vec = await embedQuery(question);
 const rows = await dao.kbSearch(vec, topK);
 if (!rows.length) return { context: '', refs: []};
+const fmtPage = (r) => r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
+// 每块正文前都带上真实出处标签，让 AI 引用时直接照抄真实书名和页码，不许自己编
 const context = rows
 .map((r, i) => {
-const pg = r.page_start === r.page_end? `第${r.page_start}页`: `第${r.page_start}-${r.page_end}页`;
 const where = [r.book, r.chapter, r.section].filter(Boolean).join('｜');
-return `\n${r.text}`;
+return `【教材来源${i + 1}】《${r.book}》${where}，${fmtPage(r)}：\n${r.text}`;
 })
 .join('\n\n');
 const refs = rows.map((r) => ({
