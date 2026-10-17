@@ -401,6 +401,14 @@ export const setProfileToken = (t: string, id = getPid()) => {
     localStorage.removeItem(PROFILE_TOKEN)
   }
 }
+export const clearProfileAuth = () => {
+  const keys: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && (key === PROFILE_TOKEN || key.startsWith(`${PROFILE_TOKEN}.`) || key === PROFILE_INDEX)) keys.push(key)
+  }
+  keys.forEach((key) => localStorage.removeItem(key))
+}
 
 // ---- 全站访问密码 ----
 // token 就是密码哈希本身：验证通过后存本地，每次请求自动带上；改密码后旧 token 自动失效
