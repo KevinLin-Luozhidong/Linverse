@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   auth_token_hash TEXT UNIQUE
 );
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS auth_token_hash TEXT;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id SERIAL PRIMARY KEY,
