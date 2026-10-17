@@ -405,6 +405,11 @@ async function listWordHistory(profileId) {
   return r.rows;
 }
 
+async function clearWordHistory(profileId) {
+  const r = await query('DELETE FROM word_history WHERE "profileId" = $1', [profileId]);
+  return r.rowCount;
+}
+
 // ---------- 打卡（checkins） ----------
 
 async function checkin(profileId) {
@@ -496,7 +501,7 @@ module.exports = {
   listNotes, createNote, updateNote, deleteNote, countNotes,
   listVocabulary, createVocabulary, setVocabularyMastered, reviewVocabulary,
   listDueVocabulary, countWords,
-  recordWordHistory, listWordHistory,
+  recordWordHistory, listWordHistory, clearWordHistory,
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,

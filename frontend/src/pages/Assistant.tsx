@@ -85,6 +85,8 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   thinkText: string; typing: boolean; onSkip: () => void; onToast: (m: string) => void;
 }) {
   const [favTick, setFavTick] = useState(0)
+  const [mistakeSubject, setMistakeSubject] = useState('数学')
+  const SUBJECTS = ['数学', '物理', '化学', '英语', '生物', '历史', '地理', '政治']
   const fav = profileId ? isFav(profileId, question, text) : false
   void favTick
   // 兜底：把 AI 可能输出的 LaTeX 转成能直接看的 plain text（公共函数，OCR 也用它）
@@ -106,7 +108,7 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
     setSavingMistake(true)
     try {
       await createMistake({
-        profileId, subject: '数学',
+        profileId, subject: mistakeSubject,
         questionText: question || '（AI 问答）',
         questionImageUrl: '', answerText: text, answerImageUrl: '', reason: '', mastered: false,
       })
@@ -135,7 +137,14 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
       {!typing && (
         <div className="ans-actions">
           <button className="cap-btn" onClick={copy}><I n="copy" size={14} />复制</button>
-          <button className="cap-btn" onClick={saveToMistakes} disabled={savingMistake}><I n="notebook" size={14} />{savingMistake ? '存入中…' : '存入错题本'}</button>
+          <button className="cap-btn" onClick={saveToMistakes} disabled={savingMistake}
+            title={`科目：${mistakeSubject}`}>
+            <I n="notebook" size={14} />{savingMistake ? '存入中…' : '存入错题本'}
+          </button>
+          <select value={mistakeSubject} onChange={(e) => setMistakeSubject(e.target.value)}
+            style={{ fontSize: 12, border: '1px solid var(--bd)', borderRadius: 6, padding: '2px 4px', background: 'var(--bg)', color: 'var(--ink)' }}>
+            {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
           <button className={'cap-btn' + (fav ? ' liked' : '')} onClick={favToggle}>
             <I n="heart" size={14} />{fav ? '已收藏' : '收藏'}
           </button>
@@ -174,17 +183,15 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
-  const sendConvRef = useRef<string | null>(null) // 发送请求时的会话ID，防止切会话后消息串台
+  const sendReqIdRef = useRef<string>('') // 发送请求时的唯一ID，防止切会话后消息串台
   const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
   // 联网搜索开关：默认关，用户手动打开；只在智谱线路可用（isZhipu）
   const [webSearch, setWebSearch] = useState(() => localStorage.getItem('linverse.webSearch') === '1')
   const [isZhipu, setIsZhipu] = useState(false)
   const webSearchAvailable = model === 'custom' && isZhipu
-  const [lastWebSearched, setLastWebSearched] = useState(false) // 最近一次回答是否走了联网搜索
   // 查课本开关：RAG 检索知识库，默认开；后端知识库为空时自动降级，不影响问答
   const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
-  const [lastKbUsed, setLastKbUsed] = useState(false) // 最近一次回答是否查了课本
   // 自定义模型的真实名字（比如 glm-4v-flash），显示在模型选择器上，替代干巴巴的"自定义"
   const [customModelName, setCustomModelName] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
@@ -206,13 +213,13 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
   const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片，有值就弹裁剪器
   const [uploading, setUploading] = useState(false)
-  const [typing, setTyping] = useState(false) // 当前 AI 消息是否还在打字
-  // 正在打字的消息下标：避免新回答还没到时，上一条 AI 消息被误当成打字机重播
-  const [typingIdx, setTypingIdx] = useState(-1)
-  const [thinkSec, setThinkSec] = useState(0) // 深度思考耗时
+  // typingFor：正在打字的消息下标（-1 = 无），合并了 typing + typingIdx 两个状态，避免不同步
+  const [typingFor, setTypingFor] = useState(-1)
+  const typing = typingFor >= 0
   const [deletingId, setDeletingId] = useState('') // 二次确认删除的会话
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const activeConvRef = useRef<HTMLDivElement>(null)
 
   // 读设置里的默认模型 + 自定义模型名
   useEffect(() => {
@@ -251,9 +258,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       const c = await getConversation(id, profileId)
       setConvId(id)
       setMsgs(c.messages)
-      setTyping(false)
-      setTypingIdx(-1)
-      setThinkSec(0)
+      setTypingFor(-1)
       setDrawerOpen(false)
     } catch (e) {
       setToast(e instanceof Error ? e.message : '加载失败')
@@ -264,9 +269,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const newConv = () => {
     setConvId(null)
     setMsgs([])
-    setThinkSec(0)
-    setTyping(false)
-    setTypingIdx(-1)
+    setTypingFor(-1)
     setDrawerOpen(false)
   }
 
@@ -283,6 +286,13 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       setToast(e instanceof Error ? e.message : '删除失败')
     }
   }
+
+  // 抽屉打开时，滚动到已选中的会话
+  useEffect(() => {
+    if (drawerOpen && activeConvRef.current) {
+      activeConvRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [drawerOpen])
 
   // 聊天区自动滚到底
   useEffect(() => {
@@ -330,12 +340,15 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     setMsgs((v) => [...v, userMsg])
     setInput('')
     setSending(true)
-    setTyping(true)
-    sendConvRef.current = convId // 记住这次请求属于哪个会话
+    // typingFor 先设为一个临时占位，实际 index 在收到回答后再设
+    const reqId = crypto.randomUUID()
+    sendReqIdRef.current = reqId // 唯一请求ID，防止多次请求串台
     const savedImgUrl = userMsg.imageUrl // 失败时恢复图片用
     setImgUrl('')
     try {
       localStorage.setItem('linverse.model', model)
+      // 构造历史消息（不含刚追加的用户消息，最多取最近 8 条）
+      const historyMsgs = msgs.slice(-8).map((m) => ({ role: m.role, content: m.content }))
       const r = await ask({
         profileId,
         conversationId: convId || undefined,
@@ -346,37 +359,36 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         aiKey: getAiKey() || undefined, // Key 只从本地读，随请求带给后端
         webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
         useKb, // 查课本：RAG 检索知识库
+        historyMsgs,
       })
       // 只有还在同一个会话里，才把回答追加到当前消息列表（防止切会话后串台）
-      if (sendConvRef.current === convId) {
+      if (sendReqIdRef.current === reqId) {
         setConvId(r.conversationId)
-        setThinkSec(r.thinkSeconds || 0)
-        setLastWebSearched(!!r.webSearched)
-        setLastKbUsed(!!r.kbUsed)
         setMsgs((v) => {
           const next: ChatMsg[] = [...v, {
             role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
+            webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
+            thinkSeconds: r.thinkSeconds || 0,
           }]
-          setTypingIdx(next.length - 1)
+          setTypingFor(next.length - 1)
           return next
         })
       }
       reloadConvs()
     } catch (e) {
       // 出错时：如果还在同一会话，移除用户消息并恢复图片；已切走就不动
-      if (sendConvRef.current === convId) {
+      if (sendReqIdRef.current === reqId) {
         setMsgs((v) => v.slice(0, -1))
-        if (savedImgUrl) setImgUrl(savedImgUrl)
+        // 只在用户没有在等待期间主动清除图片时才恢复（避免违背用户意图）
+        setImgUrl((cur) => cur === '' && savedImgUrl ? savedImgUrl : cur)
       }
-      setTyping(false)
-      setTypingIdx(-1)
+      setTypingFor(-1)
       setToast(e instanceof Error ? e.message : '发送失败')
     } finally {
       setSending(false)
     }
   }
 
-  const lastAiIdx = msgs.map((m) => m.role).lastIndexOf('assistant')
   // 模型名显示：选了"自定义"且填了模型名，就显示真实名字（比如 glm-4v-flash），一眼知道接的是谁
   const modelLabel = model === 'custom' && customModelName
     ? customModelName
@@ -391,7 +403,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   return (
     <div className="chat-wrap">
       {/* 顶栏：汉堡 / 模型胶囊 / 状态胶囊 */}
-      <div className="chat-topbar">
+      <div className="chat-topbar" style={{ flexWrap: 'wrap', gap: 4 }}>
         <button className="icon-btn" onClick={() => setDrawerOpen(true)} aria-label="会话列表">
           <I n="menu" />
         </button>
@@ -425,8 +437,9 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         </button>
         {/* 联网搜索：手动开关，默认关；非智谱线路置灰，点按提示原因 */}
         <button className={'think-pill' + (webSearch && webSearchAvailable ? ' on' : '') + (!webSearchAvailable ? ' disabled' : '')}
+          disabled={!webSearchAvailable}
+          title={!webSearchAvailable ? '联网搜索仅支持智谱线路' : undefined}
           onClick={() => {
-            if (!webSearchAvailable) { setToast('联网搜索仅支持智谱线路'); return }
             const v = !webSearch; setWebSearch(v); localStorage.setItem('linverse.webSearch', v ? '1' : '0')
           }}
           aria-label="联网搜索开关" aria-pressed={webSearch && webSearchAvailable}>
@@ -459,7 +472,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           {drawerTab === 'conv' ? (<>
             {convs.length === 0 && <Empty text="还没有会话，开始第一次提问吧" />}
             {convs.map((c) => (
-              <div key={c.id} className={'conv-item' + (c.id === convId ? ' active' : '')}
+              <div key={c.id} ref={c.id === convId ? activeConvRef : undefined}
+                className={'conv-item' + (c.id === convId ? ' active' : '')}
                 onClick={() => openConv(c.id)}>
                 <span className="conv-title">{c.title || '新会话'}</span>
                 {deletingId === c.id
@@ -476,7 +490,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 <div className="fav-q" onClick={() => setFavOpenId(favOpenId === f.id ? '' : f.id)}>
                   {f.q}
                 </div>
-                {favOpenId === f.id && <div className="fav-a" style={{ WebkitLineClamp: 'unset' }}>{f.a}</div>}
+                {favOpenId === f.id && <div className="fav-a" style={{ WebkitLineClamp: 'unset' }}>{renderRich(f.a)}</div>}
                 <div className="fav-foot">
                   <button className="mini-btn" style={{ color: 'var(--red)' }}
                     onClick={() => unFav(f.id)}>取消收藏</button>
@@ -502,14 +516,14 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" />}
                 {m.content}
               </div>
-            ) : i === typingIdx && typing ? (
+            ) : i === typingFor && typingFor >= 0 ? (
               // 只有正在打字的那条 AI 消息用打字机效果（按下标，不按"最后一条"，避免重播上一条）
               <TypeMsg
                 text={m.content}
                 question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
                 profileId={profileId}
-                onDone={() => { setTyping(false); setTypingIdx(-1) }}
-                onSkipDone={() => { setTyping(false); setTypingIdx(-1) }}
+                onDone={() => setTypingFor(-1)}
+                onSkipDone={() => setTypingFor(-1)}
                 onToast={setToast}
               />
             ) : (
@@ -517,10 +531,10 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 text={m.content}
                 question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
                 profileId={profileId}
-                thinkText={i === lastAiIdx && !typing ? [
-                  lastWebSearched ? '已联网搜索' : '',
-                  lastKbUsed ? '已查课本' : '',
-                  deepThink && thinkSec > 0 ? `已深度思考 · ${thinkSec} 秒` : '',
+                thinkText={!typing ? [
+                  (m as ChatMsg & { webSearched?: boolean }).webSearched ? '已联网搜索' : '',
+                  (m as ChatMsg & { kbUsed?: boolean }).kbUsed ? '已查课本' : '',
+                  (m as ChatMsg & { thinkSeconds?: number }).thinkSeconds ? `已深度思考 · ${(m as ChatMsg & { thinkSeconds?: number }).thinkSeconds} 秒` : '',
                 ].filter(Boolean).join(' · ') : ''}
                 typing={false}
                 onSkip={() => {}}
@@ -548,6 +562,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         <div className="composer-box">
           <textarea className="chat-input" rows={1} value={input}
             placeholder="随时问问题"
+            readOnly={sending}
+            style={sending ? { opacity: 0.6 } : undefined}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
           <button className="send-btn" onClick={send}

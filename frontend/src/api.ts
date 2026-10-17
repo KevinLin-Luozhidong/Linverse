@@ -61,7 +61,7 @@ const del = <T>(p: string) => req<T>(p, { method: 'DELETE' })
 
 // ---- 类型定义（与契约字段一一对应） ----
 export interface ConversationMeta { id: string; title: string; createdAt: string }
-export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string }
+export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string; webSearched?: boolean; kbUsed?: boolean; thinkSeconds?: number }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
 export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[] }
@@ -82,7 +82,7 @@ export interface DictMeaning {
   examples?: { en: string; zh: string }[];
 }
 export interface DictResult {
-  word: string; phonetic?: string; meanings: DictMeaning[];
+  word: string; phonetic?: string; audioUrl?: string; meanings: DictMeaning[];
   examples: string[]; synonyms: string[];
   wordForms?: { form: string; label: string }[];
   antonyms?: string[];
@@ -140,6 +140,7 @@ export interface AskParams {
   imageUrl?: string; model: string; deepThink: boolean; aiKey?: string;
   webSearch?: boolean; // 联网搜索开关：只在智谱线路生效，其他线路后端自动忽略
   useKb?: boolean; // 查课本开关：RAG 检索知识库，把教材内容喂给 AI
+  historyMsgs?: { role: string; content: string }[]; // 多轮对话：最近 N 条历史消息
 }
 
 export interface KbRef { book: string; chapter: string; section: string; page_start: number; page_end: number }
@@ -244,6 +245,8 @@ export const lookupWord = (word: string, source: DictSource = 'dict', opts?: {
 }
 export const getWordHistory = (profileId: string) =>
   get<{ word: string; createdAt: string }[]>(`/word-history?profileId=${encodeURIComponent(profileId)}`)
+export const clearWordHistory = (profileId: string) =>
+  req<{ ok: boolean }>(`/word-history?profileId=${encodeURIComponent(profileId)}`, { method: 'DELETE' })
 
 // ---- 生词本 ----
 export const listVocab = (profileId: string) =>

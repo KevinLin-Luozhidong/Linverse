@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
-  lookupWord, getWordHistory, listVocab, addVocab, reviewVocab,
+  lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab,
   dueVocab, checkin, type DictResult, type DictSource, type VocabWord,
 } from '@api'
 
@@ -14,14 +14,18 @@ type Sub = 'dict' | 'vocab'
 // 词典数据约 1.4 万词，下载一次后断网也能查
 type EcdictEntry = { w: string; p: string; t: string; e: string }
 
+// 模块级缓存：只开一次 IndexedDB 连接，后续复用
+let _dictDB: IDBDatabase | null = null
+
 function openDictDB(): Promise<IDBDatabase> {
+  if (_dictDB) return Promise.resolve(_dictDB)
   return new Promise((resolve, reject) => {
     const req = indexedDB.open('linverse-dict', 1)
     req.onupgradeneeded = () => {
       req.result.createObjectStore('words', { keyPath: 'w' })
       req.result.createObjectStore('meta', { keyPath: 'k' })
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => { _dictDB = req.result; resolve(req.result) }
     req.onerror = () => reject(req.error)
   })
 }
@@ -89,7 +93,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [due, setDue] = useState<VocabWord[]>([])
   const [all, setAll] = useState<VocabWord[]>([])
   const [revealed, setRevealed] = useState<Record<string, boolean>>({}) // 已展开释义的卡片
-  const [checkinDone, setCheckinDone] = useState(false)
+  const [checkinDone, setCheckinDone] = useState(() => {
+    // 检查今天是否已打卡（刷新页面后不重复打卡）
+    const today = new Date().toISOString().slice(0, 10)
+    return localStorage.getItem('linverse.checkinDate') === today
+  })
 
   const loadHistory = () => {
     if (!profileId) return
@@ -221,6 +229,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       })
       setDictPkg({ count: words.length })
       setToast(`离线词典下载完成，共 ${words.length} 词`)
+      // 下载完成后，如果已有输入单词，自动重新查词
+      if (word.trim()) { search(word.trim(), 'offline') }
     } catch (e) {
       setToast(e instanceof Error ? e.message : '下载失败')
     } finally {
@@ -237,6 +247,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const pickSource = (s: DictSource) => {
     setDictSource(s)
     localStorage.setItem('linverse.dictSource', s)
+    // 切换离线词典时，先检查词典包是否已下载
+    if (s === 'offline' && !dictPkg) {
+      setToast('请先下载离线词典包')
+      return
+    }
     // 切换来源后，如果当前有查词结果，用新来源重新查一遍
     if (result && word.trim()) {
       search(word.trim(), s)
@@ -270,9 +285,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const review = async (v: VocabWord, known: boolean) => {
     try {
       await reviewVocab(v.id, known, profileId || undefined)
-      setDue((list) => list.filter((x) => x.id !== v.id))
+      setDue((list) => {
+        const next = list.filter((x) => x.id !== v.id)
+        // 过滤后判断，避免闭包旧値问题
+        if (next.length === 0) setToast('今日复习完成！太棒了🎉')
+        return next
+      })
       setRevealed((r) => ({ ...r, [v.id]: true }))
-      if (due.length <= 1) setToast('今日复习完成')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '提交失败')
     }
@@ -283,6 +302,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     if (!profileId) return
     try {
       await checkin(profileId)
+      const today = new Date().toISOString().slice(0, 10)
+      localStorage.setItem('linverse.checkinDate', today)
       setCheckinDone(true)
       setToast('打卡成功')
     } catch (e) {
@@ -343,9 +364,23 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 {offlineHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线缓存</span>}
                 {offlinePkgHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线词典</span>}
               </div>
-              {result.phonetic && <div className="dict-phonetic">{
-                result.phonetic.startsWith('/') ? result.phonetic : `/${result.phonetic}/`
-              }</div>}
+              {result.phonetic && <div className="dict-phonetic" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {result.phonetic.startsWith('/') ? result.phonetic : `/${result.phonetic}/`}
+                {result.audioUrl && (
+                  <button className="mini-btn" style={{ fontSize: 13 }}
+                    onClick={() => { const a = new Audio(result!.audioUrl!); a.play() }}
+                    aria-label="播放发音">▶</button>
+                )}
+                {!result.audioUrl && typeof window !== 'undefined' && window.speechSynthesis && (
+                  <button className="mini-btn" style={{ fontSize: 13 }}
+                    onClick={() => {
+                      const u = new SpeechSynthesisUtterance(result!.word)
+                      u.lang = 'en-US'
+                      window.speechSynthesis.speak(u)
+                    }}
+                    aria-label="播放发音">▶</button>
+                )}
+              </div>}
               {/* 词形变化：复数/过去式/比较级等 */}
               {result.wordForms && result.wordForms.length > 0 && (
                 <div style={{ margin: '8px 0' }}>
@@ -407,7 +442,20 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
 
           {history.length > 0 && (
             <>
-              <div className="sec-title"><I n="clock" size={14} />查词历史</div>
+              <div className="sec-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span><I n="clock" size={14} />查词历史</span>
+                <button className="mini-btn" style={{ color: 'var(--red)', fontSize: 12 }}
+                  onClick={async () => {
+                    if (!profileId) return
+                    try {
+                      await clearWordHistory(profileId)
+                      setHistory([])
+                      setToast('历史已清除')
+                    } catch (e) {
+                      setToast(e instanceof Error ? e.message : '清除失败')
+                    }
+                  }}>清除历史</button>
+              </div>
               {history.slice(0, 20).map((h, i) => (
                 <div key={i} className="hist-item" onClick={() => { setWord(h.word); search(h.word) }}>
                   <span>{h.word}</span>
@@ -467,6 +515,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 </div>}
               <div className="btn-row" style={{ justifyContent: 'center' }}>
                 <button className="btn btn-line" onClick={() => review(v, false)}>不懂</button>
+                <button className="btn btn-ghost" onClick={() => {
+                  // 跳过：移到队列末尾
+                  setDue((list) => {
+                    const rest = list.filter((x) => x.id !== v.id)
+                    return [...rest, v]
+                  })
+                }}>跳过</button>
                 <button className="btn" onClick={() => review(v, true)}>懂了</button>
               </div>
             </div>
@@ -476,8 +531,15 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             <>
               <div className="sec-title">全部生词（{all.length}）</div>
               {all.map((v) => (
-                <div key={v.id} className="hist-item">
+                <div key={v.id} className="hist-item" style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    // 点击单词跳转到查词 tab 并自动搜索
+                    setSub('dict')
+                    setWord(v.word)
+                    search(v.word, 'dict')
+                  }}>
                   <span><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: 13 }}>{v.meaning}</span></span>
+                  <span style={{ color: 'var(--ink3)', fontSize: 12 }}>查词 →</span>
                 </div>
               ))}
             </>

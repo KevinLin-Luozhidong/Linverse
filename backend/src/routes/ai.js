@@ -13,13 +13,17 @@ const router = express.Router();
 // 图片不再存本地磁盘（serverless 函数的磁盘是临时的，重启就丢），
 // 改存 Supabase Storage。需要环境变量：SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY
 // （service_role 的 Key 权限大，只能放服务端，绝不能给前端）
+let _supabase = null;
 function getSupabase() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return null;
   }
-  // 懒加载：require 时不初始化，保证没配环境变量时 require 不炸
-  const { createClient } = require('@supabase/supabase-js');
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!_supabase) {
+    // 懒初始化单例：require 时不初始化，保证没配环境变量时 require 不炸
+    const { createClient } = require('@supabase/supabase-js');
+    _supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  }
+  return _supabase;
 }
 
 const BUCKET = 'linverse-uploads'; // 图片 bucket 名
@@ -84,7 +88,7 @@ function resolveImageForVision(imageUrl) {
 // POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey? }
 // 返回: { answer, thinkSeconds, conversationId, model }
 router.post('/ask', ah(async (req, res) => {
-  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb } = req.body;
+  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb, historyMsgs } = req.body;
   if (need(res, profileId, 'profileId 必填')) return;
   if (need(res, question && question.trim(), 'question 不能为空')) return;
 
@@ -137,6 +141,8 @@ router.post('/ask', ah(async (req, res) => {
     endpoint,
     modelName,
     webSearch: !!webSearch,
+    // 多轮对话：最近 N 条历史消息（前端已截取最多 8 条）
+    historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
   });
 
   // 问答自动存档：有 conversationId 就续写，没有就新建（标题取问题前 12 个字）
@@ -238,8 +244,16 @@ router.get('/dictionary', ah(async (req, res) => {
         );
         const tj = await tr.json();
         const zh = tj?.responseData?.translatedText;
-        // MyMemory 翻不出来时会原样返回英文或报错信息，做个简单过滤
-        if (zh && zh !== m.en && !/INVALID|QUERY LENGTH/i.test(zh)) {
+        const matchScore = tj?.responseData?.match;
+        // MyMemory 翻不出来时会原样返回英文或报错信息，做个过滤：
+        // 1. 不能和原文相同；2. 不能是错误码；3. match=0 表示纯机器翻译质量极低，跳过；
+        // 4. 必须含有至少一个中文字符，确保是有效的中文翻译
+        if (
+          zh && zh !== m.en &&
+          !/INVALID|QUERY LENGTH/i.test(zh) &&
+          matchScore !== 0 &&
+          /[\u4e00-\u9fa5]/.test(zh)
+        ) {
           m.zh = zh;
         }
       })
@@ -251,6 +265,8 @@ router.get('/dictionary', ah(async (req, res) => {
   const result = {
     word: entry.word || word,
     phonetic: entry.phonetic || entry.phonetics?.find((p) => p.text)?.text || '',
+    // audioUrl：从 phonetics 数组中找第一个有 audio 的条目
+    audioUrl: entry.phonetics?.find((p) => p.audio)?.audio || '',
     meanings,
     examples,
     synonyms: [...synonyms],
