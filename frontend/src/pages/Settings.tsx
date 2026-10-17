@@ -260,6 +260,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       await siteReset(d)
       clearPid()
       clearProfileAuth()
+      clearOwnerToken()
       setWipePw('')
       setToast('已清空，重新开始')
       setTimeout(() => location.reload(), 900)
