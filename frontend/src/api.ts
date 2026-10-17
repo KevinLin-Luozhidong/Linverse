@@ -19,6 +19,7 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authP
         'Content-Type': 'application/json',
         ...(token ? { 'x-site-token': token } : {}),
         ...(requestProfileId && profileToken ? { 'x-profile-id': requestProfileId, 'x-profile-token': profileToken } : {}),
+        ...(getOwnerToken() ? { 'x-owner-token': getOwnerToken() } : {}),
       },
       // 20 秒还没回来就放弃，别让界面一直转圈（国内连 Vercel 有时会 hang 住）
       signal: init?.signal || AbortSignal.timeout(timeoutMs),
@@ -435,6 +436,20 @@ export const setDangerPassword = (password: string, oldPassword?: string) =>
 export const signupStatus = () => get<{ allow: boolean }>('/site/signup-status')
 export const setSignupAllow = (allow: boolean, dangerPassword: string) =>
   post<{ ok: boolean; allow: boolean }>('/site/signup-allow', { allow, dangerPassword })
+
+// ---- 所有者管理会话 ----
+const OWNER_TOKEN = 'linverse.ownerToken'
+export const getOwnerToken = () => localStorage.getItem(OWNER_TOKEN) || ''
+export const setOwnerToken = (token: string) => {
+  if (token) localStorage.setItem(OWNER_TOKEN, token)
+  else localStorage.removeItem(OWNER_TOKEN)
+}
+export const clearOwnerToken = () => setOwnerToken('')
+export const verifyOwnerPassword = async (password: string) => {
+  const result = await post<{ ok: boolean; token: string; expiresAt: number }>('/site/owner-verify', { password })
+  setOwnerToken(result.token)
+  return result
+}
 
 // ---- 知识库管理 ----
 export interface KbBook {
