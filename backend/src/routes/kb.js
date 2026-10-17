@@ -54,7 +54,9 @@ return [...map.values()].sort((a, b) => b.score - a.score).map((e) => e.row);
 // 混合检索：向量（懂同义）+ 关键词（保精确术语）RRF 融合；
 // 高频问答优先：问题向量与某道标准问答足够像（余弦距离 < 0.3）就直接采用标准答案；
 // 任一失败都不炸，另一路照常工作，全失败才返回空（上层降级为普通问答）。
-const FAQ_DISTANCE_THRESHOLD = 0.3;
+// 余弦距离阈值：低于此值视为高置信度命中，直接采用标准答案。
+// 可通过环境变量 FAQ_THRESHOLD 调整（默认 0.3；值越小要求越严格）。
+const FAQ_DISTANCE_THRESHOLD = parseFloat(process.env.FAQ_THRESHOLD) || 0.3;
 async function searchKbContext(question, topK = 5) {
 let vec = null;
 let vecRows = [];
@@ -114,7 +116,7 @@ res.json({ books: books.map((b) => ({
 book: b.book,
 chunks: b.chunks,
 fig_chunks: b.fig_chunks,
-text_chunks: b.chunks - b.fig_chunks,
+text_chunks: b.text_chunks,
 first_ingest: b.first_ingest,
 last_ingest: b.last_ingest,
 }))});

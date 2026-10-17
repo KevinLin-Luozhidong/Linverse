@@ -486,22 +486,119 @@ body {
 .sq-icon.green { background: linear-gradient(135deg, #22c55e, #4ade80); }
 .sq-icon.orange { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
 .sq-icon.purple { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
-/* 知识库管理页 */
-.kb-page { padding: 4px 2px 24px; }
-.kb-head h3 { margin: 8px 0 4px; font-size: calc(20px * var(--fss)); font-weight: 800; }
-.kb-head p { margin: 0 0 14px; color: var(--ink2); font-size: calc(13px * var(--fss)); }
-.kb-card {
-  display: flex; align-items: center; gap: 12px;
-  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px;
-  margin-bottom: 12px;
+/* ============ 知识库管理页 ============ */
+.kb-page { padding: 0 0 32px; }
+
+/* 页头：圆角玻璃卡，图标 + 标题 + 书数角标 */
+.kb-header {
+  display: flex; align-items: center; gap: 14px;
+  margin: 14px 16px 12px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 20px; padding: 16px 18px;
 }
-.kb-card .sq-icon { flex: none; }
-.kb-info { flex: 1; min-width: 0; }
-.kb-info h4 { margin: 0 0 4px; font-size: calc(15px * var(--fss)); font-weight: 700; }
-.kb-info p { margin: 2px 0; font-size: calc(13px * var(--fss)); color: var(--ink2); }
-.kb-info p.dim { font-size: calc(12px * var(--fss)); opacity: .75; }
-.kb-card .btn { flex: none; padding: 8px 12px; font-size: calc(13px * var(--fss)); }
-.kb-tip { margin-top: 16px; text-align: center; color: var(--ink2); font-size: calc(12px * var(--fss)); }
+.kb-header-icon {
+  width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.kb-header-title { font-size: calc(19px * var(--fss)); font-weight: 800; margin: 0 0 2px; }
+.kb-header-sub { font-size: calc(12px * var(--fss)); color: var(--ink2); margin: 0; }
+.kb-header-count { margin-left: auto; text-align: center; }
+.kb-count-num { display: block; font-size: calc(28px * var(--fss)); font-weight: 800; color: var(--blue); line-height: 1; font-variant-numeric: tabular-nums; }
+.kb-count-label { font-size: calc(11px * var(--fss)); color: var(--ink3); font-weight: 600; }
+
+/* 汇总统计条 */
+.kb-stats-bar {
+  display: flex; align-items: center;
+  margin: 0 16px 14px;
+  background: var(--blue-soft); border-radius: 14px;
+  padding: 12px 0;
+}
+.kb-stat { flex: 1; text-align: center; }
+.kb-stat-num { display: block; font-size: calc(18px * var(--fss)); font-weight: 800; color: var(--blue-deep); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.kb-stat-label { font-size: calc(11px * var(--fss)); color: var(--ink2); margin-top: 3px; font-weight: 600; }
+.kb-stat-divider { width: 1px; background: var(--line); align-self: stretch; margin: 4px 0; }
+
+/* 书目列表：iOS 分组列表风格，圆角分组卡 */
+.kb-list {
+  margin: 0 16px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 18px; overflow: hidden;
+}
+.kb-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 14px;
+  transition: background 0.15s var(--ease);
+  animation: msgIn 0.28s var(--ease) both;
+}
+.kb-item + .kb-item { border-top: 1px solid var(--line); }
+.kb-item:active { background: var(--blue-soft); }
+
+/* 序号 */
+.kb-item-idx {
+  font-size: calc(11px * var(--fss)); font-weight: 700;
+  color: var(--ink3); width: 18px; text-align: center; flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 图书图标 */
+.kb-item-icon {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+
+/* 书名与元信息 */
+.kb-item-info { flex: 1; min-width: 0; }
+.kb-item-title {
+  font-size: calc(14px * var(--fss)); font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-bottom: 5px;
+}
+.kb-item-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.kb-badge {
+  font-size: calc(11px * var(--fss)); font-weight: 700;
+  padding: 2px 7px; border-radius: 7px;
+}
+.kb-badge-blue { background: var(--blue-soft); color: var(--blue-deep); }
+.kb-badge-purple { background: rgba(139, 92, 246, 0.12); color: #7c3aed; }
+@media (prefers-color-scheme: dark) { .kb-badge-purple { color: #c4b5fd; } }
+:root[data-theme='dark'] .kb-badge-purple { color: #c4b5fd; }
+.kb-item-date { font-size: calc(11px * var(--fss)); color: var(--ink3); margin-left: 2px; }
+
+/* 删除按钮：默认透明图标，confirm 变红药丸 */
+.kb-del-btn {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  border: 0; background: transparent; color: var(--ink3);
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), width 0.25s var(--ease), border-radius 0.25s var(--ease), padding 0.25s var(--ease);
+  overflow: hidden;
+}
+.kb-del-btn:hover { background: rgba(239, 68, 68, 0.1); color: var(--red); }
+.kb-del-btn.confirm {
+  width: auto; padding: 0 12px;
+  background: var(--red); color: #fff;
+  font-size: calc(12px * var(--fss)); font-weight: 700;
+}
+.kb-del-btn.confirm:hover { background: #dc2626; }
+.kb-del-btn:disabled { opacity: 0.5; }
+/* 删除中的小旋转圈 */
+.kb-del-spin {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+}
+
+/* 底部提示 */
+.kb-footer-tip {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: 14px 16px 0;
+  padding: 11px 14px; border-radius: 12px;
+  background: var(--blue-soft);
+  color: var(--ink2); font-size: calc(12px * var(--fss)); line-height: 1.6;
+}
+.kb-footer-tip svg { flex-shrink: 0; margin-top: 1px; color: var(--blue); }
 .tool-slide h3 { margin: 24px 0 8px; font-size: calc(22px * var(--fss)); font-weight: 800; }
 .tool-slide p { margin: 0; font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.7; }
 .tool-slide .go { margin-top: 18px; font-size: calc(15px * var(--fss)); font-weight: 700; color: var(--blue-deep); display: flex; align-items: center; gap: 4px; }

@@ -160,7 +160,7 @@ export default function Tools({ profileId }: { profileId: string | null }) {
         </div>
         <div ref={(el) => { panelRefs.current['kb'] = el }}
           style={{ display: active === 'kb' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
-          <Kb />
+          <Kb active={active === 'kb'} />
         </div>
       </div>
       {/* 每日一句：钉在学习工具底部，不随三个板块切换而消失，点一下换一句 */}

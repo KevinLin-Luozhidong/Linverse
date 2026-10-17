@@ -517,8 +517,9 @@ async function kbCount() {
 async function kbBookStats() {
   const r = await query(
     `SELECT book,
-            COUNT(*)::int AS chunks,
-            SUM(CASE WHEN text LIKE '【教材插图】%' THEN 1 ELSE 0 END)::int AS fig_chunks,
+            COALESCE(COUNT(*)::int, 0) AS chunks,
+            COALESCE(SUM(CASE WHEN text LIKE '【教材插图】%' THEN 1 ELSE 0 END)::int, 0) AS fig_chunks,
+            COALESCE(COUNT(*)::int, 0) - COALESCE(SUM(CASE WHEN text LIKE '【教材插图】%' THEN 1 ELSE 0 END)::int, 0) AS text_chunks,
             MIN(created_at) AS first_ingest,
             MAX(created_at) AS last_ingest
      FROM kb_chunks
@@ -529,9 +530,18 @@ async function kbBookStats() {
 }
 
 // 按书名删除整本书的知识块（知识库管理页的删除按钮用，前端必须二次确认）
+// 同时清除该书在 kb_faq 的标准问答，两步在同一个事务里保证原子性。
 async function kbDeleteBook(book) {
-  const r = await query('DELETE FROM kb_chunks WHERE book = $1', [book]);
-  return r.rowCount;
+  await query('BEGIN');
+  try {
+    const r = await query('DELETE FROM kb_chunks WHERE book = $1', [book]);
+    await query('DELETE FROM kb_faq WHERE book = $1', [book]);
+    await query('COMMIT');
+    return r.rowCount;
+  } catch (e) {
+    await query('ROLLBACK');
+    throw e;
+  }
 }
 
 async function kbClear() {
@@ -601,7 +611,7 @@ async function kbFaqInsertBatch(items) {
     vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector)`);
     params.push(
       c.book || '', c.chapter || '', c.question || '', c.answer || '',
-      c.page_start || 0, c.page_end || 0,
+      c.page_start ?? 0, c.page_end ?? 0,
       '[' + (c.embedding || []).join(',') + ']'
     );
   });
@@ -629,10 +639,11 @@ async function kbKeywordSearch(question, limit = 9) {
   const where = grams.map((_, i) => `text ILIKE $${i + 1}`).join(' OR ');
   const score = grams.map((_, i) => `(CASE WHEN text ILIKE $${n + i + 1} THEN 1 ELSE 0 END)`).join(' + ');
   const params = grams.map((g) => `%${g}%`);
+  const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 20) : 9;
   const r = await query(
     `SELECT book, chapter, section, page_start, page_end, text, (${score}) AS hits
      FROM kb_chunks WHERE ${where}
-     ORDER BY hits DESC, id ASC LIMIT ${Math.min(limit, 20)}`,
+     ORDER BY hits DESC, id ASC LIMIT ${safeLimit}`,
     params.concat(params)
   );
   return r.rows;
