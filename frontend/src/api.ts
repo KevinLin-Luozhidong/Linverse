@@ -122,7 +122,10 @@ export async function uploadImage(file: File): Promise<string> {
   try {
     res = await fetch(`${BASE}/api/upload`, {
       method: 'POST', body: fd,
-      headers: token ? { 'x-site-token': token } : {},
+      headers: {
+        ...(token ? { 'x-site-token': token } : {}),
+        ...(getPid() && getProfileToken() ? { 'x-profile-id': getPid()!, 'x-profile-token': getProfileToken() } : {}),
+      },
     })
   } catch {
     throw new Error('连不上后端服务，确认后端已启动')
