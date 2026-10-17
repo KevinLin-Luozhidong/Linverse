@@ -5,7 +5,7 @@ import {
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
   siteStatus, siteSetPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
-  signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken,
+  signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -258,6 +258,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     try {
       await siteReset(d)
       clearPid()
+      clearProfileAuth()
       setWipePw('')
       setToast('已清空，重新开始')
       setTimeout(() => location.reload(), 900)
