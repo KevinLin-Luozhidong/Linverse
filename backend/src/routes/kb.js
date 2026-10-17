@@ -3,8 +3,8 @@
 // POST /api/kb/ingest —— 批量入库 body: { chunks: [...], clear?: true}
 // POST /api/kb/search —— 向量检索 body: { question, topK?}，返回最相关的块
 //
-// 安全：这三个接口都挂在 /api 下，全局 x-site-token 鉴权自动生效
-// （设了访问密码就必须带 token，没设密码就是公开状态）。
+// 安全：所有接口都需要账号级凭证；如果设置了全站访问密码，还需要 x-site-token。
+// 入库、FAQ 入库和删除整本书属于管理员操作，还必须带 30 分钟有效的 x-owner-token。
 // 入库的向量必须和检索用同一个 embedding 模型（智谱 embedding-3，2048 维），
 // 否则"问题向量"和"库里向量"不在同一个坐标系，相似度毫无意义。
 const express = require('express');
