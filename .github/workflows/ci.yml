@@ -15,6 +15,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Summarize dependency audit
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          node -e 'const a = require("/tmp/npm-audit.json"); const out = Object.fromEntries(Object.entries(a.vulnerabilities || {}).map(([name, v]) => [name, {severity: v.severity, via: v.via.map(x => typeof x === "string" ? x : x.title), fixAvailable: v.fixAvailable}])); console.log(JSON.stringify({metadata: a.metadata?.vulnerabilities, vulnerabilities: out}, null, 2))'
       - name: Build frontend
         run: npm run build --workspace=frontend
       - name: Check backend JavaScript syntax
