@@ -1,13 +1,14 @@
 // 账号管理：GET /api/profiles、POST /api/profiles、PUT/DELETE /api/profiles/:id
 const express = require('express');
+const crypto = require('crypto');
 const dao = require('../db/dao');
 const { ah, need } = require('./helpers');
 
 const router = express.Router();
 
-// 所有账号列表
+// 只返回当前已认证账号，绝不枚举其他账号。
 router.get('/', ah(async (req, res) => {
-  res.json(await dao.listProfiles());
+  res.json(await dao.listProfiles(req.profileId));
 }));
 
 // 新建账号
@@ -18,7 +19,23 @@ router.post('/', ah(async (req, res) => {
     return res.status(403).json({ error: '站长暂未开放新账号注册' });
   }
   if (need(res, req.body.name && req.body.name.trim(), 'name 不能为空')) return;
-  res.status(201).json(await dao.createProfile(req.body.name.trim()));
+  const authToken = crypto.randomBytes(32).toString('hex');
+  const authTokenHash = crypto.createHash('sha256').update(authToken).digest('hex');
+  const profile = await dao.createProfile(req.body.name.trim(), authTokenHash);
+  res.status(201).json({ ...profile, authToken });
+}));
+
+// 旧设备迁移：仅能给未绑定凭证的旧账号绑定一次新凭证。
+// 此接口仍受全站访问密码门保护（若站长设置了访问密码）。
+router.post('/:id/claim', ah(async (req, res) => {
+  const id = req.params.id;
+  const existingHash = await dao.getProfileAuthHash(id);
+  if (existingHash) return res.status(409).json({ error: '该账号已绑定认证凭证，不能重新认领' });
+  const authToken = crypto.randomBytes(32).toString('hex');
+  const authTokenHash = crypto.createHash('sha256').update(authToken).digest('hex');
+  const profile = await dao.claimProfile(id, authTokenHash);
+  if (!profile) return res.status(409).json({ error: '账号迁移冲突，请刷新后重试' });
+  res.json({ ...profile, authToken });
 }));
 
 // 改名
