@@ -304,7 +304,9 @@ function readProfileIndex(): Profile[] {
 }
 function rememberProfiles(profiles: Profile[]) {
   const known = new Map(readProfileIndex().map((p) => [String(p.id), p]))
-  profiles.forEach((p) => known.set(String(p.id), { ...p, id: String(p.id) }))
+  profiles.forEach((p) => known.set(String(p.id), {
+    id: String(p.id), name: p.name, avatar_url: p.avatar_url,
+  }))
   localStorage.setItem(PROFILE_INDEX, JSON.stringify([...known.values()]))
 }
 export const listProfiles = async () => {
