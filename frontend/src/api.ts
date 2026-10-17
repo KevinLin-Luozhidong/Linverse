@@ -16,6 +16,7 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Prom
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'x-site-token': token } : {}),
+        ...(getPid() && getProfileToken() ? { 'x-profile-id': getPid()!, 'x-profile-token': getProfileToken() } : {}),
       },
       // 20 秒还没回来就放弃，别让界面一直转圈（国内连 Vercel 有时会 hang 住）
       signal: init?.signal || AbortSignal.timeout(timeoutMs),
@@ -103,6 +104,7 @@ export interface Settings {
 }
 
 export interface Profile { id: string; name: string; avatar_url?: string }
+export interface AuthenticatedProfile extends Profile { authToken: string }
 
 // 图片地址归一化：/uploads/... 拼上后端地址（本地 BASE 为空走 Vite 代理，部署后走 VITE_API_URL），http 开头原样返回
 export function imgSrc(url?: string): string {
@@ -275,7 +277,8 @@ export const saveSettings = (s: Settings) => put<Settings>('/settings', s)
 
 // ---- 账号 ----
 export const listProfiles = () => get<Profile[]>('/profiles')
-export const createProfile = (name: string) => post<Profile>('/profiles', { name })
+export const createProfile = (name: string) => post<AuthenticatedProfile>('/profiles', { name })
+export const claimProfile = (id: string) => post<AuthenticatedProfile>(`/profiles/${encodeURIComponent(id)}/claim`)
 export const renameProfile = (id: string, name: string) => put<Profile>(`/profiles/${id}`, { name })
 export const deleteProfile = (id: string) => del(`/profiles/${id}`)
 export const setAvatar = (id: string, avatarUrl: string) =>
@@ -319,6 +322,14 @@ export function setPid(id: string) {
 export function clearPid() {
   try { localStorage.removeItem(PID_KEY) } catch {}
   try { document.cookie = `${PID_COOKIE}=; max-age=0; path=/` } catch {}
+}
+
+// ---- 账号级凭证 ----
+const PROFILE_TOKEN = 'linverse.profileToken'
+export const getProfileToken = () => localStorage.getItem(PROFILE_TOKEN) || ''
+export const setProfileToken = (t: string) => {
+  if (t) localStorage.setItem(PROFILE_TOKEN, t)
+  else localStorage.removeItem(PROFILE_TOKEN)
 }
 
 // ---- 全站访问密码 ----
