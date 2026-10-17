@@ -85,7 +85,7 @@ export default function App() {
           // 账号已被其他设备绑定时，不尝试用账号 ID 绕过所有权校验。
           if (!getProfileToken()) {
             profile = await claimProfile(saved)
-            setProfileToken(profile.authToken)
+            setProfileToken(profile.authToken, String(profile.id))
           } else {
             const ps = await listProfiles()
             if (!ps.some((p) => String(p.id) === String(saved))) {
@@ -97,7 +97,7 @@ export default function App() {
         } else {
           // 新设备只创建新账号，不枚举或自动认领数据库里的其他账号。
           profile = await createProfile('我')
-          setProfileToken(profile.authToken)
+          setProfileToken(profile.authToken, String(profile.id))
           const newId = String(profile.id)
           setPid(newId)
           setProfileId(newId)
