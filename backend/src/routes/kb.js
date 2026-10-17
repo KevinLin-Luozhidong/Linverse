@@ -132,17 +132,23 @@ res.json({ deleted: n, book});
 }));
 
 router.post('/ingest', ah(async (req, res) => {
-const { chunks, clear} = req.body;
-if (clear) await dao.kbClear();
+const { chunks, clear} = req.body || {};
+
+// 先完整校验请求，再执行清空等有副作用的操作。
+// 否则 clear=true 配合空 chunks 或无效 embedding 会导致知识库被清空后才返回 400。
 if (need(res, Array.isArray(chunks) && chunks.length, 'chunks 不能为空')) return;
 if (chunks.length > 100) {
 return res.status(400).json({ error: '单次最多 100 块，请分批入库'});
 }
 for (const c of chunks) {
-if (!c.text ||!Array.isArray(c.embedding) || c.embedding.length!== EMBED_DIM) {
-return res.status(400).json({ error: '某块缺少 text，或 embedding 维度不是 2048'});
+if (!c || typeof c.text !== 'string' || !c.text.trim() ||
+!Array.isArray(c.embedding) || c.embedding.length !== EMBED_DIM ||
+!c.embedding.every((v) => Number.isFinite(v))) {
+return res.status(400).json({ error: '某块缺少有效 text，或 embedding 不是 2048 维有限数值数组'});
 }
 }
+if (clear === true) await dao.kbClear();
+
 const n = await dao.kbInsertBatch(chunks);
 res.json({ inserted: n, total: await dao.kbCount()});
 }));
