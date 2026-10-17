@@ -525,7 +525,7 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
-  kbCount, kbClear, kbInsertBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
+  kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
   kbFaqSearch, kbFaqInsertBatch,
 };
 
@@ -536,6 +536,41 @@ module.exports = {
 async function kbCount() {
   const r = await query('SELECT COUNT(*)::int AS c FROM kb_chunks');
   return r.rows[0].c;
+}
+
+// 原子替换整本知识库：清空与批量插入必须在同一连接/事务里完成。
+async function kbReplaceBatch(chunks) {
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    throw new Error('kbReplaceBatch requires a non-empty chunks array');
+  }
+  const vals = [];
+  const params = [];
+  chunks.forEach((c, i) => {
+    const b = i * 7;
+    vals.push(`(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5},${b + 6},${b + 7}::vector)`);
+    params.push(
+      c.book || '', c.chapter || '', c.section || '',
+      c.page_start || 0, c.page_end || 0, c.text || '',
+      '[' + (c.embedding || []).join(',') + ']'
+    );
+  });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM kb_chunks');
+    const r = await client.query(
+      `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding)
+       VALUES ${vals.join(',')}`,
+      params
+    );
+    await client.query('COMMIT');
+    return r.rowCount;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // 按书统计：每本书的块数（文字/图片分开）、入库时间。知识库管理页用。
