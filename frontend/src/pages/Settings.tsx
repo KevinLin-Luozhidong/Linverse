@@ -5,7 +5,7 @@ import {
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
   siteStatus, siteSetPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
-  signupStatus, setSignupAllow, clearPid,
+  signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -71,6 +71,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [profiles, setProfiles] = useState<P[]>([])
   const [newName, setNewName] = useState('')
   const [findId, setFindId] = useState('') // 输入账号 ID 找回
+  const [findToken, setFindToken] = useState('') // 账号恢复密钥
   const [editingId, setEditingId] = useState('')
   const [editingName, setEditingName] = useState('')
   const [delId, setDelId] = useState('')
@@ -159,17 +160,31 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       reloadProfiles()
     } catch (e) { setToast(e instanceof Error ? e.message : '改名失败') }
   }
-  // 输入账号 ID 找回：换设备/清数据后，凭个人中心复制的 ID 找回原账号
+  // 换设备恢复必须同时提供账号 ID 和随机恢复密钥，不能只凭可猜测的 ID 认领账号。
   const doFind = async () => {
     const id = findId.trim()
-    if (!id) { setToast('先输入账号 ID'); return }
+    const token = findToken.trim()
+    if (!id || !token) { setToast('请输入账号 ID 和恢复密钥'); return }
+    const previousId = profileId
+    const previousToken = getProfileToken(previousId || undefined)
     try {
+      setPid(id)
+      setProfileToken(token, id)
       const ps = await listProfiles()
-      // 用户手输的是字符串，数据库 id 可能是数字：两边转字符串再比
-      if (!ps.some((p) => String(p.id) === String(id))) { setToast('没找到这个账号 ID'); return }
+      if (!ps.some((p) => String(p.id) === String(id))) throw new Error('账号 ID 或恢复密钥不正确')
       setFindId('')
-      onProfileChange(id) // 切过去，App 会记入本浏览器
-    } catch (e) { setToast(e instanceof Error ? e.message : '找回失败') }
+      setFindToken('')
+      onProfileChange(id)
+      setToast('账号恢复成功')
+    } catch (e) {
+      if (previousId) {
+        setPid(previousId)
+        setProfileToken(previousToken, previousId)
+      } else {
+        clearPid()
+      }
+      setToast(e instanceof Error ? e.message : '找回失败')
+    }
   }
   // 个人资料：改当前账号的显示名
   const saveDisplayName = async () => {
@@ -377,13 +392,29 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   onChange={(e) => setNewName(e.target.value)} />
   <button className="btn" onClick={addProfile} disabled={addingProfile}>{addingProfile ? '添加中…' : '添加'}</button>
   </div>
-  {/* 换设备找回：输入旧账号 ID */}
-  <div className="field-label" style={{ marginTop: 14 }}>换设备时输入旧账号 ID 找回</div>
-  <div className="btn-row" style={{ marginTop: 6 }}>
-  <input className="input" value={findId} placeholder="账号 ID"
-  onChange={(e) => setFindId(e.target.value)} />
-  <button className="btn" onClick={doFind}>找回</button>
+  {profileId && (
+  <div className="field" style={{ marginTop: 16 }}>
+    <div className="field-label">本账号恢复密钥</div>
+    <input className="input" readOnly value={getProfileToken(profileId)} />
+    <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6 }}
+      onClick={() => {
+        const token = getProfileToken(profileId)
+        if (!token) { setToast('当前设备没有恢复密钥'); return }
+        navigator.clipboard?.writeText(token).then(() => setToast('恢复密钥已复制')).catch(() => setToast('复制失败，请手动长按复制'))
+      }}>复制恢复密钥</button>
+    <div className="safe-note">请妥善保存。换设备时需要同时输入账号 ID 和恢复密钥；不要把密钥发给别人。</div>
   </div>
+  )}
+  <div className="field-label" style={{ marginTop: 18 }}>在新设备恢复账号</div>
+  <div className="field">
+    <input className="input" value={findId} placeholder="账号 ID"
+      onChange={(e) => setFindId(e.target.value)} />
+  </div>
+  <div className="field">
+    <input className="input" value={findToken} placeholder="恢复密钥"
+      onChange={(e) => setFindToken(e.target.value)} autoComplete="off" />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={doFind}>验证并恢复</button>
   </>),
 
   ai: (<>
