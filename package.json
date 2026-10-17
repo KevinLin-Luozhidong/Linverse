@@ -1,6 +1,6 @@
 {
   "devDependencies": {
-    "concurrently": "^9.2.0"
+    "concurrently": "^9.2.5"
   },
   "name": "linverse",
   "private": true,
