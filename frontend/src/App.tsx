@@ -24,6 +24,10 @@ export default function App() {
   const [toast, setToast] = useState('')
   // 新账号被站长关掉时：新设备显示"未开放注册"，不进 App
   const [signupBlocked, setSignupBlocked] = useState(false)
+  const [restoreId, setRestoreId] = useState('')
+  const [restoreToken, setRestoreToken] = useState('')
+  const [restoring, setRestoring] = useState(false)
+  const [restoreError, setRestoreError] = useState('')
   // 访问过的 tab：首次进入时挂载，之后常驻不卸载。
   // 切 tab 只切换 display 显隐——AI 的对话、输入框、请求中的回答都保留，
   // 也避免每次切 tab 重新拉数据（serverless 冷启动慢）
@@ -125,6 +129,31 @@ export default function App() {
       .catch(() => {})
   }, [profileId])
 
+  // 注册关闭时，仍允许持有账号恢复密钥的用户恢复已有账号。
+  const restoreExistingProfile = async () => {
+    const id = restoreId.trim()
+    const token = restoreToken.trim()
+    if (!id || !token) { setRestoreError('请输入账号 ID 和恢复密钥'); return }
+    if (restoring) return
+    setRestoring(true)
+    setRestoreError('')
+    try {
+      setPid(id)
+      setProfileToken(token, id)
+      const ps = await listProfiles()
+      if (!ps.some((p) => String(p.id) === String(id))) throw new Error('账号 ID 或恢复密钥不正确')
+      setProfileId(id)
+      setSignupBlocked(false)
+      setRestoreToken('')
+    } catch (e) {
+      clearPid()
+      setProfileToken('', id)
+      setRestoreError(e instanceof Error ? e.message : '账号恢复失败')
+    } finally {
+      setRestoring(false)
+    }
+  }
+
   // 切换账号：更新本地记录并通知各页重新拉数据
   const switchProfile = (id: string) => {
     setPid(id)
@@ -161,12 +190,24 @@ export default function App() {
   // 密码门：查状态中显示空白闪屏，要输密码显示密码页，通过后进主界面
   if (gate === 'loading') return <div className="app"><div className="gate"><div className="gate-title">Linverse</div></div></div>
   if (gate === 'open') return <div className="app"><SiteGate onPass={() => setGate('pass')} /></div>
-  // 注册总闸关了：新设备不让进，只显示一句话
+  // 注册关闭时不允许新建账号，但仍提供恢复已有账号的入口。
   if (signupBlocked) return (
     <div className="app"><div className="gate">
       <div className="gate-title">Linverse</div>
       <div style={{ color: 'var(--ink2)', fontSize: 'calc(14px * var(--fss))', marginTop: 12 }}>
         站长暂未开放新账号注册
+      </div>
+      <div style={{ width: 'min(320px, 88vw)', marginTop: 20 }}>
+        <input className="input" value={restoreId} placeholder="已有账号 ID"
+          onChange={(e) => setRestoreId(e.target.value)} />
+        <input className="input" style={{ marginTop: 8 }} value={restoreToken}
+          placeholder="账号恢复密钥" autoComplete="off"
+          onChange={(e) => setRestoreToken(e.target.value)} />
+        {restoreError && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{restoreError}</div>}
+        <button className="btn" style={{ width: '100%', marginTop: 10 }}
+          onClick={restoreExistingProfile} disabled={restoring}>
+          {restoring ? '验证中…' : '验证并恢复账号'}
+        </button>
       </div>
     </div></div>
   )
