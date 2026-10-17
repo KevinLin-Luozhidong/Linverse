@@ -1,0 +1,34 @@
+name: Refresh dependency lockfile
+
+on:
+  push:
+    branches: ["fix/dependency-security"]
+    paths:
+      - "backend/package.json"
+      - "frontend/package.json"
+      - "package.json"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply non-breaking security updates
+        run: npm audit fix || true
+      - name: Commit lockfile update
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "Apply patched transitive dependency versions"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
