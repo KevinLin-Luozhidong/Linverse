@@ -11,7 +11,7 @@
 //   - 每个函数都是 async 的，返回 Promise，上层路由记得加 await
 //   - 函数名、参数、返回值格式和原来完全一致，routes 不用改逻辑，只加 await
 // ============================================================================
-const { query } = require('./index');
+const { query, pool } = require('./index');
 
 // ---------- 通用小工具 ----------
 
@@ -525,7 +525,7 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
-  kbCount, kbClear, kbInsertBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
+  kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
   kbFaqSearch, kbFaqInsertBatch,
 };
 
@@ -536,6 +536,41 @@ module.exports = {
 async function kbCount() {
   const r = await query('SELECT COUNT(*)::int AS c FROM kb_chunks');
   return r.rows[0].c;
+}
+
+// 原子替换整本知识库：清空与批量插入必须在同一连接/事务里完成。
+async function kbReplaceBatch(chunks) {
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    throw new Error('kbReplaceBatch requires a non-empty chunks array');
+  }
+  const vals = [];
+  const params = [];
+  chunks.forEach((c, i) => {
+    const b = i * 7;
+    vals.push(`(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5},${b + 6},${b + 7}::vector)`);
+    params.push(
+      c.book || '', c.chapter || '', c.section || '',
+      c.page_start || 0, c.page_end || 0, c.text || '',
+      '[' + (c.embedding || []).join(',') + ']'
+    );
+  });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM kb_chunks');
+    const r = await client.query(
+      `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding)
+       VALUES ${vals.join(',')}`,
+      params
+    );
+    await client.query('COMMIT');
+    return r.rowCount;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // 按书统计：每本书的块数（文字/图片分开）、入库时间。知识库管理页用。
@@ -557,15 +592,20 @@ async function kbBookStats() {
 // 按书名删除整本书的知识块（知识库管理页的删除按钮用，前端必须二次确认）
 // 同时清除该书在 kb_faq 的标准问答，两步在同一个事务里保证原子性。
 async function kbDeleteBook(book) {
-  await query('BEGIN');
+  // 事务内必须复用同一个 client；pool.query 会在每次调用时独立借还连接，
+  // 不能保证 BEGIN / DELETE / COMMIT 落在同一条数据库连接上。
+  const client = await pool.connect();
   try {
-    const r = await query('DELETE FROM kb_chunks WHERE book = $1', [book]);
-    await query('DELETE FROM kb_faq WHERE book = $1', [book]);
-    await query('COMMIT');
+    await client.query('BEGIN');
+    const r = await client.query('DELETE FROM kb_chunks WHERE book = $1', [book]);
+    await client.query('DELETE FROM kb_faq WHERE book = $1', [book]);
+    await client.query('COMMIT');
     return r.rowCount;
   } catch (e) {
-    await query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch {}
     throw e;
+  } finally {
+    client.release();
   }
 }
 

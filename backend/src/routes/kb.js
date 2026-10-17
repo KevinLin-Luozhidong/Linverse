@@ -147,9 +147,10 @@ if (!c || typeof c.text !== 'string' || !c.text.trim() ||
 return res.status(400).json({ error: '某块缺少有效 text，或 embedding 不是 2048 维有限数值数组'});
 }
 }
-if (clear === true) await dao.kbClear();
-
-const n = await dao.kbInsertBatch(chunks);
+// clear=true 时，删除旧库和写入新块作为一个事务；插入失败会回滚，不会留下空库。
+const n = clear === true
+  ? await dao.kbReplaceBatch(chunks)
+  : await dao.kbInsertBatch(chunks);
 res.json({ inserted: n, total: await dao.kbCount()});
 }));
 
