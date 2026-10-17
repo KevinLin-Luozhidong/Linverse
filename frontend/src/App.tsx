@@ -6,7 +6,7 @@ import Settings from './pages/Settings'
 import Report from './pages/Report'
 import SiteGate from './SiteGate'
 import { I, Toast } from './components'
-import { listProfiles, createProfile, getSettings, siteStatus, getSiteToken, getPid, setPid } from '@api'
+import { listProfiles, createProfile, claimProfile, getSettings, siteStatus, getSiteToken, getPid, setPid, getProfileToken, setProfileToken } from '@api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
@@ -79,33 +79,31 @@ export default function App() {
     ;(async () => {
       try {
         const saved = getPid()
-        const ps = await listProfiles()
-        if (!alive) return
-        // 注意：数据库返回的 id 可能是数字（如 1），localStorage 里永远是字符串（如 "1")。
-        // 直接用 === 比较会判成不相等，导致每次刷新都误判"账号不存在"然后不断新建账号。
-        // 所以比较前两边都转成字符串再比，这是全站账号 ID 比较的统一做法
-        if (saved && ps.some((p) => String(p.id) === String(saved))) {
-          setProfileId(saved)
-          return
-        }
-        // 新浏览器，或存的账号已被删除：建新账号
-        // 如果站长关了注册总闸，后端会 403，前端显示"未开放"不进 App
-        try {
-          const p = await createProfile('我')
-          if (!alive) return
-          const newId = String(p.id) // 统一存成字符串，后面所有比较都不再踩类型坑
+        let profile
+        if (saved) {
+          // 旧版本账号首次升级：用现有站点访问权限给旧账号绑定独立随机凭证。
+          // 账号已被其他设备绑定时，不尝试用账号 ID 绕过所有权校验。
+          if (!getProfileToken()) {
+            profile = await claimProfile(saved)
+            setProfileToken(profile.authToken)
+          } else {
+            const ps = await listProfiles()
+            if (!ps.some((p) => String(p.id) === String(saved))) {
+              throw new Error('账号凭证与当前账号不匹配，请检查本设备保存的账号信息')
+            }
+            profile = ps.find((p) => String(p.id) === String(saved))
+          }
+          setProfileId(String(profile.id))
+        } else {
+          // 新设备只创建新账号，不枚举或自动认领数据库里的其他账号。
+          profile = await createProfile('我')
+          setProfileToken(profile.authToken)
+          const newId = String(profile.id)
           setPid(newId)
           setProfileId(newId)
-        } catch (e) {
-          if (!alive) return
-          if (e instanceof Error && e.message.includes('未开放')) {
-            setSignupBlocked(true)
-          } else {
-            setToast('后端未连接，部分功能不可用')
-          }
         }
-      } catch {
-        if (alive) setToast('后端未连接，部分功能不可用')
+      } catch (e) {
+        if (alive) setToast(e instanceof Error ? e.message : '账号验证失败，请重试')
       }
     })()
     return () => { alive = false }
