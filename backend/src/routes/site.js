@@ -19,6 +19,14 @@ const DANGER_KEY = 'danger_password_hash';
 // 用户不想走登录系统、又不想让拿到网址的人随便建账号时，关掉它。
 // 关掉后新设备打不开 App，只看到"站长未开放注册"；已建好的账号不受影响。
 const ALLOW_SIGNUP_KEY = 'allow_signup';
+const OWNER_SESSION_KEY = 'owner_session_hash';
+const OWNER_SESSION_EXPIRES_KEY = 'owner_session_expires';
+const OWNER_VERIFY_FAILS_KEY = 'owner_verify_failures';
+const OWNER_VERIFY_LOCK_KEY = 'owner_verify_lock_until';
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 // 密码 → 哈希：固定加一段应用前缀再算 SHA256，避免和其它地方的哈希撞车
 function hashPw(pw) {
@@ -54,12 +62,20 @@ router.post('/password', ah(async (req, res) => {
   }
   const h = hashPw(pw);
   await dao.setSiteConfig(HASH_KEY, h);
+  // 访问密码变化后，撤销已有所有者管理会话，要求重新验证。
+  await dao.setSiteConfig(OWNER_SESSION_KEY, '');
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
   res.json({ ok: true, token: h });
 }));
 
 // 所有者密码：设置/修改。第一次直接设；之后必须带对旧的所有者密码。
 // 这个密码只属于用户本人，朋友知道访问密码也清空不了数据。
 router.post('/danger-password', ah(async (req, res) => {
+  const siteHash = await dao.getSiteConfig(HASH_KEY);
+  if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码，再设置所有者密码' });
+  if (req.headers['x-site-token'] !== siteHash) {
+    return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
+  }
   const pw = (req.body.password || '').trim();
   if (need(res, pw && pw.length >= 4, '密码至少 4 位')) return;
   if (need(res, pw.length <= 64, '密码太长了')) return;
@@ -70,6 +86,9 @@ router.post('/danger-password', ah(async (req, res) => {
     if (hashPw(oldPw) !== old) return res.status(401).json({ error: '旧的所有者密码不对' });
   }
   await dao.setSiteConfig(DANGER_KEY, hashPw(pw));
+  // 所有者密码变更后，撤销旧的管理会话。
+  await dao.setSiteConfig(OWNER_SESSION_KEY, '');
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
   res.json({ ok: true });
 }));
 
@@ -77,6 +96,39 @@ router.post('/danger-password', ah(async (req, res) => {
 router.get('/danger-status', ah(async (req, res) => {
   const h = await dao.getSiteConfig(DANGER_KEY);
   res.json({ dangerSet: !!h });
+}));
+
+// 验证所有者密码，签发 30 分钟有效的随机管理会话令牌。
+router.post('/owner-verify', ah(async (req, res) => {
+  const siteHash = await dao.getSiteConfig(HASH_KEY);
+  if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码' });
+  if (req.headers['x-site-token'] !== siteHash) {
+    return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
+  }
+  const lockUntil = Number(await dao.getSiteConfig(OWNER_VERIFY_LOCK_KEY) || 0);
+  if (lockUntil > Date.now()) {
+    return res.status(429).json({ error: 'owner_verify_locked', message: '所有者验证失败次数过多，请 15 分钟后重试' });
+  }
+  const stored = await dao.getSiteConfig(DANGER_KEY);
+  if (!stored) return res.status(403).json({ error: 'owner_password_not_set', message: '请先设置所有者密码' });
+  const password = (req.body.password || '').trim();
+  if (!password || hashPw(password) !== stored) {
+    const failures = Number(await dao.getSiteConfig(OWNER_VERIFY_FAILS_KEY) || 0) + 1;
+    if (failures >= 5) {
+      await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
+      await dao.setSiteConfig(OWNER_VERIFY_LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
+      return res.status(429).json({ error: 'owner_verify_locked', message: '连续验证失败 5 次，请 15 分钟后重试' });
+    }
+    await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, String(failures));
+    return res.status(401).json({ error: 'owner_password_invalid', message: '所有者密码不正确' });
+  }
+  await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
+  await dao.setSiteConfig(OWNER_VERIFY_LOCK_KEY, '0');
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  await dao.setSiteConfig(OWNER_SESSION_KEY, hashToken(token));
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, String(expiresAt));
+  res.json({ ok: true, token, expiresAt });
 }));
 
 // 清空所有数据（恢复出厂设置）：账号、错题、笔记、生词、会话全删，ID 从 1 重来。
@@ -92,6 +144,8 @@ router.post('/reset', ah(async (req, res) => {
   if (need(res, danger && hashPw(danger) === dh, '所有者密码不对：只有本人能清空数据')) return;
   if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
   await dao.resetAll();
+  await dao.setSiteConfig(OWNER_SESSION_KEY, '');
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
   res.json({ ok: true });
 }));
 

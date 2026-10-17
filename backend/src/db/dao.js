@@ -11,7 +11,7 @@
 //   - 每个函数都是 async 的，返回 Promise，上层路由记得加 await
 //   - 函数名、参数、返回值格式和原来完全一致，routes 不用改逻辑，只加 await
 // ============================================================================
-const { query } = require('./index');
+const { query, pool } = require('./index');
 
 // ---------- 通用小工具 ----------
 
@@ -55,14 +55,34 @@ async function setSiteConfig(key, value) {
 
 // ---------- 账号（profiles） ----------
 
-async function listProfiles() {
-  const r = await query('SELECT * FROM profiles ORDER BY id');
+async function listProfiles(profileId) {
+  const r = await query(
+    'SELECT id, name, avatar_url FROM profiles WHERE id = $1',
+    [profileId]
+  );
   return r.rows;
 }
 
-async function createProfile(name) {
-  const r = await query('INSERT INTO profiles (name) VALUES ($1) RETURNING *', [name]);
+async function getProfileAuthHash(id) {
+  const r = await query('SELECT auth_token_hash FROM profiles WHERE id = $1', [id]);
+  return r.rows[0] ? r.rows[0].auth_token_hash : null;
+}
+
+async function createProfile(name, tokenHash) {
+  const r = await query(
+    'INSERT INTO profiles (name, auth_token_hash) VALUES ($1, $2) RETURNING id, name, avatar_url',
+    [name, tokenHash]
+  );
   return r.rows[0];
+}
+
+// 仅用于旧账号迁移：只能给尚未绑定凭证的账号设置一次，避免覆盖现有所有者。
+async function claimProfile(id, tokenHash) {
+  const r = await query(
+    'UPDATE profiles SET auth_token_hash = $1 WHERE id = $2 AND auth_token_hash IS NULL RETURNING id, name, avatar_url',
+    [tokenHash, id]
+  );
+  return r.rows[0] || null;
 }
 
 async function updateProfile(id, name) {
@@ -495,7 +515,7 @@ async function updateSettings(profileId, patch) {
 
 module.exports = {
   today,
-  listProfiles, createProfile, updateProfile, deleteProfile, setAvatar,
+  listProfiles, getProfileAuthHash, createProfile, claimProfile, updateProfile, deleteProfile, setAvatar,
   listConversations, getConversation, createConversation, addMessage, deleteConversation,
   listMistakes, createMistake, updateMistake, deleteMistake, countMistakes,
   listNotes, createNote, updateNote, deleteNote, countNotes,
@@ -505,7 +525,7 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
-  kbCount, kbClear, kbInsertBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
+  kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
   kbFaqSearch, kbFaqInsertBatch,
 };
 
@@ -516,6 +536,41 @@ module.exports = {
 async function kbCount() {
   const r = await query('SELECT COUNT(*)::int AS c FROM kb_chunks');
   return r.rows[0].c;
+}
+
+// 原子替换整本知识库：清空与批量插入必须在同一连接/事务里完成。
+async function kbReplaceBatch(chunks) {
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    throw new Error('kbReplaceBatch requires a non-empty chunks array');
+  }
+  const vals = [];
+  const params = [];
+  chunks.forEach((c, i) => {
+    const b = i * 7;
+    vals.push(`(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5},${b + 6},${b + 7}::vector)`);
+    params.push(
+      c.book || '', c.chapter || '', c.section || '',
+      c.page_start || 0, c.page_end || 0, c.text || '',
+      '[' + (c.embedding || []).join(',') + ']'
+    );
+  });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM kb_chunks');
+    const r = await client.query(
+      `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding)
+       VALUES ${vals.join(',')}`,
+      params
+    );
+    await client.query('COMMIT');
+    return r.rowCount;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // 按书统计：每本书的块数（文字/图片分开）、入库时间。知识库管理页用。
@@ -537,15 +592,20 @@ async function kbBookStats() {
 // 按书名删除整本书的知识块（知识库管理页的删除按钮用，前端必须二次确认）
 // 同时清除该书在 kb_faq 的标准问答，两步在同一个事务里保证原子性。
 async function kbDeleteBook(book) {
-  await query('BEGIN');
+  // 事务内必须复用同一个 client；pool.query 会在每次调用时独立借还连接，
+  // 不能保证 BEGIN / DELETE / COMMIT 落在同一条数据库连接上。
+  const client = await pool.connect();
   try {
-    const r = await query('DELETE FROM kb_chunks WHERE book = $1', [book]);
-    await query('DELETE FROM kb_faq WHERE book = $1', [book]);
-    await query('COMMIT');
+    await client.query('BEGIN');
+    const r = await client.query('DELETE FROM kb_chunks WHERE book = $1', [book]);
+    await client.query('DELETE FROM kb_faq WHERE book = $1', [book]);
+    await client.query('COMMIT');
     return r.rowCount;
   } catch (e) {
-    await query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch {}
     throw e;
+  } finally {
+    client.release();
   }
 }
 

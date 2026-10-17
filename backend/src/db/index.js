@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 -- v0.1.5：头像（Supabase Storage 的图片地址）
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+-- v0.2.0：每个账号独立的随机认证凭证（只存 SHA-256，不存明文）
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS auth_token_hash TEXT;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id SERIAL PRIMARY KEY,

@@ -4,10 +4,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.4.0",
     "pg": "^8.11.3"
   },
   "description": "Linverse 后端：Node + Express + Supabase Postgres，为前端提供 REST API（跑在 Vercel serverless 上）",
+  "engines": { "node": ">=22" },
   "main": "server.js",
   "name": "@linverse/backend",
   "private": true,

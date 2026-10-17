@@ -5,7 +5,8 @@ import {
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
   siteStatus, siteSetPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
-  signupStatus, setSignupAllow, clearPid,
+  signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
+  verifyOwnerPassword, clearOwnerToken,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -71,6 +72,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [profiles, setProfiles] = useState<P[]>([])
   const [newName, setNewName] = useState('')
   const [findId, setFindId] = useState('') // 输入账号 ID 找回
+  const [findToken, setFindToken] = useState('') // 账号恢复密钥
   const [editingId, setEditingId] = useState('')
   const [editingName, setEditingName] = useState('')
   const [delId, setDelId] = useState('')
@@ -159,17 +161,31 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       reloadProfiles()
     } catch (e) { setToast(e instanceof Error ? e.message : '改名失败') }
   }
-  // 输入账号 ID 找回：换设备/清数据后，凭个人中心复制的 ID 找回原账号
+  // 换设备恢复必须同时提供账号 ID 和随机恢复密钥，不能只凭可猜测的 ID 认领账号。
   const doFind = async () => {
     const id = findId.trim()
-    if (!id) { setToast('先输入账号 ID'); return }
+    const token = findToken.trim()
+    if (!id || !token) { setToast('请输入账号 ID 和恢复密钥'); return }
+    const previousId = profileId
+    const previousToken = getProfileToken(previousId || undefined)
     try {
+      setPid(id)
+      setProfileToken(token, id)
       const ps = await listProfiles()
-      // 用户手输的是字符串，数据库 id 可能是数字：两边转字符串再比
-      if (!ps.some((p) => String(p.id) === String(id))) { setToast('没找到这个账号 ID'); return }
+      if (!ps.some((p) => String(p.id) === String(id))) throw new Error('账号 ID 或恢复密钥不正确')
       setFindId('')
-      onProfileChange(id) // 切过去，App 会记入本浏览器
-    } catch (e) { setToast(e instanceof Error ? e.message : '找回失败') }
+      setFindToken('')
+      onProfileChange(id)
+      setToast('账号恢复成功')
+    } catch (e) {
+      if (previousId) {
+        setPid(previousId)
+        setProfileToken(previousToken, previousId)
+      } else {
+        clearPid()
+      }
+      setToast(e instanceof Error ? e.message : '找回失败')
+    }
   }
   // 个人资料：改当前账号的显示名
   const saveDisplayName = async () => {
@@ -243,6 +259,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     try {
       await siteReset(d)
       clearPid()
+      clearProfileAuth()
+      clearOwnerToken()
       setWipePw('')
       setToast('已清空，重新开始')
       setTimeout(() => location.reload(), 900)
@@ -281,6 +299,22 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     } finally { setSavingSitePw(false) }
   }
 
+  const verifyOwner = async () => {
+    const password = ownerVerifyPw.trim()
+    if (!password) { setToast('请输入所有者密码'); return }
+    if (verifyingOwner) return
+    setVerifyingOwner(true)
+    try {
+      await verifyOwnerPassword(password)
+      setOwnerVerifyPw('')
+      setToast('所有者验证通过，管理权限 30 分钟有效')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '所有者验证失败')
+    } finally {
+      setVerifyingOwner(false)
+    }
+  }
+
   // 新账号注册总闸：关掉后新设备不能自动建账号，只有所有者密码能改
   const [signupAllow, setSignupAllowUi] = useState(true)
   const [signupPw, setSignupPw] = useState('')
@@ -305,12 +339,15 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // 所有者密码：只属于本人的密码，专管"清空所有数据"。朋友知道访问密码也动不了数据。
   const [dangerSet, setDangerSet] = useState(false)
+  const [ownerVerifyPw, setOwnerVerifyPw] = useState('')
+  const [verifyingOwner, setVerifyingOwner] = useState(false)
   const [oldDanger, setOldDanger] = useState('')
   const [newDanger, setNewDanger] = useState('')
   useEffect(() => {
     dangerStatus().then((s) => setDangerSet(s.dangerSet)).catch(() => {})
   }, [])
   const saveDangerPw = async () => {
+    if (!pwSet) { setToast('请先设置访问密码，再设置所有者密码'); return }
     const p = newDanger.trim()
     if (p.length < 4) { setToast('密码至少 4 位'); return }
     if (savingDangerPw) return
@@ -318,6 +355,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     try {
       await setDangerPassword(p, dangerSet ? oldDanger.trim() : undefined)
       setDangerSet(true)
+      clearOwnerToken()
       setOldDanger(''); setNewDanger('')
       setToast(dangerSet ? '所有者密码已修改' : '所有者密码已设置：清空数据时必须输对它')
     } catch (e) {
@@ -377,13 +415,35 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   onChange={(e) => setNewName(e.target.value)} />
   <button className="btn" onClick={addProfile} disabled={addingProfile}>{addingProfile ? '添加中…' : '添加'}</button>
   </div>
-  {/* 换设备找回：输入旧账号 ID */}
-  <div className="field-label" style={{ marginTop: 14 }}>换设备时输入旧账号 ID 找回</div>
-  <div className="btn-row" style={{ marginTop: 6 }}>
-  <input className="input" value={findId} placeholder="账号 ID"
-  onChange={(e) => setFindId(e.target.value)} />
-  <button className="btn" onClick={doFind}>找回</button>
+  {profileId && (
+  <div className="field" style={{ marginTop: 16 }}>
+    <div className="field-label">本账号恢复密钥</div>
+    <input className="input" readOnly value={getProfileToken(profileId)} />
+    <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6 }}
+      onClick={async () => {
+        const token = getProfileToken(profileId)
+        if (!token) { setToast('当前设备没有恢复密钥'); return }
+        try {
+          if (!navigator.clipboard) throw new Error('clipboard unavailable')
+          await navigator.clipboard.writeText(token)
+          setToast('恢复密钥已复制')
+        } catch {
+          setToast('复制失败，请手动长按复制')
+        }
+      }}>复制恢复密钥</button>
+    <div className="safe-note">请妥善保存。换设备时需要同时输入账号 ID 和恢复密钥；不要把密钥发给别人。</div>
   </div>
+  )}
+  <div className="field-label" style={{ marginTop: 18 }}>在新设备恢复账号</div>
+  <div className="field">
+    <input className="input" value={findId} placeholder="账号 ID"
+      onChange={(e) => setFindId(e.target.value)} />
+  </div>
+  <div className="field">
+    <input className="input" value={findToken} placeholder="恢复密钥"
+      onChange={(e) => setFindToken(e.target.value)} autoComplete="off" />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={doFind}>验证并恢复</button>
   </>),
 
   ai: (<>
@@ -490,7 +550,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
   {dangerSet
   ? '已设置所有者密码：清空所有数据时必须输对它，朋友不知道这个密码就动不了数据'
-  : '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它'}
+  : (pwSet ? '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它' : '请先设置访问密码，再设置所有者密码')}
   </div>
   {dangerSet && (
   <div className="field">
@@ -508,6 +568,18 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   {savingDangerPw ? '保存中…' : (dangerSet ? '修改所有者密码' : '设置所有者密码')}
   </button>
   {/* 新账号注册总闸：只有所有者密码能改。关掉后，新设备打不开 App（显示"未开放注册"），已建好的账号不受影响 */}
+  <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
+    验证所有者身份后，知识库入库、删除等管理操作会获得 30 分钟授权。
+  </div>
+  <div className="field">
+    <div className="field-label">验证所有者密码</div>
+    <input className="input" type="password" value={ownerVerifyPw}
+      onChange={(e) => setOwnerVerifyPw(e.target.value)} placeholder="输入所有者密码" />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={verifyOwner} disabled={verifyingOwner}>
+    {verifyingOwner ? '验证中…' : '验证所有者身份（30 分钟）'}
+  </button>
+  
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
   {signupAllow
     ? '新账号注册：开着。新设备打开网址会自动建账号'

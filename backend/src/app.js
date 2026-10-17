@@ -33,6 +33,62 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
+// 账号级身份认证：站点密码只负责进站，不能代替每个账号的所有权校验。
+app.use('/api', async (req, res, next) => {
+  if (req.path.startsWith('/site/') || req.path === '/health') return next();
+  // 注册和旧账号首次迁移由各自路由处理；其余业务 API 必须有账号凭证。
+  if (req.method === 'POST' && (req.path === '/profiles' || /^\/profiles\/[^/]+\/claim$/.test(req.path))) return next();
+  const profileId = String(req.headers['x-profile-id'] || '');
+  const token = String(req.headers['x-profile-token'] || '');
+  if (!profileId || !token) {
+    return res.status(401).json({ error: 'need_profile_auth', message: '请先验证账号' });
+  }
+  try {
+    const storedHash = await dao.getProfileAuthHash(profileId);
+    const suppliedHash = require('crypto').createHash('sha256').update(token).digest('hex');
+    if (!storedHash || storedHash !== suppliedHash) {
+      return res.status(401).json({ error: 'need_profile_auth', message: '账号凭证无效，请重新验证账号' });
+    }
+    // 所有数据接口的 profileId 必须与凭证所属账号一致，禁止只改请求参数访问别人的数据。
+    const requestedIds = [req.query.profileId, req.body && req.body.profileId]
+      .filter((v) => v !== undefined && v !== null && String(v) !== '')
+      .map(String);
+    if (requestedIds.some((id) => id !== profileId)) {
+      return res.status(403).json({ error: 'profile_forbidden', message: '不能访问其他账号的数据' });
+    }
+    if (req.path.startsWith('/profiles/')) {
+      const targetId = req.path.split('/')[2];
+      if (targetId && targetId !== 'claim' && targetId !== profileId) {
+        return res.status(403).json({ error: 'profile_forbidden', message: '不能操作其他账号' });
+      }
+    }
+    req.profileId = profileId;
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
+// 知识库写入/删除属于管理员操作：除账号凭证外，还必须提供短期所有者会话。
+app.use('/api', async (req, res, next) => {
+  const adminAction =
+    (req.method === 'POST' && (req.path === '/kb/ingest' || req.path === '/kb/faq/ingest')) ||
+    (req.method === 'DELETE' && req.path === '/kb/books');
+  if (!adminAction) return next();
+  try {
+    const expected = await dao.getSiteConfig('owner_session_hash');
+    const expiresAt = Number(await dao.getSiteConfig('owner_session_expires'));
+    const token = String(req.headers['x-owner-token'] || '');
+    const supplied = require('crypto').createHash('sha256').update(token).digest('hex');
+    if (!expected || !token || expected !== supplied || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      return res.status(403).json({ error: 'need_owner_auth', message: '此操作需要先验证所有者密码（有效期 30 分钟）' });
+    }
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
 app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/conversations', require('./routes/conversations'));
 app.use('/api/mistakes', require('./routes/mistakes'));

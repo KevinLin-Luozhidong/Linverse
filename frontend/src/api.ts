@@ -7,15 +7,19 @@ const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
 // 访问密码 token 存在 localStorage，每次请求自动带在 x-site-token 头里
-async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Promise<T> {
+async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authProfileId?: string): Promise<T> {
   let res: Response
   const token = getSiteToken()
+  const requestProfileId = authProfileId || getPid()
+  const profileToken = getProfileToken(requestProfileId)
   try {
     res = await fetch(`${BASE}/api${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'x-site-token': token } : {}),
+        ...(requestProfileId && profileToken ? { 'x-profile-id': requestProfileId, 'x-profile-token': profileToken } : {}),
+        ...(getOwnerToken() ? { 'x-owner-token': getOwnerToken() } : {}),
       },
       // 20 秒还没回来就放弃，别让界面一直转圈（国内连 Vercel 有时会 hang 住）
       signal: init?.signal || AbortSignal.timeout(timeoutMs),
@@ -33,7 +37,10 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Prom
     let code = ''
     try {
       const body = await res.json()
-      if (body && typeof body.error === 'string') { msg = body.error; code = body.error }
+      if (body && typeof body.error === 'string') {
+        msg = typeof body.message === 'string' ? body.message : body.error
+        code = body.error
+      }
     } catch {
       // 解析失败就用默认文案
     }
@@ -58,6 +65,10 @@ const post = <T>(p: string, body?: unknown, timeoutMs?: number) =>
 const put = <T>(p: string, body: unknown) =>
   req<T>(p, { method: 'PUT', body: JSON.stringify(body) })
 const del = <T>(p: string) => req<T>(p, { method: 'DELETE' })
+const putAsProfile = <T>(id: string, p: string, body: unknown) =>
+  req<T>(p, { method: 'PUT', body: JSON.stringify(body) }, 20000, id)
+const delAsProfile = <T>(id: string, p: string) =>
+  req<T>(p, { method: 'DELETE' }, 20000, id)
 
 // ---- 类型定义（与契约字段一一对应） ----
 export interface ConversationMeta { id: string; title: string; createdAt: string }
@@ -103,6 +114,7 @@ export interface Settings {
 }
 
 export interface Profile { id: string; name: string; avatar_url?: string }
+export interface AuthenticatedProfile extends Profile { authToken: string }
 
 // 图片地址归一化：/uploads/... 拼上后端地址（本地 BASE 为空走 Vite 代理，部署后走 VITE_API_URL），http 开头原样返回
 export function imgSrc(url?: string): string {
@@ -120,15 +132,23 @@ export async function uploadImage(file: File): Promise<string> {
   try {
     res = await fetch(`${BASE}/api/upload`, {
       method: 'POST', body: fd,
-      headers: token ? { 'x-site-token': token } : {},
+      headers: {
+        ...(token ? { 'x-site-token': token } : {}),
+        ...(getPid() && getProfileToken() ? { 'x-profile-id': getPid()!, 'x-profile-token': getProfileToken() } : {}),
+      },
     })
   } catch {
     throw new Error('连不上后端服务，确认后端已启动')
   }
   if (res.status === 401) {
-    clearSiteToken()
-    window.dispatchEvent(new Event('linverse:site-locked'))
-    throw new Error('请输入访问密码')
+    let body: { error?: string; message?: string } = {}
+    try { body = await res.json() } catch {}
+    if (body.error === 'need_site_password') {
+      clearSiteToken()
+      window.dispatchEvent(new Event('linverse:site-locked'))
+      throw new Error('请输入访问密码')
+    }
+    throw new Error(body.message || '账号验证失败，请检查账号恢复密钥')
   }
   if (!res.ok) throw new Error('图片上传失败')
   const data = await res.json()
@@ -274,12 +294,56 @@ export const getSettings = (profileId: string) =>
 export const saveSettings = (s: Settings) => put<Settings>('/settings', s)
 
 // ---- 账号 ----
-export const listProfiles = () => get<Profile[]>('/profiles')
-export const createProfile = (name: string) => post<Profile>('/profiles', { name })
-export const renameProfile = (id: string, name: string) => put<Profile>(`/profiles/${id}`, { name })
-export const deleteProfile = (id: string) => del(`/profiles/${id}`)
-export const setAvatar = (id: string, avatarUrl: string) =>
-  put<Profile>(`/profiles/${id}/avatar`, { avatarUrl })
+const PROFILE_INDEX = 'linverse.profileIndex'
+function readProfileIndex(): Profile[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(PROFILE_INDEX) || '[]')
+    return Array.isArray(value) ? value
+      .filter((p) => p && p.id != null && typeof p.name === 'string')
+      .map((p) => ({ id: String(p.id), name: p.name, avatar_url: p.avatar_url })) : []
+  } catch { return [] }
+}
+function rememberProfiles(profiles: Profile[]) {
+  const known = new Map(readProfileIndex().map((p) => [String(p.id), p]))
+  profiles.forEach((p) => known.set(String(p.id), {
+    id: String(p.id), name: p.name, avatar_url: p.avatar_url,
+  }))
+  localStorage.setItem(PROFILE_INDEX, JSON.stringify([...known.values()]))
+}
+export const listProfiles = async () => {
+  const current = await get<Profile[]>('/profiles')
+  rememberProfiles(current)
+  return [...new Map(readProfileIndex().map((p) => [String(p.id), p])).values()]
+}
+export const createProfile = async (name: string) => {
+  const p = await post<AuthenticatedProfile>('/profiles', { name })
+  setProfileToken(p.authToken, String(p.id))
+  rememberProfiles([p])
+  return p
+}
+export const claimProfile = async (id: string) => {
+  const p = await post<AuthenticatedProfile>(`/profiles/${encodeURIComponent(id)}/claim`)
+  setProfileToken(p.authToken, String(p.id))
+  rememberProfiles([p])
+  return p
+}
+export const renameProfile = async (id: string, name: string) => {
+  const p = await putAsProfile<Profile>(id, `/profiles/${id}`, { name })
+  rememberProfiles([p])
+  return p
+}
+export const deleteProfile = async (id: string) => {
+  const result = await delAsProfile(id, `/profiles/${id}`)
+  const known = readProfileIndex().filter((p) => String(p.id) !== String(id))
+  localStorage.setItem(PROFILE_INDEX, JSON.stringify(known))
+  setProfileToken('', id)
+  return result
+}
+export const setAvatar = async (id: string, avatarUrl: string) => {
+  const p = await putAsProfile<Profile>(id, `/profiles/${id}/avatar`, { avatarUrl })
+  rememberProfiles([p])
+  return p
+}
 
 // AI Key 存取：只放 localStorage，不经过后端
 const AI_KEY = 'linverse.aiKey'
@@ -321,6 +385,32 @@ export function clearPid() {
   try { document.cookie = `${PID_COOKIE}=; max-age=0; path=/` } catch {}
 }
 
+// ---- 账号级凭证 ----
+const PROFILE_TOKEN = 'linverse.profileToken'
+const profileTokenKey = (id: string) => `${PROFILE_TOKEN}.${id}`
+export const getProfileToken = (id = getPid()) => {
+  if (id) return localStorage.getItem(profileTokenKey(String(id))) || ''
+  return localStorage.getItem(PROFILE_TOKEN) || ''
+}
+export const setProfileToken = (t: string, id = getPid()) => {
+  if (id) {
+    if (t) localStorage.setItem(profileTokenKey(String(id)), t)
+    else localStorage.removeItem(profileTokenKey(String(id)))
+  } else if (t) {
+    localStorage.setItem(PROFILE_TOKEN, t)
+  } else {
+    localStorage.removeItem(PROFILE_TOKEN)
+  }
+}
+export const clearProfileAuth = () => {
+  const keys: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && (key === PROFILE_TOKEN || key.startsWith(`${PROFILE_TOKEN}.`) || key === PROFILE_INDEX)) keys.push(key)
+  }
+  keys.forEach((key) => localStorage.removeItem(key))
+}
+
 // ---- 全站访问密码 ----
 // token 就是密码哈希本身：验证通过后存本地，每次请求自动带上；改密码后旧 token 自动失效
 const SITE_TOKEN = 'linverse.siteToken'
@@ -346,6 +436,20 @@ export const setDangerPassword = (password: string, oldPassword?: string) =>
 export const signupStatus = () => get<{ allow: boolean }>('/site/signup-status')
 export const setSignupAllow = (allow: boolean, dangerPassword: string) =>
   post<{ ok: boolean; allow: boolean }>('/site/signup-allow', { allow, dangerPassword })
+
+// ---- 所有者管理会话 ----
+const OWNER_TOKEN = 'linverse.ownerToken'
+export const getOwnerToken = () => localStorage.getItem(OWNER_TOKEN) || ''
+export const setOwnerToken = (token: string) => {
+  if (token) localStorage.setItem(OWNER_TOKEN, token)
+  else localStorage.removeItem(OWNER_TOKEN)
+}
+export const clearOwnerToken = () => setOwnerToken('')
+export const verifyOwnerPassword = async (password: string) => {
+  const result = await post<{ ok: boolean; token: string; expiresAt: number }>('/site/owner-verify', { password })
+  setOwnerToken(result.token)
+  return result
+}
 
 // ---- 知识库管理 ----
 export interface KbBook {
