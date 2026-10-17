@@ -66,6 +66,11 @@ router.post('/password', ah(async (req, res) => {
 // 所有者密码：设置/修改。第一次直接设；之后必须带对旧的所有者密码。
 // 这个密码只属于用户本人，朋友知道访问密码也清空不了数据。
 router.post('/danger-password', ah(async (req, res) => {
+  const siteHash = await dao.getSiteConfig(HASH_KEY);
+  if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码，再设置所有者密码' });
+  if (req.headers['x-site-token'] !== siteHash) {
+    return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
+  }
   const pw = (req.body.password || '').trim();
   if (need(res, pw && pw.length >= 4, '密码至少 4 位')) return;
   if (need(res, pw.length <= 64, '密码太长了')) return;
@@ -90,6 +95,11 @@ router.get('/danger-status', ah(async (req, res) => {
 
 // 验证所有者密码，签发 30 分钟有效的随机管理会话令牌。
 router.post('/owner-verify', ah(async (req, res) => {
+  const siteHash = await dao.getSiteConfig(HASH_KEY);
+  if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码' });
+  if (req.headers['x-site-token'] !== siteHash) {
+    return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
+  }
   const stored = await dao.getSiteConfig(DANGER_KEY);
   if (!stored) return res.status(403).json({ error: 'owner_password_not_set', message: '请先设置所有者密码' });
   const password = (req.body.password || '').trim();
