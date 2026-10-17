@@ -21,6 +21,8 @@ const DANGER_KEY = 'danger_password_hash';
 const ALLOW_SIGNUP_KEY = 'allow_signup';
 const OWNER_SESSION_KEY = 'owner_session_hash';
 const OWNER_SESSION_EXPIRES_KEY = 'owner_session_expires';
+const OWNER_VERIFY_FAILS_KEY = 'owner_verify_failures';
+const OWNER_VERIFY_LOCK_KEY = 'owner_verify_lock_until';
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -100,12 +102,25 @@ router.post('/owner-verify', ah(async (req, res) => {
   if (req.headers['x-site-token'] !== siteHash) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
+  const lockUntil = Number(await dao.getSiteConfig(OWNER_VERIFY_LOCK_KEY) || 0);
+  if (lockUntil > Date.now()) {
+    return res.status(429).json({ error: 'owner_verify_locked', message: '所有者验证失败次数过多，请 15 分钟后重试' });
+  }
   const stored = await dao.getSiteConfig(DANGER_KEY);
   if (!stored) return res.status(403).json({ error: 'owner_password_not_set', message: '请先设置所有者密码' });
   const password = (req.body.password || '').trim();
   if (!password || hashPw(password) !== stored) {
+    const failures = Number(await dao.getSiteConfig(OWNER_VERIFY_FAILS_KEY) || 0) + 1;
+    if (failures >= 5) {
+      await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
+      await dao.setSiteConfig(OWNER_VERIFY_LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
+      return res.status(429).json({ error: 'owner_verify_locked', message: '连续验证失败 5 次，请 15 分钟后重试' });
+    }
+    await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, String(failures));
     return res.status(401).json({ error: 'owner_password_invalid', message: '所有者密码不正确' });
   }
+  await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
+  await dao.setSiteConfig(OWNER_VERIFY_LOCK_KEY, '0');
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + 30 * 60 * 1000;
   await dao.setSiteConfig(OWNER_SESSION_KEY, hashToken(token));
