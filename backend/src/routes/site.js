@@ -243,3 +243,5 @@ router.post('/signup-allow', ah(async (req, res) => {
 }));
 
 module.exports = router;
+// 导出纯函数供自动化测试（不经过 HTTP，直接测加密/校验逻辑）
+module.exports._test = { hashPw, verifyPw, isLegacyHash, safeEqualHex, safeEqual };

@@ -301,4 +301,6 @@ throw new Error(`不支持的模型类型：${model}`);
 return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched};
 }
 
-module.exports = { ask};
+module.exports = { ask };
+// 导出纯函数供自动化测试
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint };
