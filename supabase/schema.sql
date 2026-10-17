@@ -5,7 +5,8 @@
 CREATE TABLE IF NOT EXISTS profiles (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  auth_token_hash TEXT UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
