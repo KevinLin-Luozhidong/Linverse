@@ -297,7 +297,9 @@ const PROFILE_INDEX = 'linverse.profileIndex'
 function readProfileIndex(): Profile[] {
   try {
     const value = JSON.parse(localStorage.getItem(PROFILE_INDEX) || '[]')
-    return Array.isArray(value) ? value.filter((p) => p && p.id != null && typeof p.name === 'string') : []
+    return Array.isArray(value) ? value
+      .filter((p) => p && p.id != null && typeof p.name === 'string')
+      .map((p) => ({ id: String(p.id), name: p.name, avatar_url: p.avatar_url })) : []
   } catch { return [] }
 }
 function rememberProfiles(profiles: Profile[]) {
@@ -322,7 +324,11 @@ export const claimProfile = async (id: string) => {
   rememberProfiles([p])
   return p
 }
-export const renameProfile = (id: string, name: string) => putAsProfile<Profile>(id, `/profiles/${id}`, { name })
+export const renameProfile = async (id: string, name: string) => {
+  const p = await putAsProfile<Profile>(id, `/profiles/${id}`, { name })
+  rememberProfiles([p])
+  return p
+}
 export const deleteProfile = async (id: string) => {
   const result = await delAsProfile(id, `/profiles/${id}`)
   const known = readProfileIndex().filter((p) => String(p.id) !== String(id))
@@ -330,8 +336,11 @@ export const deleteProfile = async (id: string) => {
   setProfileToken('', id)
   return result
 }
-export const setAvatar = (id: string, avatarUrl: string) =>
-  putAsProfile<Profile>(id, `/profiles/${id}/avatar`, { avatarUrl })
+export const setAvatar = async (id: string, avatarUrl: string) => {
+  const p = await putAsProfile<Profile>(id, `/profiles/${id}/avatar`, { avatarUrl })
+  rememberProfiles([p])
+  return p
+}
 
 // AI Key 存取：只放 localStorage，不经过后端
 const AI_KEY = 'linverse.aiKey'
