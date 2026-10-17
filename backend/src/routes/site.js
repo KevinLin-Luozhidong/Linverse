@@ -19,6 +19,12 @@ const DANGER_KEY = 'danger_password_hash';
 // 用户不想走登录系统、又不想让拿到网址的人随便建账号时，关掉它。
 // 关掉后新设备打不开 App，只看到"站长未开放注册"；已建好的账号不受影响。
 const ALLOW_SIGNUP_KEY = 'allow_signup';
+const OWNER_SESSION_KEY = 'owner_session_hash';
+const OWNER_SESSION_EXPIRES_KEY = 'owner_session_expires';
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 // 密码 → 哈希：固定加一段应用前缀再算 SHA256，避免和其它地方的哈希撞车
 function hashPw(pw) {
@@ -70,6 +76,9 @@ router.post('/danger-password', ah(async (req, res) => {
     if (hashPw(oldPw) !== old) return res.status(401).json({ error: '旧的所有者密码不对' });
   }
   await dao.setSiteConfig(DANGER_KEY, hashPw(pw));
+  // 所有者密码变更后，撤销旧的管理会话。
+  await dao.setSiteConfig(OWNER_SESSION_KEY, '');
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
   res.json({ ok: true });
 }));
 
@@ -77,6 +86,21 @@ router.post('/danger-password', ah(async (req, res) => {
 router.get('/danger-status', ah(async (req, res) => {
   const h = await dao.getSiteConfig(DANGER_KEY);
   res.json({ dangerSet: !!h });
+}));
+
+// 验证所有者密码，签发 30 分钟有效的随机管理会话令牌。
+router.post('/owner-verify', ah(async (req, res) => {
+  const stored = await dao.getSiteConfig(DANGER_KEY);
+  if (!stored) return res.status(403).json({ error: 'owner_password_not_set', message: '请先设置所有者密码' });
+  const password = (req.body.password || '').trim();
+  if (!password || hashPw(password) !== stored) {
+    return res.status(401).json({ error: 'owner_password_invalid', message: '所有者密码不正确' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  await dao.setSiteConfig(OWNER_SESSION_KEY, hashToken(token));
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, String(expiresAt));
+  res.json({ ok: true, token, expiresAt });
 }));
 
 // 清空所有数据（恢复出厂设置）：账号、错题、笔记、生词、会话全删，ID 从 1 重来。
