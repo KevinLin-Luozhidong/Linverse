@@ -95,7 +95,9 @@ export default function App() {
             if (!ps.some((p) => String(p.id) === String(saved))) {
               throw new Error('账号凭证与当前账号不匹配，请检查本设备保存的账号信息')
             }
-            profile = ps.find((p) => String(p.id) === String(saved))
+            const matched = ps.find((p) => String(p.id) === String(saved))
+            if (!matched) throw new Error('找不到当前账号')
+            profile = matched
           }
           setProfileId(String(profile.id))
         } else {
