@@ -347,6 +347,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     dangerStatus().then((s) => setDangerSet(s.dangerSet)).catch(() => {})
   }, [])
   const saveDangerPw = async () => {
+    if (!pwSet) { setToast('请先设置访问密码，再设置所有者密码'); return }
     const p = newDanger.trim()
     if (p.length < 4) { setToast('密码至少 4 位'); return }
     if (savingDangerPw) return
@@ -549,7 +550,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
   {dangerSet
   ? '已设置所有者密码：清空所有数据时必须输对它，朋友不知道这个密码就动不了数据'
-  : '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它'}
+  : (pwSet ? '设一个所有者密码：只属于你一个人，清空所有数据时必须输对它' : '请先设置访问密码，再设置所有者密码')}
   </div>
   {dangerSet && (
   <div className="field">
