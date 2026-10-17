@@ -397,10 +397,16 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     <div className="field-label">本账号恢复密钥</div>
     <input className="input" readOnly value={getProfileToken(profileId)} />
     <button className="btn btn-ghost" style={{ width: '100%', marginTop: 6 }}
-      onClick={() => {
+      onClick={async () => {
         const token = getProfileToken(profileId)
         if (!token) { setToast('当前设备没有恢复密钥'); return }
-        navigator.clipboard?.writeText(token).then(() => setToast('恢复密钥已复制')).catch(() => setToast('复制失败，请手动长按复制'))
+        try {
+          if (!navigator.clipboard) throw new Error('clipboard unavailable')
+          await navigator.clipboard.writeText(token)
+          setToast('恢复密钥已复制')
+        } catch {
+          setToast('复制失败，请手动长按复制')
+        }
       }}>复制恢复密钥</button>
     <div className="safe-note">请妥善保存。换设备时需要同时输入账号 ID 和恢复密钥；不要把密钥发给别人。</div>
   </div>
