@@ -55,14 +55,34 @@ async function setSiteConfig(key, value) {
 
 // ---------- 账号（profiles） ----------
 
-async function listProfiles() {
-  const r = await query('SELECT * FROM profiles ORDER BY id');
+async function listProfiles(profileId) {
+  const r = await query(
+    'SELECT id, name, avatar_url FROM profiles WHERE id = $1',
+    [profileId]
+  );
   return r.rows;
 }
 
-async function createProfile(name) {
-  const r = await query('INSERT INTO profiles (name) VALUES ($1) RETURNING *', [name]);
+async function getProfileAuthHash(id) {
+  const r = await query('SELECT auth_token_hash FROM profiles WHERE id = $1', [id]);
+  return r.rows[0] ? r.rows[0].auth_token_hash : null;
+}
+
+async function createProfile(name, tokenHash) {
+  const r = await query(
+    'INSERT INTO profiles (name, auth_token_hash) VALUES ($1, $2) RETURNING id, name, avatar_url',
+    [name, tokenHash]
+  );
   return r.rows[0];
+}
+
+// 仅用于旧账号迁移：只能给尚未绑定凭证的账号设置一次，避免覆盖现有所有者。
+async function claimProfile(id, tokenHash) {
+  const r = await query(
+    'UPDATE profiles SET auth_token_hash = $1 WHERE id = $2 AND auth_token_hash IS NULL RETURNING id, name, avatar_url',
+    [tokenHash, id]
+  );
+  return r.rows[0] || null;
 }
 
 async function updateProfile(id, name) {
@@ -495,7 +515,7 @@ async function updateSettings(profileId, patch) {
 
 module.exports = {
   today,
-  listProfiles, createProfile, updateProfile, deleteProfile, setAvatar,
+  listProfiles, getProfileAuthHash, createProfile, claimProfile, updateProfile, deleteProfile, setAvatar,
   listConversations, getConversation, createConversation, addMessage, deleteConversation,
   listMistakes, createMistake, updateMistake, deleteMistake, countMistakes,
   listNotes, createNote, updateNote, deleteNote, countNotes,
