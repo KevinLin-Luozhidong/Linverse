@@ -25,9 +25,16 @@ router.post('/', ah(async (req, res) => {
   res.status(201).json({ ...profile, authToken });
 }));
 
-// 旧设备迁移：仅能给未绑定凭证的旧账号绑定一次新凭证。
-// 此接口仍受全站访问密码门保护（若站长设置了访问密码）。
+// 旧账号迁移：必须先设置全站访问密码并通过验证，再给未绑定凭证的旧账号绑定一次新凭证。
+// 避免在公开站点上仅凭可猜测的数字 ID 抢先认领旧账号。
 router.post('/:id/claim', ah(async (req, res) => {
+  const siteHash = await dao.getSiteConfig('site_password_hash');
+  if (!siteHash) {
+    return res.status(403).json({ error: 'legacy_claim_requires_site_password', message: '迁移旧账号前，请先设置访问密码，再重新打开应用' });
+  }
+  if (req.headers['x-site-token'] !== siteHash) {
+    return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
+  }
   const id = req.params.id;
   const existingHash = await dao.getProfileAuthHash(id);
   if (existingHash) return res.status(409).json({ error: '该账号已绑定认证凭证，不能重新认领' });
