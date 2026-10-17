@@ -69,6 +69,26 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
+// 知识库写入/删除属于管理员操作：除账号凭证外，还必须提供短期所有者会话。
+app.use('/api', async (req, res, next) => {
+  const adminAction =
+    (req.method === 'POST' && (req.path === '/kb/ingest' || req.path === '/kb/faq/ingest')) ||
+    (req.method === 'DELETE' && req.path === '/kb/books');
+  if (!adminAction) return next();
+  try {
+    const expected = await dao.getSiteConfig('owner_session_hash');
+    const expiresAt = Number(await dao.getSiteConfig('owner_session_expires'));
+    const token = String(req.headers['x-owner-token'] || '');
+    const supplied = require('crypto').createHash('sha256').update(token).digest('hex');
+    if (!expected || !token || expected !== supplied || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      return res.status(403).json({ error: 'need_owner_auth', message: '此操作需要先验证所有者密码（有效期 30 分钟）' });
+    }
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
 app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/conversations', require('./routes/conversations'));
 app.use('/api/mistakes', require('./routes/mistakes'));
