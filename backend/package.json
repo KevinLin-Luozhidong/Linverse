@@ -8,6 +8,7 @@
     "pg": "^8.11.3"
   },
   "description": "Linverse 后端：Node + Express + Supabase Postgres，为前端提供 REST API（跑在 Vercel serverless 上）",
+  "engines": { "node": ">=22" },
   "main": "server.js",
   "name": "@linverse/backend",
   "private": true,
