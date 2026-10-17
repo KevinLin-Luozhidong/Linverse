@@ -11,7 +11,7 @@
 //   - 每个函数都是 async 的，返回 Promise，上层路由记得加 await
 //   - 函数名、参数、返回值格式和原来完全一致，routes 不用改逻辑，只加 await
 // ============================================================================
-const { query } = require('./index');
+const { query, pool } = require('./index');
 
 // ---------- 通用小工具 ----------
 
@@ -557,15 +557,20 @@ async function kbBookStats() {
 // 按书名删除整本书的知识块（知识库管理页的删除按钮用，前端必须二次确认）
 // 同时清除该书在 kb_faq 的标准问答，两步在同一个事务里保证原子性。
 async function kbDeleteBook(book) {
-  await query('BEGIN');
+  // 事务内必须复用同一个 client；pool.query 会在每次调用时独立借还连接，
+  // 不能保证 BEGIN / DELETE / COMMIT 落在同一条数据库连接上。
+  const client = await pool.connect();
   try {
-    const r = await query('DELETE FROM kb_chunks WHERE book = $1', [book]);
-    await query('DELETE FROM kb_faq WHERE book = $1', [book]);
-    await query('COMMIT');
+    await client.query('BEGIN');
+    const r = await client.query('DELETE FROM kb_chunks WHERE book = $1', [book]);
+    await client.query('DELETE FROM kb_faq WHERE book = $1', [book]);
+    await client.query('COMMIT');
     return r.rowCount;
   } catch (e) {
-    await query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch {}
     throw e;
+  } finally {
+    client.release();
   }
 }
 
