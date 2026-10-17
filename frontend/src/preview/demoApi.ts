@@ -12,6 +12,7 @@ export interface Mistake {
   id: string; profileId: string; subject: string; questionText: string;
   questionImageUrl?: string; answerText?: string; answerImageUrl?: string;
   reason?: string; mastered: boolean;
+  createdAt?: string; created_at?: string;
 }
 
 export interface Note {
@@ -274,7 +275,7 @@ export const listMistakes = async (profileId: string) =>
   load().mistakes.filter((m) => m.profileId === profileId)
 export const createMistake = async (m: Omit<Mistake, 'id'>) => {
   const db = load()
-  const row = { ...m, id: nid() }
+  const row = { ...m, id: nid(), createdAt: new Date().toISOString() }
   db.mistakes.unshift(row)
   save(db)
   return row

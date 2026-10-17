@@ -35,7 +35,8 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [toastMsg, toastKey, setToast] = useToast()
   const [ocrBusy, setOcrBusy] = useState(false)
   const [uploading, setUploading] = useState<'q' | 'a' | ''>('') // 正在上传哪张图
-  const [delId, setDelId] = useState('') // 二次确认删除
+  const [delId, setDelId] = useState('') // 二次确认删除（单条）
+  const [batchConfirm, setBatchConfirm] = useState(false) // 批量删除二次确认
   const [saving, setSaving] = useState(false) // 保存中：防连点
   const [selectMode, setSelectMode] = useState(false) // 批量选择模式
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -54,13 +55,15 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   }
   useEffect(() => { reload() }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 排序：科目分组 / 最新录入（后端默认倒序）/ 最早录入 / 未掌握优先
+  // 排序：科目分组 / 最新录入 / 最早录入 / 未掌握优先
+  // 时间戳取 created_at（后端行）或 createdAt（演示数据），缺失时回退 id；不再依赖后端返回顺序
+  const mTime = (m: Mistake) => new Date(m.created_at || m.createdAt || 0).getTime()
   const sorted = [...list].sort((a, b) => {
-    if (sort === 'time' || sort === 'timeAsc') return 0 // 后端默认即时间倒序
+    if (sort === 'time') return mTime(b) - mTime(a) || Number(b.id) - Number(a.id)
+    if (sort === 'timeAsc') return mTime(a) - mTime(b) || Number(a.id) - Number(b.id)
     if (sort === 'unmastered') return Number(a.mastered) - Number(b.mastered)
     return a.subject.localeCompare(b.subject, 'zh')
   })
-  if (sort === 'timeAsc') sorted.reverse() // 最早录入：把后端的倒序翻过来
 
   // 分组渲染（按科目排序时加分组标题）
   const groups: { title: string; items: Mistake[] }[] = []
@@ -170,9 +173,15 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     }
   }
 
-  // 批量删除选中
+  // 批量删除选中：点第一次进确认态，第二次才真正删除
   const batchRemove = async () => {
     if (selected.size === 0 || batchBusy) return
+    if (!batchConfirm) {
+      setBatchConfirm(true)
+      setToast(`再点一次确认删除 ${selected.size} 条`)
+      return
+    }
+    setBatchConfirm(false)
     setBatchBusy(true)
     const ids = [...selected]
     const failed: string[] = []
@@ -192,6 +201,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
     setBatchBusy(false)
   }
   const toggleSelect = (id: string) => {
+    setBatchConfirm(false) // 选中项变化，确认态失效重算
     setSelected((s) => {
       const next = new Set(s)
       if (next.has(id)) next.delete(id)
@@ -244,7 +254,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
           )}
         </div>
         <button className={'mini-chip' + (selectMode ? ' active' : '')}
-          onClick={() => { setSelectMode(!selectMode); setSelected(new Set()) }}>
+          onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); setBatchConfirm(false) }}>
           {selectMode ? '取消选择' : '批量选择'}
         </button>
       </div>
@@ -320,7 +330,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
           </span>
           <button className="mini-btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
             onClick={batchRemove} disabled={selected.size === 0 || batchBusy}>
-            {batchBusy ? '删除中…' : `删除(${selected.size})`}
+            {batchBusy ? '删除中…' : batchConfirm ? `确认删除(${selected.size})` : `删除(${selected.size})`}
           </button>
         </div>
       )}
@@ -394,8 +404,8 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
             </div>
             <div className="field">
               <div className="field-label">错因（可选）</div>
-              <input className="input" value={ed.reason || ''}
-                placeholder="比如概念混淆、审题失误"
+              <textarea className="textarea" style={{ minHeight: 64 }} value={ed.reason || ''}
+                placeholder="比如概念混淆、审题失误，多行详细记录"
                 onChange={(e) => setEditing({ ...ed, reason: e.target.value })} />
             </div>
             <div className="set-row">

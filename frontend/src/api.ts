@@ -70,6 +70,7 @@ export interface Mistake {
   id: string; profileId: string; subject: string; questionText: string;
   questionImageUrl?: string; answerText?: string; answerImageUrl?: string;
   reason?: string; mastered: boolean;
+  createdAt?: string; created_at?: string;
 }
 
 export interface Note {

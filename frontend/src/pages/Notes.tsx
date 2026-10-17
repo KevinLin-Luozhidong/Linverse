@@ -32,8 +32,16 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchDeleting, setBatchDeleting] = useState(false)
+  const [batchArchiving, setBatchArchiving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<number>(0)
+
+  // 组件卸载时清除搜索防抖定时器
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(searchTimer.current)
+    }
+  }, [])
 
   const reload = (qq = q, tt = tag, arch = showArchived) => {
     if (!profileId) { setLoading(false); return }
@@ -54,6 +62,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   const allTags = [...new Set(notes.flatMap((n) => n.tags || []))]
 
   const openEdit = (n?: Note) => {
+    setDelId('')
     setEditing(n ? { ...n } : profileId ? blank(profileId) : null)
     setTagInput(n ? (n.tags || []).join(' ') : '')
   }
@@ -74,6 +83,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
         await createNote({ ...editing, profileId, tags })
       }
       setEditing(null)
+      setDelId('')
       reload()
       setToast('已保存')
     } catch (e) {
@@ -150,8 +160,8 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
   // 批量归档选中
   const batchArchive = async () => {
-    if (selected.size === 0 || batchDeleting) return
-    setBatchDeleting(true)
+    if (selected.size === 0 || batchArchiving) return
+    setBatchArchiving(true)
     try {
       for (const id of selected) {
         const n = notes.find((x) => x.id === id)
@@ -164,7 +174,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     } catch (e) {
       setToast(e instanceof Error ? e.message : '操作失败')
     } finally {
-      setBatchDeleting(false)
+      setBatchArchiving(false)
     }
   }
 
@@ -287,11 +297,11 @@ export default function Notes({ profileId }: { profileId: string | null }) {
           }}>
             {selected.size === shown.length ? '全不选' : '全选'}
           </button>
-          <button className="mini-chip" onClick={batchArchive} disabled={selected.size === 0 || batchDeleting}>
-            归档
+          <button className="mini-chip" onClick={batchArchive} disabled={selected.size === 0 || batchArchiving || batchDeleting}>
+            {batchArchiving ? '归档中…' : '归档'}
           </button>
           <button className="mini-btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
-            onClick={batchRemove} disabled={selected.size === 0 || batchDeleting}>
+            onClick={batchRemove} disabled={selected.size === 0 || batchDeleting || batchArchiving}>
             {batchDeleting ? '删除中…' : `删除(${selected.size})`}
           </button>
         </div>
@@ -305,7 +315,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
 
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => onFile(e.target.files?.[0])} />
-      <Sheet open={!!ed} onClose={() => setEditing(null)} title={ed?.id ? '编辑笔记' : '新建笔记'}>
+      <Sheet open={!!ed} onClose={() => { setEditing(null); setDelId('') }} title={ed?.id ? '编辑笔记' : '新建笔记'}>
         {ed && (
           <>
             <div className="field">
@@ -356,11 +366,11 @@ export default function Notes({ profileId }: { profileId: string | null }) {
             {ed.id && (
               <div className="btn-row" style={{ marginBottom: 10 }}>
                 <button className="btn btn-ghost" style={{ flex: 1 }}
-                  onClick={() => { togglePin({ ...ed, id: ed.id! } as Note); setEditing(null) }}>
+                  onClick={() => { togglePin({ ...ed, id: ed.id! } as Note); setEditing(null); setDelId('') }}>
                   {ed.pinned ? '取消置顶' : '置顶'}
                 </button>
                 <button className="btn btn-ghost" style={{ flex: 1 }}
-                  onClick={() => { toggleArchive({ ...ed, id: ed.id! } as Note); setEditing(null) }}>
+                  onClick={() => { toggleArchive({ ...ed, id: ed.id! } as Note); setEditing(null); setDelId('') }}>
                   {ed.archived ? '移出归档' : '归档'}
                 </button>
                 {delId === ed.id

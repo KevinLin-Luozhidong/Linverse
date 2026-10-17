@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast } from '../components'
 import { kbBooks, kbDeleteBook, type KbBook } from '@api'
 
@@ -11,7 +11,6 @@ export default function Kb({ active }: { active?: boolean }) {
   const [confirmDel, setConfirmDel] = useState('') // 正在二次确认的书名
   const [deleting, setDeleting] = useState(false)
   const [toastMsg, toastKey, setToast] = useToast()
-  const pageRef = useRef<HTMLDivElement>(null)
 
   const reload = () => {
     setLoading(true)
@@ -55,15 +54,19 @@ export default function Kb({ active }: { active?: boolean }) {
     }
   }
 
-  // B9: 使用 UTC 时间避免本地时区导致日期偏差
+  // 日期按用户本地时区显示：之前强制用 UTC，半夜入库的书会差一天
   const fmtDate = (s: string | null) => {
     if (!s) return '—'
-    return new Date(s).toISOString().slice(0, 10)
+    const d = new Date(s)
+    const y = d.getFullYear()
+    const mo = String(d.getMonth() + 1).padStart(2, '0')
+    const da = String(d.getDate()).padStart(2, '0')
+    return `${y}-${mo}-${da}`
   }
 
   if (loading) return <Spin />
   return (
-    <div className="kb-page" ref={pageRef}>
+    <div className="kb-page">
       {/* 页面头部 */}
       <div className="kb-header">
         <div className="kb-header-icon">
