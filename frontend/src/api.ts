@@ -36,7 +36,10 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authP
     let code = ''
     try {
       const body = await res.json()
-      if (body && typeof body.error === 'string') { msg = body.error; code = body.error }
+      if (body && typeof body.error === 'string') {
+        msg = typeof body.message === 'string' ? body.message : body.error
+        code = body.error
+      }
     } catch {
       // 解析失败就用默认文案
     }
@@ -137,9 +140,14 @@ export async function uploadImage(file: File): Promise<string> {
     throw new Error('连不上后端服务，确认后端已启动')
   }
   if (res.status === 401) {
-    clearSiteToken()
-    window.dispatchEvent(new Event('linverse:site-locked'))
-    throw new Error('请输入访问密码')
+    let body: { error?: string; message?: string } = {}
+    try { body = await res.json() } catch {}
+    if (body.error === 'need_site_password') {
+      clearSiteToken()
+      window.dispatchEvent(new Event('linverse:site-locked'))
+      throw new Error('请输入访问密码')
+    }
+    throw new Error(body.message || '账号验证失败，请检查账号恢复密钥')
   }
   if (!res.ok) throw new Error('图片上传失败')
   const data = await res.json()
