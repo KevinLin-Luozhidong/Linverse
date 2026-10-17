@@ -116,6 +116,8 @@ router.post('/reset', ah(async (req, res) => {
   if (need(res, danger && hashPw(danger) === dh, '所有者密码不对：只有本人能清空数据')) return;
   if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
   await dao.resetAll();
+  await dao.setSiteConfig(OWNER_SESSION_KEY, '');
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
   res.json({ ok: true });
 }));
 
