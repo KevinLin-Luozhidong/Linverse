@@ -28,9 +28,72 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-// 密码 → 哈希：固定加一段应用前缀再算 SHA256，避免和其它地方的哈希撞车
+// 密码 → 哈希：scrypt 慢哈希（每次随机盐），暴力破解成本比 SHA256 高几个数量级。
+// 存法：scrypt:<盐hex>:<哈希hex>
 function hashPw(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(pw, salt, 64).toString('hex');
+  return `scrypt:${salt}:${hash}`;
+}
+// 老格式兼容：SHA256('linverse-site:' + pw)。验证通过后自动升级为 scrypt。
+function legacyHashPw(pw) {
   return crypto.createHash('sha256').update('linverse-site:' + pw).digest('hex');
+}
+function isLegacyHash(stored) {
+  return typeof stored === 'string' && !stored.startsWith('scrypt:');
+}
+// 定长比较，防时序攻击（长度不等直接 false，避免 timingSafeEqual 抛错）
+function safeEqualHex(a, b) {
+  const ba = Buffer.from(String(a), 'hex');
+  const bb = Buffer.from(String(b), 'hex');
+  return ba.length > 0 && ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+// 通用定长比较（token 这类非 hex 字符串用这个）
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length > 0 && ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+function verifyPw(pw, stored) {
+  if (!pw || !stored) return false;
+  try {
+    if (isLegacyHash(stored)) return safeEqualHex(legacyHashPw(pw), stored);
+    const parts = String(stored).split(':');
+    if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+    const h = crypto.scryptSync(pw, parts[1], 64).toString('hex');
+    return safeEqualHex(h, parts[2]);
+  } catch (e) { return false; }
+}
+// 客户端 IP：Vercel 把真实 IP 放在 x-forwarded-for 第一位
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim().slice(0, 45);
+  return String(req.ip || (req.socket && req.socket.remoteAddress) || 'unknown').slice(0, 45);
+}
+// /verify 限流：同一 IP 5 分钟内失败 5 次，锁 15 分钟（记在 site_config，无需新表）
+async function verifyLocked(req, res) {
+  const ip = clientIp(req);
+  const lockUntil = Number(await dao.getSiteConfig(`site_verify_lock_${ip}`) || 0);
+  if (lockUntil > Date.now()) {
+    res.status(429).json({ error: 'verify_locked', message: '密码试错太多次，请 15 分钟后再试' });
+    return true;
+  }
+  return false;
+}
+async function recordVerifyFail(req) {
+  const ip = clientIp(req);
+  const fails = Number(await dao.getSiteConfig(`site_verify_fail_${ip}`) || 0) + 1;
+  if (fails >= 5) {
+    await dao.setSiteConfig(`site_verify_fail_${ip}`, '0');
+    await dao.setSiteConfig(`site_verify_lock_${ip}`, String(Date.now() + 15 * 60 * 1000));
+  } else {
+    await dao.setSiteConfig(`site_verify_fail_${ip}`, String(fails));
+  }
+}
+async function clearVerifyFails(req) {
+  const ip = clientIp(req);
+  await dao.setSiteConfig(`site_verify_fail_${ip}`, '0');
+  await dao.setSiteConfig(`site_verify_lock_${ip}`, '0');
 }
 
 // 状态：有没有设密码（公开接口，密码门页面靠它决定展不展示输入框）
@@ -39,13 +102,24 @@ router.get('/status', ah(async (req, res) => {
   res.json({ passwordSet: !!h });
 }));
 
-// 验证：输对密码拿 token
+// 验证：输对密码拿 token（token 就是存的哈希本身，改密码后旧 token 自动失效）
 router.post('/verify', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
   if (!h) return res.json({ ok: true, token: '' }); // 没设密码：直接放行
+  if (await verifyLocked(req, res)) return;
   const pw = (req.body.password || '').trim();
   if (need(res, pw, '请输入密码')) return;
-  if (hashPw(pw) !== h) return res.status(401).json({ error: '密码不对，再试一次' });
+  if (!verifyPw(pw, h)) {
+    await recordVerifyFail(req);
+    return res.status(401).json({ error: '密码不对，再试一次' });
+  }
+  await clearVerifyFails(req);
+  // 老哈希验证通过：静默升级为 scrypt（旧 token 随之失效，需重新验证一次）
+  if (isLegacyHash(h)) {
+    const nh = hashPw(pw);
+    await dao.setSiteConfig(HASH_KEY, nh);
+    return res.json({ ok: true, token: nh });
+  }
   res.json({ ok: true, token: h });
 }));
 
@@ -58,7 +132,7 @@ router.post('/password', ah(async (req, res) => {
   if (old) {
     const oldPw = (req.body.oldPassword || '').trim();
     if (need(res, oldPw, '请输入旧密码')) return;
-    if (hashPw(oldPw) !== old) return res.status(401).json({ error: '旧密码不对' });
+    if (!verifyPw(oldPw, old)) return res.status(401).json({ error: '旧密码不对' });
   }
   const h = hashPw(pw);
   await dao.setSiteConfig(HASH_KEY, h);
@@ -73,7 +147,7 @@ router.post('/password', ah(async (req, res) => {
 router.post('/danger-password', ah(async (req, res) => {
   const siteHash = await dao.getSiteConfig(HASH_KEY);
   if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码，再设置所有者密码' });
-  if (req.headers['x-site-token'] !== siteHash) {
+  if (!safeEqual(req.headers['x-site-token'], siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const pw = (req.body.password || '').trim();
@@ -83,7 +157,7 @@ router.post('/danger-password', ah(async (req, res) => {
   if (old) {
     const oldPw = (req.body.oldPassword || '').trim();
     if (need(res, oldPw, '请输入旧的所有者密码')) return;
-    if (hashPw(oldPw) !== old) return res.status(401).json({ error: '旧的所有者密码不对' });
+    if (!verifyPw(oldPw, old)) return res.status(401).json({ error: '旧的所有者密码不对' });
   }
   await dao.setSiteConfig(DANGER_KEY, hashPw(pw));
   // 所有者密码变更后，撤销旧的管理会话。
@@ -102,7 +176,7 @@ router.get('/danger-status', ah(async (req, res) => {
 router.post('/owner-verify', ah(async (req, res) => {
   const siteHash = await dao.getSiteConfig(HASH_KEY);
   if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码' });
-  if (req.headers['x-site-token'] !== siteHash) {
+  if (!safeEqual(req.headers['x-site-token'], siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const lockUntil = Number(await dao.getSiteConfig(OWNER_VERIFY_LOCK_KEY) || 0);
@@ -112,7 +186,7 @@ router.post('/owner-verify', ah(async (req, res) => {
   const stored = await dao.getSiteConfig(DANGER_KEY);
   if (!stored) return res.status(403).json({ error: 'owner_password_not_set', message: '请先设置所有者密码' });
   const password = (req.body.password || '').trim();
-  if (!password || hashPw(password) !== stored) {
+  if (!password || !verifyPw(password, stored)) {
     const failures = Number(await dao.getSiteConfig(OWNER_VERIFY_FAILS_KEY) || 0) + 1;
     if (failures >= 5) {
       await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
@@ -141,7 +215,7 @@ router.post('/reset', ah(async (req, res) => {
   const dh = await dao.getSiteConfig(DANGER_KEY);
   if (need(res, dh, '还没设所有者密码，不能清空（去设置 → 访问密码里设置）')) return;
   const danger = (req.body.danger || '').trim();
-  if (need(res, danger && hashPw(danger) === dh, '所有者密码不对：只有本人能清空数据')) return;
+  if (need(res, danger && verifyPw(danger, dh), '所有者密码不对：只有本人能清空数据')) return;
   if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
   await dao.resetAll();
   await dao.setSiteConfig(OWNER_SESSION_KEY, '');
@@ -162,7 +236,7 @@ router.post('/signup-allow', ah(async (req, res) => {
   const dh = await dao.getSiteConfig(DANGER_KEY);
   if (need(res, dh, '请先去设置 → 访问密码里设置所有者密码')) return;
   const pw = (req.body.dangerPassword || '').trim();
-  if (need(res, pw && hashPw(pw) === dh, '所有者密码不对：只有本人能改这个开关')) return;
+  if (need(res, pw && verifyPw(pw, dh), '所有者密码不对：只有本人能改这个开关')) return;
   const allow = req.body.allow === true;
   await dao.setSiteConfig(ALLOW_SIGNUP_KEY, allow ? '1' : '0');
   res.json({ ok: true, allow });

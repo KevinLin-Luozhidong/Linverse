@@ -4,6 +4,13 @@ const crypto = require('crypto');
 const dao = require('../db/dao');
 const { ah, need } = require('./helpers');
 
+// 定长比较防时序攻击
+function safeEqualSiteToken(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length > 0 && ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
 const router = express.Router();
 
 // 只返回当前已认证账号，绝不枚举其他账号。
@@ -32,7 +39,7 @@ router.post('/:id/claim', ah(async (req, res) => {
   if (!siteHash) {
     return res.status(403).json({ error: 'legacy_claim_requires_site_password', message: '迁移旧账号前，请先设置访问密码，再重新打开应用' });
   }
-  if (req.headers['x-site-token'] !== siteHash) {
+  if (!safeEqualSiteToken(req.headers['x-site-token'], siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const id = req.params.id;

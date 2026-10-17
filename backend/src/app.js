@@ -1,11 +1,22 @@
 // Express 应用组装：中间件 + 静态托管 + 路由挂载 + 错误处理
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 
-// 允许跨域：前端 dev 服务器（5173）和手机局域网访问都需要
-app.use(cors());
+// 定长比较防时序攻击（token/哈希比对都走这里，不用 ===）
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length > 0 && ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
+// 跨域：生产环境默认只允许同源（前后端同域部署，浏览器同源请求不需要 CORS 头）；
+// 如需开放给其他域名，设环境变量 CORS_ORIGINS=https://a.com,https://b.com。
+// 开发环境保持宽松，方便本地联调。
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+app.use(cors({ origin: process.env.NODE_ENV === 'production' ? (corsOrigins.length ? corsOrigins : false) : true }));
 // 解析 JSON 请求体（问答、错题等接口都用 JSON）
 app.use(express.json({ limit: '10mb' }));
 
@@ -26,7 +37,7 @@ app.use('/api', async (req, res, next) => {
     const hash = await dao.getSiteConfig('site_password_hash');
     if (!hash) return next();
     const token = req.headers['x-site-token'];
-    if (token && token === hash) return next();
+    if (token && safeEqual(token, hash)) return next();
     return res.status(401).json({ error: 'need_site_password', message: '请输入访问密码' });
   } catch (e) {
     next(e);
@@ -36,8 +47,10 @@ app.use('/api', async (req, res, next) => {
 // 账号级身份认证：站点密码只负责进站，不能代替每个账号的所有权校验。
 app.use('/api', async (req, res, next) => {
   if (req.path.startsWith('/site/') || req.path === '/health') return next();
+  // 路径归一化：去掉末尾斜杠，避免 '/profiles/' 绕过下面的精确匹配
+  const p = req.path.length > 1 && req.path.endsWith('/') ? req.path.slice(0, -1) : req.path;
   // 注册和旧账号首次迁移由各自路由处理；其余业务 API 必须有账号凭证。
-  if (req.method === 'POST' && (req.path === '/profiles' || /^\/profiles\/[^/]+\/claim$/.test(req.path))) return next();
+  if (req.method === 'POST' && (p === '/profiles' || /^\/profiles\/[^/]+\/claim$/.test(p))) return next();
   const profileId = String(req.headers['x-profile-id'] || '');
   const token = String(req.headers['x-profile-token'] || '');
   if (!profileId || !token) {
@@ -46,7 +59,7 @@ app.use('/api', async (req, res, next) => {
   try {
     const storedHash = await dao.getProfileAuthHash(profileId);
     const suppliedHash = require('crypto').createHash('sha256').update(token).digest('hex');
-    if (!storedHash || storedHash !== suppliedHash) {
+    if (!storedHash || !safeEqual(storedHash, suppliedHash)) {
       return res.status(401).json({ error: 'need_profile_auth', message: '账号凭证无效，请重新验证账号' });
     }
     // 所有数据接口的 profileId 必须与凭证所属账号一致，禁止只改请求参数访问别人的数据。
@@ -56,8 +69,8 @@ app.use('/api', async (req, res, next) => {
     if (requestedIds.some((id) => id !== profileId)) {
       return res.status(403).json({ error: 'profile_forbidden', message: '不能访问其他账号的数据' });
     }
-    if (req.path.startsWith('/profiles/')) {
-      const targetId = req.path.split('/')[2];
+    if (p.startsWith('/profiles/')) {
+      const targetId = p.split('/')[2];
       if (targetId && targetId !== 'claim' && targetId !== profileId) {
         return res.status(403).json({ error: 'profile_forbidden', message: '不能操作其他账号' });
       }
@@ -80,7 +93,7 @@ app.use('/api', async (req, res, next) => {
     const expiresAt = Number(await dao.getSiteConfig('owner_session_expires'));
     const token = String(req.headers['x-owner-token'] || '');
     const supplied = require('crypto').createHash('sha256').update(token).digest('hex');
-    if (!expected || !token || expected !== supplied || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    if (!expected || !token || !safeEqual(expected, supplied) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
       return res.status(403).json({ error: 'need_owner_auth', message: '此操作需要先验证所有者密码（有效期 30 分钟）' });
     }
     next();
