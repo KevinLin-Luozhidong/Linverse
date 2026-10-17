@@ -277,8 +277,16 @@ export const saveSettings = (s: Settings) => put<Settings>('/settings', s)
 
 // ---- 账号 ----
 export const listProfiles = () => get<Profile[]>('/profiles')
-export const createProfile = (name: string) => post<AuthenticatedProfile>('/profiles', { name })
-export const claimProfile = (id: string) => post<AuthenticatedProfile>(`/profiles/${encodeURIComponent(id)}/claim`)
+export const createProfile = async (name: string) => {
+  const p = await post<AuthenticatedProfile>('/profiles', { name })
+  setProfileToken(p.authToken, String(p.id))
+  return p
+}
+export const claimProfile = async (id: string) => {
+  const p = await post<AuthenticatedProfile>(`/profiles/${encodeURIComponent(id)}/claim`)
+  setProfileToken(p.authToken, String(p.id))
+  return p
+}
 export const renameProfile = (id: string, name: string) => put<Profile>(`/profiles/${id}`, { name })
 export const deleteProfile = (id: string) => del(`/profiles/${id}`)
 export const setAvatar = (id: string, avatarUrl: string) =>
@@ -326,10 +334,20 @@ export function clearPid() {
 
 // ---- 账号级凭证 ----
 const PROFILE_TOKEN = 'linverse.profileToken'
-export const getProfileToken = () => localStorage.getItem(PROFILE_TOKEN) || ''
-export const setProfileToken = (t: string) => {
-  if (t) localStorage.setItem(PROFILE_TOKEN, t)
-  else localStorage.removeItem(PROFILE_TOKEN)
+const profileTokenKey = (id: string) => `${PROFILE_TOKEN}.${id}`
+export const getProfileToken = (id = getPid()) => {
+  if (id) return localStorage.getItem(profileTokenKey(String(id))) || ''
+  return localStorage.getItem(PROFILE_TOKEN) || ''
+}
+export const setProfileToken = (t: string, id = getPid()) => {
+  if (id) {
+    if (t) localStorage.setItem(profileTokenKey(String(id)), t)
+    else localStorage.removeItem(profileTokenKey(String(id)))
+  } else if (t) {
+    localStorage.setItem(PROFILE_TOKEN, t)
+  } else {
+    localStorage.removeItem(PROFILE_TOKEN)
+  }
 }
 
 // ---- 全站访问密码 ----
