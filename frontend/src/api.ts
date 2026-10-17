@@ -7,16 +7,18 @@ const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
 // 访问密码 token 存在 localStorage，每次请求自动带在 x-site-token 头里
-async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000): Promise<T> {
+async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authProfileId?: string): Promise<T> {
   let res: Response
   const token = getSiteToken()
+  const requestProfileId = authProfileId || getPid()
+  const profileToken = getProfileToken(requestProfileId)
   try {
     res = await fetch(`${BASE}/api${path}`, {
       ...init,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'x-site-token': token } : {}),
-        ...(getPid() && getProfileToken() ? { 'x-profile-id': getPid()!, 'x-profile-token': getProfileToken() } : {}),
+        ...(requestProfileId && profileToken ? { 'x-profile-id': requestProfileId, 'x-profile-token': profileToken } : {}),
       },
       // 20 秒还没回来就放弃，别让界面一直转圈（国内连 Vercel 有时会 hang 住）
       signal: init?.signal || AbortSignal.timeout(timeoutMs),
@@ -59,6 +61,10 @@ const post = <T>(p: string, body?: unknown, timeoutMs?: number) =>
 const put = <T>(p: string, body: unknown) =>
   req<T>(p, { method: 'PUT', body: JSON.stringify(body) })
 const del = <T>(p: string) => req<T>(p, { method: 'DELETE' })
+const putAsProfile = <T>(id: string, p: string, body: unknown) =>
+  req<T>(p, { method: 'PUT', body: JSON.stringify(body) }, 20000, id)
+const delAsProfile = <T>(id: string, p: string) =>
+  req<T>(p, { method: 'DELETE' }, 20000, id)
 
 // ---- 类型定义（与契约字段一一对应） ----
 export interface ConversationMeta { id: string; title: string; createdAt: string }
@@ -279,21 +285,45 @@ export const getSettings = (profileId: string) =>
 export const saveSettings = (s: Settings) => put<Settings>('/settings', s)
 
 // ---- 账号 ----
-export const listProfiles = () => get<Profile[]>('/profiles')
+const PROFILE_INDEX = 'linverse.profileIndex'
+function readProfileIndex(): Profile[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(PROFILE_INDEX) || '[]')
+    return Array.isArray(value) ? value.filter((p) => p && p.id != null && typeof p.name === 'string') : []
+  } catch { return [] }
+}
+function rememberProfiles(profiles: Profile[]) {
+  const known = new Map(readProfileIndex().map((p) => [String(p.id), p]))
+  profiles.forEach((p) => known.set(String(p.id), { ...p, id: String(p.id) }))
+  localStorage.setItem(PROFILE_INDEX, JSON.stringify([...known.values()]))
+}
+export const listProfiles = async () => {
+  const current = await get<Profile[]>('/profiles')
+  rememberProfiles(current)
+  return [...new Map(readProfileIndex().map((p) => [String(p.id), p])).values()]
+}
 export const createProfile = async (name: string) => {
   const p = await post<AuthenticatedProfile>('/profiles', { name })
   setProfileToken(p.authToken, String(p.id))
+  rememberProfiles([p])
   return p
 }
 export const claimProfile = async (id: string) => {
   const p = await post<AuthenticatedProfile>(`/profiles/${encodeURIComponent(id)}/claim`)
   setProfileToken(p.authToken, String(p.id))
+  rememberProfiles([p])
   return p
 }
-export const renameProfile = (id: string, name: string) => put<Profile>(`/profiles/${id}`, { name })
-export const deleteProfile = (id: string) => del(`/profiles/${id}`)
+export const renameProfile = (id: string, name: string) => putAsProfile<Profile>(id, `/profiles/${id}`, { name })
+export const deleteProfile = async (id: string) => {
+  const result = await delAsProfile(id, `/profiles/${id}`)
+  const known = readProfileIndex().filter((p) => String(p.id) !== String(id))
+  localStorage.setItem(PROFILE_INDEX, JSON.stringify(known))
+  setProfileToken('', id)
+  return result
+}
 export const setAvatar = (id: string, avatarUrl: string) =>
-  put<Profile>(`/profiles/${id}/avatar`, { avatarUrl })
+  putAsProfile<Profile>(id, `/profiles/${id}/avatar`, { avatarUrl })
 
 // AI Key 存取：只放 localStorage，不经过后端
 const AI_KEY = 'linverse.aiKey'
