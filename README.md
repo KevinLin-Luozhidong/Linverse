@@ -49,7 +49,7 @@ Linverse（学习宇宙）——专为中国高中生打造的 AI 学习助手�
 
 ## 本地运行
 
-**环境要求**：Node.js 22+（当前 Supabase 依赖要求 Node.js 22 或更高版本）。
+**环境要求**：Node.js 22+（`package.json` 的 `engines` 字段声明，Vercel 会按此选择 serverless 函数运行时）。
 
 ```bash
 # 1. 进入项目根目录，安装所有依赖（前后端一起装）
@@ -90,21 +90,38 @@ npm start   # 跑在 http://localhost:3001
 ```
 linverse/
 ├── frontend/            # 前端（Vite + React + TypeScript）
+│   ├── api/index.js     # Vercel serverless 入口：把 backend/src/app 整个 Express 应用挂上去
+│   └── vercel.json      # /api/* → /api/index 的 rewrite 规则
 ├── backend/
-│   ├── server.js        # 启动入口（npm start）
-│   ├── uploads/         # 上传的图片（git 忽略）
-│   ├── data/            # SQLite 数据库文件（git 忽略）
+│   ├── server.js        # 本地启动入口（npm start）
 │   └── src/
-│       ├── app.js       # Express 组装
-│       ├── db/          # 数据访问层：建表 + DAO（以后换 Supabase 只需重写这一层）
+│       ├── app.js       # Express 组装（鉴权网关、CORS、路由挂载）
+│       ├── db/          # 数据访问层：index.js（连接+建表+版本化迁移）、dao.js、migrations/
 │       ├── ai/          # AI provider 抽象：ask() 统一入口
 │       └── routes/      # 各模块路由
+├── supabase/
+│   └── schema.sql       # 建表 SQL 手动兜底（和 backend 自动建表保持一致，改一边同步另一边）
 ├── package.json         # npm workspaces：frontend + backend
 └── README.md
 ```
 
-## 未来部署说明（简述）
+## 部署说明（当前方案）
 
-- **前端**：Vercel 托管最省事——连上 GitHub 仓库后每次 push 自动构建部署，免费额度个人用足够；记得把后端 API 地址配成环境变量。
-- **后端**：SQLite 是单机文件数据库，上云后换成 **Supabase 免费 Postgres**：在 Supabase 建项目、把表结构迁过去，然后只重写 `backend/src/db/` 这一层（DAO 函数签名不变，路由不用动）。
-- **图片**：用户量上来后把 `backend/uploads/` 换成对象存储（如 Supabase Storage 或 Cloudflare R2），`/api/upload` 返回外链 URL 即可，前端不用改。
+**架构**：单个 Vercel 项目 ＋ Supabase Postgres（新加坡机房）。
+
+- **Vercel**：项目的 Root Directory 设为 `frontend/`；前端构建产物和后端 API（`frontend/api/index.js` 把整个 Express 应用挂到 serverless 函数上）同项目部署。`frontend/vercel.json` 把 `/api/*` 请求 rewrite 到 `/api/index`。
+  - ⚠️ Vercel 项目设置里必须打开「Include source files outside of the Root Directory in the Build Step」，否则 `require('../../backend/src/app')` 的文件不会被打包进函数。
+- **数据库**：Supabase Postgres。应用冷启动时自动建表＋执行版本化迁移（`backend/src/db/migrations/`，幂等）；`supabase/schema.sql` 是手动兜底（Supabase → SQL Editor 粘贴执行）。
+- **图片**：上传走 `/api/upload`（multer 内存模式）→ 存 Supabase Storage，返回 https 公开链接；serverless 函数无本地磁盘。
+
+**环境变量**（Vercel → Settings → Environment Variables）：
+
+| 变量 | 必填 | 说明 |
+| ---- | ---- | ---- |
+| `DATABASE_URL` | 是 | Supabase → Database → Connection string → **Transaction pooler（6543 端口）**。serverless 必须走 pooler，不能直连 5432，否则函数实例一多会打满连接数 |
+| `CORS_ORIGINS` | 否 | 生产环境默认只允许同源；如需开放给其他域名，填 `https://a.com,https://b.com`（逗号分隔） |
+| `AI_API_KEY` | 否 | 服务端 AI Key（推荐，Key 不经过前端）；不填则用前端设置页的 Key 或演示模式 |
+
+**版本规则**：根目录、`backend/`、`frontend/` 三个 `package.json` 的 `version` 必须一致（当前 `0.3.1`）。发版时同步改三处。
+
+**预览版 vs 正式版**：`frontend/src/preview/` 是纯前端演示（数据存浏览器 localStorage，不连后端）；正式版走 `frontend/src/api.ts` 调后端 API。两套 API 封装字段名保持一致。

@@ -1,15 +1,21 @@
 -- Linverse 数据库建表 SQL（Supabase Postgres）
 -- 用法：Supabase 后台 → SQL Editor → 粘贴执行
--- 注意：后端冷启动时会自动执行同样的建表（幂等），这里是手动兜底
+-- 注意两点：
+--  1. 后端冷启动时会自动执行同样的建表＋版本化迁移（幂等），这里是手动兜底；
+--  2. 这份文件必须和 backend/src/db/index.js 的 SCHEMA_SQL 保持一致，
+--     改了一边就要同步另一边，否则灾难恢复时会建出不一样的库。
+-- 历史教训：这份文件曾经漏掉 site_config 整张表——按它重建的库会导致
+-- 访问密码门直接报错。所以每次改表结构，两边都要对一遍。
 
 CREATE TABLE IF NOT EXISTS profiles (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  auth_token_hash TEXT UNIQUE
+  -- v0.1.5：头像（Supabase Storage 的图片地址）
+  avatar_url TEXT,
+  -- v0.2.0：每个账号独立的随机认证凭证（只存 SHA-256，不存明文）
+  auth_token_hash TEXT
 );
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS auth_token_hash TEXT;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id SERIAL PRIMARY KEY,
@@ -93,11 +99,18 @@ CREATE TABLE IF NOT EXISTS settings (
   "profileId" INTEGER PRIMARY KEY,
   "displayName" TEXT NOT NULL DEFAULT '',
   "fontSize" TEXT NOT NULL DEFAULT 'medium',
-  theme TEXT NOT NULL DEFAULT 'light',
+  theme TEXT NOT NULL DEFAULT 'system',
   "aiProvider" TEXT NOT NULL DEFAULT 'demo',
   "aiModel" TEXT NOT NULL DEFAULT '',
   "aiEndpoint" TEXT NOT NULL DEFAULT '',
   FOREIGN KEY ("profileId") REFERENCES profiles(id) ON DELETE CASCADE
+);
+
+-- 全站配置：key/value 键值对。存 site_password_hash（访问密码）、danger_password_hash
+--（所有者密码）、allow_signup（新账号注册开关）等。没设访问密码 = 公开状态。
+CREATE TABLE IF NOT EXISTS site_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
 );
 
 -- pgvector 扩展：RAG 知识库向量检索用（Supabase 原生支持）
@@ -141,5 +154,6 @@ ALTER TABLE public.vocabulary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.word_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.checkins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;

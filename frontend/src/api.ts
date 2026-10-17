@@ -1,6 +1,6 @@
 // 后端 API 封装：请求地址 = VITE_API_URL + /api/...
 // 本地开发不设 VITE_API_URL 时走相对路径 /api/...，由 Vite 代理转发到 http://localhost:3001
-// 部署到 Vercel 后在环境变量里填 VITE_API_URL=https://<Railway 后端网址>，前端直连云端后端
+// 生产环境 VITE_API_URL 为空，走同源相对路径 /api/...，由 vercel.json rewrite 转发到 serverless API（前后端同一 Vercel 项目）
 // 字段名与后端契约保持一致，不做改动
 
 const BASE = import.meta.env.VITE_API_URL || ''

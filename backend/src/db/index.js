@@ -5,15 +5,20 @@
 // → Transaction pooler，6543 端口）。serverless 函数必须走 pooler，不能直连
 // 5432，否则函数实例一多会把数据库连接数打满。
 //
-// 建表：启动 / 冷启动时自动执行一次 CREATE TABLE IF NOT EXISTS（幂等），
-// 表已存在就直接跳过。supabase/schema.sql 里还有一份同样的建表 SQL，
-// 万一自动建表没跑成，可以去 Supabase 的 SQL 编辑器里手动执行兜底。
+// 建表：启动 / 冷启动时自动执行一次：
+//  1. 版本化迁移（backend/src/db/migrations/ 下的 00N_*.sql，按编号顺序执行，
+//     跑过的记在 schema_migrations 表里，重跑自动跳过）；
+//  2. SCHEMA_SQL 的 IF NOT EXISTS 建表作为兜底（幂等）。
+// supabase/schema.sql 里还有一份同样的建表 SQL，万一自动建表没跑成，
+// 可以去 Supabase 的 SQL 编辑器里手动执行兜底（两边必须保持一致）。
 //
 // 注意：Postgres 里不加引号的字段名会自动转成小写（profileId 会变成
 // profileid，前端收到的字段名就变了）。所以下面所有驼峰字段名都用双引号
 // 包起来（"profileId"），保证和原来 SQLite 版的字段名一字不差。
 // ============================================================================
 const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
 
 // 连接池：serverless 环境下每个函数实例是短命的，池子不用大，
 // 空闲连接及时回收，避免占着 Supabase 的连接数不放
@@ -197,6 +202,46 @@ ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;
 `;
 
+// ---------- 版本化迁移 ----------
+// 人话：表结构不是一成不变的（加列、改默认值都叫"迁移"）。以前迁移 SQL
+// 散落在 initDb() 函数体里，没人记得哪些跑过。现在规矩是：
+// 每次改表结构 → 在 migrations/ 下新建 00N_名字.sql（编号递增），
+// initDb 按编号顺序执行没跑过的，跑完记到 schema_migrations 表。
+// 幂等：每个迁移文件里的语句本身也要写成 IF NOT EXISTS / 条件 UPDATE，
+// 重跑不报错、不重复改数据。
+async function runMigrations() {
+  // 先建迁移记录表（它自己也要幂等）
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  const dir = path.join(__dirname, 'migrations');
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  } catch (err) {
+    // serverless 打包万一没把 migrations 目录打进去，不硬炸：
+    // 打日志，靠下面的 SCHEMA_SQL 兜底建表（表结构层面等价）
+    console.warn('[db] 迁移目录读取失败，跳过版本化迁移：', err.message);
+    return;
+  }
+  const done = new Set(
+    (await pool.query('SELECT version FROM schema_migrations')).rows.map((r) => r.version)
+  );
+  for (const f of files) {
+    const version = f.replace(/\.sql$/, '');
+    if (done.has(version)) continue; // 跑过就跳过
+    console.log('[db] 执行迁移：', f);
+    const sql = fs.readFileSync(path.join(dir, f), 'utf8');
+    // 整个文件一次发给 pg（pg 原生支持多语句）；文件内语句各自幂等
+    await pool.query(sql);
+    await pool.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
+    console.log('[db] 迁移完成：', f);
+  }
+}
+
 // ---------- 对外接口 ----------
 
 // 通用查询：dao.js 里所有 SQL 都走这里
@@ -220,6 +265,14 @@ function initDb() {
       console.warn('[db] 未设置 DATABASE_URL，跳过建表');
       return true; // 不算失败：本地验收场景
     }
+    // 第一步：版本化迁移。失败只打日志不抛错——SCHEMA_SQL 兜底能保证表结构，
+    // 不能因为某个迁移文件出问题就让整个 API 冷启动失败。
+    try {
+      await runMigrations();
+    } catch (err) {
+      console.error('[db] 版本化迁移失败，已降级为 SCHEMA_SQL 兜底 →', err.message);
+    }
+    // 第二步：SCHEMA_SQL 兜底（IF NOT EXISTS，幂等）
     // 按分号切出每条 CREATE TABLE，逐条执行（语句里没有函数体，不会有多余的分号）
     const statements = SCHEMA_SQL.split(';').map((s) => s.trim()).filter(Boolean);
     for (const sql of statements) {
@@ -233,15 +286,6 @@ function initDb() {
       }
     }
     console.log('[db] 建表检查完成，共', statements.length, '条语句');
-    // 主题默认跟随系统：老表只改默认值不影响已有行；
-    // 之前被默认成 light 的行（用户没手动选过）一起迁到 system，真正实现"默认随系统"
-    try {
-      await pool.query(`ALTER TABLE settings ALTER COLUMN theme SET DEFAULT 'system'`);
-      const r = await pool.query(`UPDATE settings SET theme = 'system' WHERE theme = 'light'`);
-      console.log('[db] 主题已迁为跟随系统，影响行数：', r.rowCount);
-    } catch (err) {
-      console.error('[db] 主题迁移失败 →', err.message);
-    }
     return true;
   })().catch((err) => {
     console.error('[db] 建表异常：', err.message);
@@ -253,4 +297,4 @@ function initDb() {
   return _initPromise;
 }
 
-module.exports = { pool, query, initDb, SCHEMA_SQL };
+module.exports = { pool, query, initDb, runMigrations, SCHEMA_SQL };
