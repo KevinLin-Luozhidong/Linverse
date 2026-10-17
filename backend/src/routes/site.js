@@ -62,6 +62,9 @@ router.post('/password', ah(async (req, res) => {
   }
   const h = hashPw(pw);
   await dao.setSiteConfig(HASH_KEY, h);
+  // 访问密码变化后，撤销已有所有者管理会话，要求重新验证。
+  await dao.setSiteConfig(OWNER_SESSION_KEY, '');
+  await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
   res.json({ ok: true, token: h });
 }));
 
