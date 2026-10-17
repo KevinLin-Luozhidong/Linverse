@@ -138,12 +138,30 @@ const data = await res.json();
 return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
 }
 
+// SSRF 防护：自定义接口地址只允许 http/https，并拦掉云元数据地址这类危险目标。
+// 注意：localhost 刻意保留——Ollama 本地模型是文档写明的合法用途。
+// 局限：这里只拦字面量的危险地址；完整的内网防护需要请求时解析 DNS，本应用威胁模型下够用。
+function assertSafeEndpoint(endpoint) {
+  let u;
+  try { u = new URL(String(endpoint)); }
+  catch { throw new Error('自定义接口地址写得不对，检查一下'); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error('自定义接口地址只支持 http/https');
+  }
+  const host = u.hostname.toLowerCase();
+  // 云元数据服务（打中可泄露云主机凭证）、0.0.0.0 一律拦掉
+  if (host === '169.254.169.254' || host === 'metadata.google.internal' || host === '0.0.0.0') {
+    throw new Error('自定义接口地址不合法');
+  }
+}
+
 // 根据用户填的自定义地址，拼出真正的请求 URL，并判断是 OpenAI 格式还是 Ollama 格式
 // 规则（按契约）：
 // - 以 /v1 结尾 → 拼上 /chat/completions（OpenAI 兼容服务）
 // - 只有根地址（如 http://localhost:11434）→ 走 Ollama 的 /api/chat
 // - 已经是完整端点 → 原样使用
 function resolveCustomEndpoint(endpoint) {
+assertSafeEndpoint(endpoint);
 const e = String(endpoint || '').replace(/\/+$/, ''); // 去掉末尾多余的斜杠
 if (!e) throw new Error('未配置自定义 AI 接口地址');
 // OpenAI 标准（/v1 结尾）和智谱（/v4 结尾）：自动拼上 /chat/completions

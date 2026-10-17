@@ -256,10 +256,9 @@ export const deleteNote = (id: string, profileId?: string) =>
 // ---- 词典 ----
 export type DictSource = 'dict' | 'offline'
 export const lookupWord = (word: string, source: DictSource = 'dict', opts?: {
-  aiKey?: string; model?: string; profileId?: string
+  model?: string; profileId?: string
 }) => {
   const q = new URLSearchParams({ word, source })
-  if (opts?.aiKey) q.set('aiKey', opts.aiKey)
   if (opts?.model) q.set('model', opts.model)
   if (opts?.profileId) q.set('profileId', opts.profileId)
   return get<DictResult>(`/dictionary?${q.toString()}`)
