@@ -6,6 +6,7 @@ import {
   siteStatus, siteSetPassword, setSiteToken, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
+  verifyOwnerPassword, clearOwnerToken,
 } from '@api'
 
 // 设置页：八个多彩圆角入口，点进二级页用横向推入转场（苹果味）
@@ -297,6 +298,22 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     } finally { setSavingSitePw(false) }
   }
 
+  const verifyOwner = async () => {
+    const password = ownerVerifyPw.trim()
+    if (!password) { setToast('请输入所有者密码'); return }
+    if (verifyingOwner) return
+    setVerifyingOwner(true)
+    try {
+      await verifyOwnerPassword(password)
+      setOwnerVerifyPw('')
+      setToast('所有者验证通过，管理权限 30 分钟有效')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '所有者验证失败')
+    } finally {
+      setVerifyingOwner(false)
+    }
+  }
+
   // 新账号注册总闸：关掉后新设备不能自动建账号，只有所有者密码能改
   const [signupAllow, setSignupAllowUi] = useState(true)
   const [signupPw, setSignupPw] = useState('')
@@ -321,6 +338,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // 所有者密码：只属于本人的密码，专管"清空所有数据"。朋友知道访问密码也动不了数据。
   const [dangerSet, setDangerSet] = useState(false)
+  const [ownerVerifyPw, setOwnerVerifyPw] = useState('')
+  const [verifyingOwner, setVerifyingOwner] = useState(false)
   const [oldDanger, setOldDanger] = useState('')
   const [newDanger, setNewDanger] = useState('')
   useEffect(() => {
@@ -334,6 +353,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     try {
       await setDangerPassword(p, dangerSet ? oldDanger.trim() : undefined)
       setDangerSet(true)
+      clearOwnerToken()
       setOldDanger(''); setNewDanger('')
       setToast(dangerSet ? '所有者密码已修改' : '所有者密码已设置：清空数据时必须输对它')
     } catch (e) {
@@ -546,6 +566,18 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   {savingDangerPw ? '保存中…' : (dangerSet ? '修改所有者密码' : '设置所有者密码')}
   </button>
   {/* 新账号注册总闸：只有所有者密码能改。关掉后，新设备打不开 App（显示"未开放注册"），已建好的账号不受影响 */}
+  <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
+    验证所有者身份后，知识库入库、删除等管理操作会获得 30 分钟授权。
+  </div>
+  <div className="field">
+    <div className="field-label">验证所有者密码</div>
+    <input className="input" type="password" value={ownerVerifyPw}
+      onChange={(e) => setOwnerVerifyPw(e.target.value)} placeholder="输入所有者密码" />
+  </div>
+  <button className="btn" style={{ width: '100%' }} onClick={verifyOwner} disabled={verifyingOwner}>
+    {verifyingOwner ? '验证中…' : '验证所有者身份（30 分钟）'}
+  </button>
+  
   <div className="safe-note" style={{ marginTop: 24, marginBottom: 12 }}>
   {signupAllow
     ? '新账号注册：开着。新设备打开网址会自动建账号'
