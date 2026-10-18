@@ -345,7 +345,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           {dictSource === 'offline' && (
             <div style={{ marginTop: 10 }}>
               {dictPkg ? (
-                <div style={{ fontSize: 13, color: 'var(--ink2)' }}>
+                <div style={{ fontSize: `calc(13px * var(--fss))`, color: 'var(--ink2)' }}>
                   ✓ 离线词典包已下载（{dictPkg.count} 词，断网可用）
                 </div>
               ) : (
@@ -367,12 +367,12 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               {result.phonetic && <div className="dict-phonetic" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {result.phonetic.startsWith('/') ? result.phonetic : `/${result.phonetic}/`}
                 {result.audioUrl && (
-                  <button className="mini-btn" style={{ fontSize: 13 }}
+                  <button className="mini-btn" style={{ fontSize: `calc(13px * var(--fss))` }}
                     onClick={() => { const a = new Audio(result!.audioUrl!); a.play() }}
                     aria-label="播放发音">▶</button>
                 )}
                 {!result.audioUrl && typeof window !== 'undefined' && window.speechSynthesis && (
-                  <button className="mini-btn" style={{ fontSize: 13 }}
+                  <button className="mini-btn" style={{ fontSize: `calc(13px * var(--fss))` }}
                     onClick={() => {
                       const u = new SpeechSynthesisUtterance(result!.word)
                       u.lang = 'en-US'
@@ -394,12 +394,12 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               {result.meanings.map((m, i) => (
                 <div key={i} className="dict-meaning">
                   <span className="dict-pos">{m.pos}</span>
-                  <span>{m.zh}{m.en ? <span style={{ color: 'var(--ink3)', fontSize: 13 }}> · {m.en}</span> : null}</span>
+                  <span>{m.zh}{m.en ? <span style={{ color: 'var(--ink3)', fontSize: `calc(13px * var(--fss))` }}> · {m.en}</span> : null}</span>
                   {/* 每条释义下的例句（带中文翻译） */}
                   {m.examples && m.examples.map((e, j) => (
                     <div key={j} className="dict-ex" style={{ marginTop: 4 }}>
                       <div>{e.en}</div>
-                      {e.zh && <div style={{ color: 'var(--ink2)', fontSize: 13 }}>{e.zh}</div>}
+                      {e.zh && <div style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))` }}>{e.zh}</div>}
                     </div>
                   ))}
                 </div>
@@ -444,7 +444,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             <>
               <div className="sec-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span><I n="clock" size={14} />查词历史</span>
-                <button className="mini-btn" style={{ color: 'var(--red)', fontSize: 12 }}
+                <button className="mini-btn" style={{ color: 'var(--red)', fontSize: `calc(12px * var(--fss))` }}
                   onClick={async () => {
                     if (!profileId) return
                     try {
@@ -538,8 +538,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                     setWord(v.word)
                     search(v.word, 'dict')
                   }}>
-                  <span><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: 13 }}>{v.meaning}</span></span>
-                  <span style={{ color: 'var(--ink3)', fontSize: 12 }}>查词 →</span>
+                  <span><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))` }}>{v.meaning}</span></span>
+                  <span style={{ color: 'var(--ink3)', fontSize: `calc(12px * var(--fss))` }}>查词 →</span>
                 </div>
               ))}
             </>

@@ -41,6 +41,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 正在退出的子页面：保留一帧做"向右滑出"动画，露出底下菜单
   const [leaving, setLeaving] = useState<Exclude<View, 'menu'> | null>(null)
   const [leaveFrom, setLeaveFrom] = useState(0) // 退出动画起点（右滑松手时的手指位置）
+  const [leaveScroll, setLeaveScroll] = useState(0) // 退出时子页面的滚动位置（避免分身回到顶部造成跳变）
+  const leavingRef = useRef<HTMLDivElement>(null)
   // 推入动画播完后标记 settled，避免"拖拽取消"时推入动画重播导致闪烁
   const [settled, setSettled] = useState(false)
   useEffect(() => {
@@ -54,16 +56,24 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 回菜单：先记下离开的页面做滑出动画，320ms 后卸载
   const goBack = (fromX = 0) => {
     if (view === 'menu') { onBack(); return }
+    // 返回前记下当前子页面的滚动位置，让退出动画从原位置接着滑，不跳回顶部
+    const scroller = viewRef.current?.querySelector('.settings-over:not(.settings-leaving)')
+    setLeaveScroll(scroller ? scroller.scrollTop : 0)
     setLeaving(view as Exclude<View, 'menu'>)
     setLeaveFrom(fromX)
     setView('menu')
-    setTimeout(() => { setLeaving(null); setLeaveFrom(0) }, 340)
+    setTimeout(() => { setLeaving(null); setLeaveFrom(0); setLeaveScroll(0) }, 380)
   }
+  // 退出分身挂载后恢复滚动位置
+  useEffect(() => {
+    if (leaving && leavingRef.current) leavingRef.current.scrollTop = leaveScroll
+  }, [leaving, leaveScroll])
 
   // 切页时把目标页滚回顶部：避免"内容被顶栏压住半行"的错位感
+  // 注意排除 .settings-leaving 分身，否则返回动画会被强制滚到顶部造成跳变
   const viewRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    viewRef.current?.querySelector('.settings-over')?.scrollTo({ top: 0 })
+    viewRef.current?.querySelector('.settings-over:not(.settings-leaving)')?.scrollTo({ top: 0 })
   }, [view])
   // 右滑退出二级菜单（iOS 手势习惯：从左边缘向右滑）
   const swipe = useSwipeBack(goBack, view !== 'menu')
@@ -651,7 +661,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
         )}
         {/* 正在退出的子页面：从手指位置向右滑出，露出底下菜单 */}
         {leaving && (
-          <div className="settings-page settings-over settings-leaving"
+          <div ref={leavingRef} className="settings-page settings-over settings-leaving"
             style={{ '--leave-x': `${leaveFrom}px` } as CSSProperties}>
             {SUB[leaving]}
           </div>

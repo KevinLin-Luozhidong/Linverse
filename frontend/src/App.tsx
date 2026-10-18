@@ -205,7 +205,7 @@ export default function App() {
         <input className="input" style={{ marginTop: 8 }} value={restoreToken}
           placeholder="账号恢复密钥" autoComplete="off"
           onChange={(e) => setRestoreToken(e.target.value)} />
-        {restoreError && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{restoreError}</div>}
+        {restoreError && <div style={{ color: 'var(--red)', fontSize: `calc(13px * var(--fss))`, marginTop: 8 }}>{restoreError}</div>}
         <button className="btn" style={{ width: '100%', marginTop: 10 }}
           onClick={restoreExistingProfile} disabled={restoring}>
           {restoring ? '验证中…' : '验证并恢复账号'}

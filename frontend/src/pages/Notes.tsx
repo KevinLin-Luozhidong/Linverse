@@ -262,7 +262,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
                   borderRadius: '50%', border: '2px solid var(--blue)',
                   background: selected.has(n.id!) ? 'var(--blue)' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontSize: 14, fontWeight: 700,
+                  color: '#fff', fontSize: `calc(14px * var(--fss))`, fontWeight: 700,
                 }}>
                   {selected.has(n.id!) ? '✓' : ''}
                 </div>
@@ -288,7 +288,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
           display: 'flex', gap: 8, alignItems: 'center',
           boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
         }}>
-          <span style={{ fontSize: 13, color: 'var(--ink2)', flex: 1 }}>
+          <span style={{ fontSize: `calc(13px * var(--fss))`, color: 'var(--ink2)', flex: 1 }}>
             已选 {selected.size} 条
           </span>
           <button className="mini-chip" onClick={() => {

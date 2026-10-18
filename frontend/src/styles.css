@@ -837,7 +837,7 @@ body {
 }
 @keyframes pushIn { from { transform: translateX(100%); } }
 /* 退出中：从手指位置（--leave-x）向右滑出，露出底下菜单 */
-.settings-leaving { animation: popOutFrom 0.3s var(--ease) forwards; }
+.settings-leaving { animation: popOutFrom 0.35s var(--ease) forwards; }
 @keyframes popOutFrom {
   from { transform: translateX(var(--leave-x, 0px)); }
   to { transform: translateX(100%); }
