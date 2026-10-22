@@ -6,6 +6,13 @@
 --     改了一边就要同步另一边，否则灾难恢复时会建出不一样的库。
 -- 历史教训：这份文件曾经漏掉 site_config 整张表——按它重建的库会导致
 -- 访问密码门直接报错。所以每次改表结构，两边都要对一遍。
+--
+-- ⚠️ Supabase 政策变更（2026-10-30 生效）：public 下新建的表不再自动授予
+-- Data API（anon / authenticated）访问权。以后新增 CREATE TABLE 时，必须在
+-- 同一脚本里显式加 GRANT（例如 GRANT SELECT, INSERT, UPDATE, DELETE ON 新表
+-- TO anon, authenticated；），否则前端若走 Data API 会直接报权限拒绝。
+-- 现有表不受影响；Linverse 后端走 DATABASE_URL 直连 Postgres，不经 Data API，
+-- 所以后端读写不受此政策影响——但 RLS 照样全开，不要动。
 
 CREATE TABLE IF NOT EXISTS profiles (
   id SERIAL PRIMARY KEY,
@@ -145,6 +152,16 @@ CREATE TABLE IF NOT EXISTS kb_faq (
 );
 -- 后端走 Postgres 直连（postgres 角色不受 RLS 限制），所以只开 RLS、不建策略：
 -- 公开 API 被锁死，后端一切照常。2026-10-10 补：修 Supabase 安全告警 rls_disabled_in_public
+-- 每日早报存档：一天一期，date 主键天然去重；sections 存板块数组
+-- （[{name, items:[{title, body, source_name, source_url}]}]），全站公共只读。
+CREATE TABLE IF NOT EXISTS daily_briefings (
+  date DATE PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  sections JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
@@ -157,6 +174,10 @@ ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_briefings ENABLE ROW LEVEL SECURITY;
+
+-- 2026-10-30 新政：新建的表必须显式 GRANT（见本文件顶部注释）
+GRANT SELECT, INSERT, UPDATE, DELETE ON daily_briefings TO anon, authenticated;
 
 -- 2026-10-22 优化：高频查询索引（与 migrations/003_add_indexes.sql 保持一致）
 CREATE INDEX IF NOT EXISTS idx_mistakes_profile_id ON mistakes ("profileId", id DESC);

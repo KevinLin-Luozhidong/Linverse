@@ -458,3 +458,14 @@ export interface KbBook {
 export const kbBooks = () => get<{ books: KbBook[] }>('/kb/books')
 export const kbDeleteBook = (book: string) =>
   del<{ deleted: number; book: string }>(`/kb/books?book=${encodeURIComponent(book)}`)
+
+// ---- 每日早报（全站公共只读，不分账号） ----
+export interface BriefingItem {
+  title: string; body: string; source_name: string; source_url: string;
+}
+export interface BriefingSection { name: string; items: BriefingItem[] }
+export interface DailyBriefing { date: string; title: string; sections: BriefingSection[] }
+// 最新一期；还没有任何早报时后端返回 null
+export const getLatestBriefing = () => get<DailyBriefing | null>('/briefings')
+export const getBriefingByDate = (date: string) =>
+  get<DailyBriefing | null>(`/briefings/${encodeURIComponent(date)}`)

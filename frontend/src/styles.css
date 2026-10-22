@@ -486,6 +486,7 @@ body {
 .sq-icon.green { background: linear-gradient(135deg, #22c55e, #4ade80); }
 .sq-icon.orange { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
 .sq-icon.purple { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+.sq-icon.rose { background: linear-gradient(135deg, #f43f5e, #fb7185); }
 /* ============ 知识库管理页 ============ */
 .kb-page { padding: 0 0 32px; }
 
@@ -613,7 +614,11 @@ body {
   padding: 8px 10px 0;
   position: sticky; top: 0; z-index: 15;
   background: var(--bg);
+  /* 工具加到 5 个后 chip 一行放不下：允许横滑，别挤变形 */
+  overflow-x: auto; scrollbar-width: none;
 }
+.tools-bar::-webkit-scrollbar { display: none; }
+.tools-bar .icon-btn, .tools-bar .mini-chip { flex: none; }
 .mini-chip {
   border: 1.5px solid var(--line); background: var(--card); color: var(--ink2);
   border-radius: 18px; padding: 7px 14px; font-size: calc(13px * var(--fss)); font-weight: 600;
@@ -623,6 +628,63 @@ body {
 .mini-chip:active { transform: scale(0.94); }
 .mini-chip.active { border-color: var(--blue); color: var(--blue-deep); background: var(--blue-soft); }
 .tools-body { flex: 1; overflow: hidden; position: relative; }
+
+/* ============ 每日早报页 ============ */
+.brief-page { padding: 0 0 32px; }
+
+/* 页头：与知识库页同款玻璃卡，图标换成火焰红渐变 */
+.brief-header {
+  display: flex; align-items: center; gap: 14px;
+  margin: 14px 16px 12px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 20px; padding: 16px 18px;
+}
+.brief-header-icon {
+  width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
+  background: linear-gradient(135deg, #f43f5e, #fb7185);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.brief-header-title { font-size: calc(19px * var(--fss)); font-weight: 800; margin: 0 0 2px; }
+.brief-header-sub { font-size: calc(12px * var(--fss)); color: var(--ink2); margin: 0; }
+
+/* 板块筛选：一行横滑胶囊，选中态与 mini-chip 一致 */
+.brief-chips {
+  display: flex; gap: 8px; overflow-x: auto;
+  margin: 2px 16px 2px; padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.brief-chips::-webkit-scrollbar { display: none; }
+.brief-chip {
+  flex: none; white-space: nowrap; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink2);
+  font-size: calc(13px * var(--fss)); font-weight: 600;
+  transition: transform 0.15s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+.brief-chip:active { transform: scale(0.94); }
+.brief-chip.on { border-color: var(--blue); color: var(--blue-deep); background: var(--blue-soft); }
+
+.brief-sec-title { font-size: calc(15px * var(--fss)); font-weight: 800; margin: 18px 18px 8px; }
+.brief-list { display: flex; flex-direction: column; gap: 10px; margin: 0 16px; }
+
+/* 条目卡：默认正文只露 3 行，点开看全文 */
+.brief-card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 16px; padding: 13px 14px; cursor: pointer;
+  animation: brief-in 0.3s var(--ease) both;
+  transition: background 0.15s var(--ease);
+}
+.brief-card:active { background: var(--blue-soft); }
+.brief-card-title { font-size: calc(15px * var(--fss)); font-weight: 700; margin-bottom: 5px; }
+.brief-card-body {
+  font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.65;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.brief-card.open .brief-card-body { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.brief-more { margin-top: 6px; font-size: calc(12px * var(--fss)); font-weight: 600; color: var(--blue-deep); }
+.brief-source { margin-top: 9px; font-size: calc(12px * var(--fss)); color: var(--ink3); }
+.brief-source a { color: var(--blue-deep); text-decoration: none; font-weight: 600; }
+@keyframes brief-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ============ 错题本 ============ */
 .mistake-sec { padding: 6px 14px 90px; }
@@ -1182,7 +1244,7 @@ body::before {
 
 /* G2：大卡片（真玻璃，blur 克制在 14px） */
 .m-card, .stat-card, .more-card, .set-group, .profile-item,
-.me-stat-card, .me-week-card, .tool-slide, .kb-header, .model-pill {
+.me-stat-card, .me-week-card, .tool-slide, .kb-header, .brief-header, .model-pill {
   background-color: var(--g2-bg);
   border-color: var(--g2-bd);
   box-shadow: var(--g2-hi), var(--g2-sh);
@@ -1192,7 +1254,7 @@ body::before {
 }
 
 /* G2 伪玻璃：长列表卡片不加 blur，防滚动卡顿（底色靠 --card 变量已半透明） */
-.note-card, .dict-card, .review-card, .report-row, .fav-card, .me-badge, .kb-list, .dict-pack {
+.note-card, .dict-card, .review-card, .report-row, .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card {
   border-color: var(--g2-bd);
   box-shadow: var(--g2-hi), var(--g2-sh);
   background-image: var(--g-noise);
@@ -1246,8 +1308,8 @@ body::before {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .topbar, .chat-topbar, .tools-bar, .tabbar, .composer, .tools-quote-fixed,
   .m-card, .stat-card, .more-card, .set-group, .profile-item, .me-stat-card, .me-week-card,
-  .tool-slide, .kb-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
-  .fav-card, .me-badge, .kb-list, .dict-pack, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
+  .tool-slide, .kb-header, .brief-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
+  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
     background-color: var(--g-solid);
     background-image: none;
   }
@@ -1255,8 +1317,8 @@ body::before {
 @media (prefers-reduced-transparency: reduce) {
   .topbar, .chat-topbar, .tools-bar, .tabbar, .composer, .tools-quote-fixed,
   .m-card, .stat-card, .more-card, .set-group, .profile-item, .me-stat-card, .me-week-card,
-  .tool-slide, .kb-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
-  .fav-card, .me-badge, .kb-list, .dict-pack, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
+  .tool-slide, .kb-header, .brief-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
+  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background-color: var(--g-solid);

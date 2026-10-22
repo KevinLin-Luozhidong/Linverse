@@ -558,6 +558,27 @@ async function updateSettings(profileId, patch) {
   return getSettings(profileId);
 }
 
+// ---------- 每日早报（全站公共只读，不分账号） ----------
+// date 列是 DATE 类型，pg 驱动会把它解析成 JS Date 对象，受时区影响可能差一天，
+// 所以一律用 to_char 转成 YYYY-MM-DD 字符串再返回。sections 是 JSONB，
+// pg 会自动解析成 JS 对象，直接透传。
+async function getLatestBriefing() {
+  const r = await query(
+    `SELECT to_char(date, 'YYYY-MM-DD') AS date, title, sections
+     FROM daily_briefings ORDER BY date DESC LIMIT 1`
+  );
+  return r.rows[0] || null;
+}
+
+async function getBriefingByDate(date) {
+  const r = await query(
+    `SELECT to_char(date, 'YYYY-MM-DD') AS date, title, sections
+     FROM daily_briefings WHERE date = $1`,
+    [date]
+  );
+  return r.rows[0] || null;
+}
+
 module.exports = {
   today,
   listProfiles, getProfileAuthHash, createProfile, claimProfile, updateProfile, deleteProfile, setAvatar,
@@ -572,6 +593,7 @@ module.exports = {
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
   kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
   kbFaqSearch, kbFaqInsertBatch,
+  getLatestBriefing, getBriefingByDate,
 };
 
 // ---------- RAG 知识库 ----------

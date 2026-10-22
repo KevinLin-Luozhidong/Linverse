@@ -48,6 +48,12 @@ pool.on('error', (err) => {
 // - 时间统一用 TIMESTAMPTZ，默认 now()；打卡日期/复习日期用 TEXT 存 YYYY-MM-DD，
 //   方便直接做字符串比较（和原来一致）
 const SCHEMA_SQL = `
+-- ⚠️ Supabase 政策变更（2026-10-30 生效）：public 下新建的表不再自动授予
+-- Data API（anon / authenticated）访问权。以后新增 CREATE TABLE 时，必须在
+-- 同一脚本里显式加 GRANT（例如 GRANT SELECT, INSERT, UPDATE, DELETE ON 新表
+-- TO anon, authenticated；）。现有表不受影响；本后端走 DATABASE_URL 直连，
+-- 不经 Data API，但 RLS 全开、不要动。另：本串必须与 supabase/schema.sql
+-- 保持一致，改一边同步另一边。
 CREATE TABLE IF NOT EXISTS profiles (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -185,6 +191,18 @@ CREATE TABLE IF NOT EXISTS kb_faq (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 每日早报存档：一天一期，date 主键天然去重；sections 存板块数组
+-- （[{name, items:[{title, body, source_name, source_url}]}]），全站公共只读。
+CREATE TABLE IF NOT EXISTS daily_briefings (
+  date DATE PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  sections JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 2026-10-30 新政：新表必须显式 GRANT（见本文件顶部注释）
+GRANT SELECT, INSERT, UPDATE, DELETE ON daily_briefings TO anon, authenticated;
+
 -- RLS（行级安全）：Supabase 公开 API 门默认敞开，没开 RLS 的表谁都能读写删。
 -- 后端走 Postgres 直连（postgres 角色不受 RLS 限制），所以只开 RLS、不建策略：
 -- 公开 API 被锁死，后端一切照常。2026-10-10 补：修 Supabase 安全告警 rls_disabled_in_public
@@ -200,6 +218,7 @@ ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_briefings ENABLE ROW LEVEL SECURITY;
 `;
 
 // ---------- 版本化迁移 ----------

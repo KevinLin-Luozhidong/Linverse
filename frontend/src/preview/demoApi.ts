@@ -550,3 +550,58 @@ export const setAiKey = (k: string) => {
     throw new Error(QUOTA_MSG)
   }
 }
+
+// ---- 每日早报（预览版：固定返回一份内置样例，不连后端） ----
+export interface BriefingItem {
+  title: string; body: string; source_name: string; source_url: string;
+}
+export interface BriefingSection { name: string; items: BriefingItem[] }
+export interface DailyBriefing { date: string; title: string; sections: BriefingSection[] }
+
+const DEMO_BRIEFING: DailyBriefing = {
+  date: '2026-10-22',
+  title: '10月22日 热点早报',
+  sections: [
+    {
+      name: 'AI / 科技',
+      items: [
+        {
+          title: '大模型厂商发布新一代推理框架，速度提升三成',
+          body: '据多家媒体报道，头部大模型厂商本周发布新一代推理框架，宣称在同等硬件条件下推理速度提升约三成、显存占用降低两成。业内人士指出，这类底层优化会直接压低 AI 应用的调用成本，教育、客服等高频场景最先受益，后续是否开源仍待官方说明。',
+          source_name: '科技日报，2026-10-21',
+          source_url: 'https://example.com/news/ai-framework',
+        },
+        {
+          title: '开源社区发布新款代码助手，本地即可运行',
+          body: '一个开源社区近日发布了可在普通笔记本本地运行的代码助手，主打离线可用与隐私友好。虽然能力不及云端旗舰模型，但响应快、不依赖网络，适合做代码补全和简单重构，已在开发者社区引发热议。',
+          source_name: '开源观察，2026-10-21',
+          source_url: 'https://example.com/news/code-assistant',
+        },
+      ],
+    },
+    {
+      name: '财经 / 创投 / 搞钱',
+      items: [
+        {
+          title: '本周一级市场融资回暖，AI 基础设施最吸金',
+          body: '据创投数据统计，本周国内一级市场融资事件数量环比回升，其中 AI 基础设施与国产芯片方向吸金最多。分析认为，资金正从应用层向算力与芯片等"卖铲子"环节集中，具身智能、AI 行业应用紧随其后。',
+          source_name: '财联社创投通，2026-10-20',
+          source_url: 'https://example.com/news/vc-weekly',
+        },
+        {
+          title: '提醒：二手平台"低价共享会员"灰色生意别碰',
+          body: '多个付费会员被人在二手平台以几块钱低价转卖，号称"破解版""共享版"，背后多是盗号、黑卡与封号风险。贪小便宜轻则账号被封，重则个人信息被盗，正规渠道订阅才是稳妥选择。',
+          source_name: '消费提醒，2026-10-21',
+          source_url: 'https://example.com/news/grey-market',
+        },
+      ],
+    },
+  ],
+}
+
+export async function getLatestBriefing(): Promise<DailyBriefing | null> {
+  return DEMO_BRIEFING
+}
+export async function getBriefingByDate(_date: string): Promise<DailyBriefing | null> {
+  return DEMO_BRIEFING
+}
