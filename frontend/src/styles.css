@@ -2,8 +2,8 @@
 /* 动画铁律：只用 transform / opacity，不触发重排 */
 
 :root {
-  --bg: #ecf2ff;
-  --card: rgba(255,255,255,.48);
+  --bg: #eef4ff;
+  --card: rgba(255,255,255,.53);
   --ink: #0f1b2d;
   --ink2: #5b6b85;
   --ink3: #8fa0ba;
@@ -22,7 +22,7 @@
   --me-num: #2563eb; /* 个人中心大数字（浅色） */
   --me-avatar-bg: #bcd7f5; /* 头像底（浅色） */
   --me-avatar-ink: #1e3a5f; /* 头像字（浅色） */
-  --me-dot: #d7e3f5; --g1-bg: rgba(255,255,255,.55); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(255,255,255,.82); --g1-hi: inset 0 1px 0 rgba(255,255,255,.90); --g1-sh: 0 8px 32px rgba(31,64,140,.10); --g2-bg: rgba(255,255,255,.50); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(255,255,255,.82); --g2-hi: inset 0 1px 0 rgba(255,255,255,.90); --g2-sh: 0 6px 20px rgba(31,64,140,.14); --g3-bg: rgba(255,255,255,.70); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.78); --g3-hi: inset 0 1px 0 rgba(255,255,255,.95); --g3-sh: 0 12px 40px rgba(31,64,140,.16); --g-edge-a: rgba(255,255,255,.90); --g-edge-b: rgba(255,255,255,.15); --g-edge-c: rgba(255,255,255,.05); --g-edge-d: rgba(255,255,255,.50); --g-input-bg: rgba(255,255,255,.85); --g-page: rgba(238,244,255,.92); --g-solid: rgba(255,255,255,.95); --g-seg-on: rgba(255,255,255,.95); --g-sheen: linear-gradient(120deg, rgba(255,255,255,.28), rgba(255,255,255,.06) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E"); /* 打卡圆点底（浅色） */
+  --me-dot: #d7e3f5; --g1-bg: rgba(255,255,255,.59); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(255,255,255,.82); --g1-hi: inset 0 1px 0 rgba(255,255,255,.90); --g1-sh: 0 8px 32px rgba(31,64,140,.10); --g2-bg: rgba(255,255,255,.53); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(255,255,255,.82); --g2-hi: inset 0 1px 0 rgba(255,255,255,.90); --g2-sh: 0 6px 20px rgba(31,64,140,.14); --g3-bg: rgba(255,255,255,.74); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.78); --g3-hi: inset 0 1px 0 rgba(255,255,255,.95); --g3-sh: 0 12px 40px rgba(31,64,140,.16); --g-edge-a: rgba(255,255,255,.90); --g-edge-b: rgba(255,255,255,.15); --g-edge-c: rgba(255,255,255,.05); --g-edge-d: rgba(255,255,255,.50); --g-input-bg: rgba(255,255,255,.85); --g-page: rgba(238,244,255,.92); --g-solid: rgba(255,255,255,.95); --g-seg-on: rgba(255,255,255,.95); --g-sheen: linear-gradient(120deg, rgba(255,255,255,.28), rgba(255,255,255,.06) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E"); /* 打卡圆点底（浅色） */
   --ease: cubic-bezier(0.32, 0.72, 0, 1); /* 苹果味缓动 */
   color-scheme: light;
 }
@@ -31,7 +31,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b1426;
-    --card: rgba(16,27,49,.50);
+    --card: rgba(16,27,49,.53);
     --ink: #eaf1fb;
     --ink2: #93a3be;
     --ink3: #5f7190;
@@ -43,23 +43,23 @@
     --me-num: #a9cdee;
     --me-avatar-bg: #8fb9e8;
     --me-avatar-ink: #16263f;
-    --me-dot: #2b3c5c; --g1-bg: rgba(16,27,49,.54); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(166,196,255,.22); --g1-hi: inset 0 1px 0 rgba(255,255,255,.10); --g1-sh: 0 8px 32px rgba(0,0,0,.35); --g2-bg: rgba(16,27,49,.52); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(166,196,255,.28); --g2-hi: inset 0 1px 0 rgba(255,255,255,.10); --g2-sh: 0 8px 22px rgba(0,0,0,.30); --g3-bg: rgba(16,27,49,.68); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.10); --g3-hi: inset 0 1px 0 rgba(255,255,255,.12); --g3-sh: 0 12px 40px rgba(0,0,0,.42); --g-edge-a: rgba(255,255,255,.22); --g-edge-b: rgba(255,255,255,.04); --g-edge-c: rgba(255,255,255,.02); --g-edge-d: rgba(255,255,255,.12); --g-input-bg: rgba(255,255,255,.06); --g-page: rgba(9,15,29,.94); --g-solid: rgba(16,27,49,.95); --g-seg-on: rgba(255,255,255,.16); --g-sheen: linear-gradient(120deg, rgba(210,230,255,.14), rgba(210,230,255,.035) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+    --me-dot: #2b3c5c; --g1-bg: rgba(16,27,49,.56); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(166,196,255,.22); --g1-hi: inset 0 1px 0 rgba(255,255,255,.10); --g1-sh: 0 8px 32px rgba(0,0,0,.35); --g2-bg: rgba(16,27,49,.54); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(166,196,255,.28); --g2-hi: inset 0 1px 0 rgba(255,255,255,.10); --g2-sh: 0 8px 22px rgba(0,0,0,.30); --g3-bg: rgba(16,27,49,.68); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.10); --g3-hi: inset 0 1px 0 rgba(255,255,255,.12); --g3-sh: 0 12px 40px rgba(0,0,0,.42); --g-edge-a: rgba(255,255,255,.22); --g-edge-b: rgba(255,255,255,.04); --g-edge-c: rgba(255,255,255,.02); --g-edge-d: rgba(255,255,255,.12); --g-input-bg: rgba(255,255,255,.06); --g-page: rgba(9,15,29,.94); --g-solid: rgba(16,27,49,.95); --g-seg-on: rgba(255,255,255,.16); --g-sheen: linear-gradient(120deg, rgba(210,230,255,.14), rgba(210,230,255,.035) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
     color-scheme: dark;
   }
 }
 /* 用户手动覆盖主题时优先级更高 */
 :root[data-theme='light'] {
-  --bg: #ecf2ff; --card: rgba(255,255,255,.48); --ink: #0f1b2d; --ink2: #5b6b85; --ink3: #8fa0ba;
+  --bg: #eef4ff; --card: rgba(255,255,255,.53); --ink: #0f1b2d; --ink2: #5b6b85; --ink3: #8fa0ba;
   --line: rgba(101,134,190,.25); --blue: #3b82f6; --blue-deep: #2563eb;
   --blue-soft: rgba(59,130,246,.12); --blue-soft2: rgba(59,130,246,.20);
-  --me-num: #2563eb; --me-avatar-bg: #bcd7f5; --me-avatar-ink: #1e3a5f; --me-dot: #d7e3f5; --g1-bg: rgba(255,255,255,.55); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(255,255,255,.82); --g1-hi: inset 0 1px 0 rgba(255,255,255,.90); --g1-sh: 0 8px 32px rgba(31,64,140,.10); --g2-bg: rgba(255,255,255,.50); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(255,255,255,.82); --g2-hi: inset 0 1px 0 rgba(255,255,255,.90); --g2-sh: 0 6px 20px rgba(31,64,140,.14); --g3-bg: rgba(255,255,255,.70); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.78); --g3-hi: inset 0 1px 0 rgba(255,255,255,.95); --g3-sh: 0 12px 40px rgba(31,64,140,.16); --g-edge-a: rgba(255,255,255,.90); --g-edge-b: rgba(255,255,255,.15); --g-edge-c: rgba(255,255,255,.05); --g-edge-d: rgba(255,255,255,.50); --g-input-bg: rgba(255,255,255,.85); --g-page: rgba(238,244,255,.92); --g-solid: rgba(255,255,255,.95); --g-seg-on: rgba(255,255,255,.95); --g-sheen: linear-gradient(120deg, rgba(255,255,255,.28), rgba(255,255,255,.06) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+  --me-num: #2563eb; --me-avatar-bg: #bcd7f5; --me-avatar-ink: #1e3a5f; --me-dot: #d7e3f5; --g1-bg: rgba(255,255,255,.59); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(255,255,255,.82); --g1-hi: inset 0 1px 0 rgba(255,255,255,.90); --g1-sh: 0 8px 32px rgba(31,64,140,.10); --g2-bg: rgba(255,255,255,.53); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(255,255,255,.82); --g2-hi: inset 0 1px 0 rgba(255,255,255,.90); --g2-sh: 0 6px 20px rgba(31,64,140,.14); --g3-bg: rgba(255,255,255,.74); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.78); --g3-hi: inset 0 1px 0 rgba(255,255,255,.95); --g3-sh: 0 12px 40px rgba(31,64,140,.16); --g-edge-a: rgba(255,255,255,.90); --g-edge-b: rgba(255,255,255,.15); --g-edge-c: rgba(255,255,255,.05); --g-edge-d: rgba(255,255,255,.50); --g-input-bg: rgba(255,255,255,.85); --g-page: rgba(238,244,255,.92); --g-solid: rgba(255,255,255,.95); --g-seg-on: rgba(255,255,255,.95); --g-sheen: linear-gradient(120deg, rgba(255,255,255,.28), rgba(255,255,255,.06) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
   color-scheme: light;
 }
 :root[data-theme='dark'] {
-  --bg: #0b1426; --card: rgba(16,27,49,.50); --ink: #eaf1fb; --ink2: #93a3be; --ink3: #5f7190;
+  --bg: #0b1426; --card: rgba(16,27,49,.53); --ink: #eaf1fb; --ink2: #93a3be; --ink3: #5f7190;
   --line: rgba(148,178,230,.16); --blue: #5b9bff; --blue-deep: #8db6ff;
   --blue-soft: rgba(91,155,255,.14); --blue-soft2: rgba(91,155,255,.26);
-  --me-num: #a9cdee; --me-avatar-bg: #8fb9e8; --me-avatar-ink: #16263f; --me-dot: #2b3c5c; --g1-bg: rgba(16,27,49,.54); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(166,196,255,.22); --g1-hi: inset 0 1px 0 rgba(255,255,255,.10); --g1-sh: 0 8px 32px rgba(0,0,0,.35); --g2-bg: rgba(16,27,49,.52); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(166,196,255,.28); --g2-hi: inset 0 1px 0 rgba(255,255,255,.10); --g2-sh: 0 8px 22px rgba(0,0,0,.30); --g3-bg: rgba(16,27,49,.68); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.10); --g3-hi: inset 0 1px 0 rgba(255,255,255,.12); --g3-sh: 0 12px 40px rgba(0,0,0,.42); --g-edge-a: rgba(255,255,255,.22); --g-edge-b: rgba(255,255,255,.04); --g-edge-c: rgba(255,255,255,.02); --g-edge-d: rgba(255,255,255,.12); --g-input-bg: rgba(255,255,255,.06); --g-page: rgba(9,15,29,.94); --g-solid: rgba(16,27,49,.95); --g-seg-on: rgba(255,255,255,.16); --g-sheen: linear-gradient(120deg, rgba(210,230,255,.14), rgba(210,230,255,.035) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+  --me-num: #a9cdee; --me-avatar-bg: #8fb9e8; --me-avatar-ink: #16263f; --me-dot: #2b3c5c; --g1-bg: rgba(16,27,49,.56); --g1-blur: blur(26px) saturate(180%); --g1-bd: rgba(166,196,255,.22); --g1-hi: inset 0 1px 0 rgba(255,255,255,.10); --g1-sh: 0 8px 32px rgba(0,0,0,.35); --g2-bg: rgba(16,27,49,.54); --g2-blur: blur(18px) saturate(165%); --g2-bd: rgba(166,196,255,.28); --g2-hi: inset 0 1px 0 rgba(255,255,255,.10); --g2-sh: 0 8px 22px rgba(0,0,0,.30); --g3-bg: rgba(16,27,49,.68); --g3-blur: blur(36px) saturate(190%); --g3-bd: rgba(255,255,255,.10); --g3-hi: inset 0 1px 0 rgba(255,255,255,.12); --g3-sh: 0 12px 40px rgba(0,0,0,.42); --g-edge-a: rgba(255,255,255,.22); --g-edge-b: rgba(255,255,255,.04); --g-edge-c: rgba(255,255,255,.02); --g-edge-d: rgba(255,255,255,.12); --g-input-bg: rgba(255,255,255,.06); --g-page: rgba(9,15,29,.94); --g-solid: rgba(16,27,49,.95); --g-seg-on: rgba(255,255,255,.16); --g-sheen: linear-gradient(120deg, rgba(210,230,255,.14), rgba(210,230,255,.035) 20%, transparent 44%); --g-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
   color-scheme: dark;
 }
 /* 字号档：小 / 标准 / 大（--fss 是全局文字缩放系数，所有 px 字号都乘它） */
@@ -1137,29 +1137,29 @@ body {
 body::before {
   content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(520px at 8% -4%, rgba(59, 130, 246, 0.27), transparent 70%),
-    radial-gradient(460px at 100% 38%, rgba(125, 211, 252, 0.32), transparent 70%),
-    radial-gradient(560px at 0% 100%, rgba(167, 139, 250, 0.19), transparent 70%);
+    radial-gradient(520px at 8% -4%, rgba(59, 130, 246, 0.24), transparent 70%),
+    radial-gradient(460px at 100% 38%, rgba(125, 211, 252, 0.29), transparent 70%),
+    radial-gradient(560px at 0% 100%, rgba(167, 139, 250, 0.17), transparent 70%);
 }
 @media (prefers-color-scheme: dark) {
   body::before {
     background:
-      radial-gradient(520px at 8% -4%, rgba(91, 155, 255, 0.24), transparent 70%),
-      radial-gradient(460px at 100% 38%, rgba(34, 211, 238, 0.18), transparent 70%),
-      radial-gradient(560px at 0% 100%, rgba(139, 92, 246, 0.17), transparent 70%);
+      radial-gradient(520px at 8% -4%, rgba(91, 155, 255, 0.21), transparent 70%),
+      radial-gradient(460px at 100% 38%, rgba(34, 211, 238, 0.14), transparent 70%),
+      radial-gradient(560px at 0% 100%, rgba(139, 92, 246, 0.15), transparent 70%);
   }
 }
 :root[data-theme='dark'] body::before {
   background:
-    radial-gradient(520px at 8% -4%, rgba(91, 155, 255, 0.24), transparent 70%),
-    radial-gradient(460px at 100% 38%, rgba(34, 211, 238, 0.18), transparent 70%),
-    radial-gradient(560px at 0% 100%, rgba(139, 92, 246, 0.17), transparent 70%);
+    radial-gradient(520px at 8% -4%, rgba(91, 155, 255, 0.21), transparent 70%),
+    radial-gradient(460px at 100% 38%, rgba(34, 211, 238, 0.14), transparent 70%),
+    radial-gradient(560px at 0% 100%, rgba(139, 92, 246, 0.15), transparent 70%);
 }
 :root[data-theme='light'] body::before {
   background:
-    radial-gradient(520px at 8% -4%, rgba(59, 130, 246, 0.27), transparent 70%),
-    radial-gradient(460px at 100% 38%, rgba(125, 211, 252, 0.32), transparent 70%),
-    radial-gradient(560px at 0% 100%, rgba(167, 139, 250, 0.19), transparent 70%);
+    radial-gradient(520px at 8% -4%, rgba(59, 130, 246, 0.24), transparent 70%),
+    radial-gradient(460px at 100% 38%, rgba(125, 211, 252, 0.29), transparent 70%),
+    radial-gradient(560px at 0% 100%, rgba(167, 139, 250, 0.17), transparent 70%);
 }
 #root { position: relative; z-index: 1; }
 .app { background: transparent; }
