@@ -82,7 +82,9 @@ if (frows.length && frows[0].distance < FAQ_DISTANCE_THRESHOLD) faq = frows[0];
 console.warn('[rag] 问答库检索失败：', e.message);
 }
 }
-const uniq = rrfFuse(vecRows, kwRows).slice(0, topK);
+// 命中标准问答时只留 2 块教材佐证（2026-10-22 优化）：标准答案已人工校准，
+// 全量 5 块拼进去只是白烧 token、拖慢回答；没命中时保持 topK 不变
+const uniq = rrfFuse(vecRows, kwRows).slice(0, faq ? 2 : topK);
 if (!uniq.length && !faq) return { context: '', refs: [], faq: null };
 const fmtPage = (r) => {
 if (r.page_start <= 0) return '前言'; // 前言/导引块（PDF 前 7 页，无书页码）

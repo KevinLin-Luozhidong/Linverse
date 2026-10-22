@@ -14,6 +14,11 @@ function sleep(ms) {
 return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// 对外 AI 请求的超时兜底（2026-10-22 优化）：上游卡住时最多等 60 秒就放弃，
+// 不再无限期挂住请求；联网搜索只是配角，15 秒就降级
+const FETCH_TIMEOUT_MS = 60000;
+const SEARCH_TIMEOUT_MS = 15000;
+
 // ---------- 演示模式：没配 Key 时返回像样的示例回答（诚实标注，不伪装成真 AI） ----------
 
 // 纯文字问题的示例回答：一道数学题的分步讲解
@@ -85,6 +90,7 @@ headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiKey}`}
 body: JSON.stringify(
 openAICompatibleBody({ modelName: modelName || 'deepseek-chat', question, imageUrl})
 ),
+signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
 if (!res.ok) throw new Error(`DeepSeek 请求失败：${res.status}`);
 const data = await res.json();
@@ -100,6 +106,7 @@ headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiKey}`}
 body: JSON.stringify(
 openAICompatibleBody({ modelName: modelName || 'gpt-4o-mini', question, imageUrl})
 ),
+signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
 if (!res.ok) throw new Error(`OpenAI 请求失败：${res.status}`);
 const data = await res.json();
@@ -131,6 +138,7 @@ body: JSON.stringify({
 systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。'}]},
 contents: [{ parts}],
 }),
+signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 }
 );
 if (!res.ok) throw new Error(`Gemini 请求失败：${res.status}`);
@@ -195,7 +203,7 @@ if (format === 'ollama') {
 let content = question;
 if (imageUrl) content = `${question}\n（附带图片：${imageUrl}，请结合图片回答）`;
 body = { model: modelName || 'llama3', messages: [{ role: 'user', content}], stream: false};
-res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body)});
+res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
 if (!res.ok) throw new Error(`自定义接口请求失败：${res.status}`);
 const data = await res.json();
 return data.message?.content || '';
@@ -205,6 +213,7 @@ res = await fetch(url, {
 method: 'POST',
 headers,
 body: JSON.stringify(openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl})),
+signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
 if (!res.ok) throw new Error(`自定义接口请求失败：${res.status}`);
 const data = await res.json();
@@ -224,6 +233,7 @@ search_query: query,
 count: 5, // 只取 5 条：控制延迟和 prompt 长度
 search_recency_filter: 'noLimit',
 }),
+signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
 });
 if (!res.ok) throw new Error(`联网搜索失败：${res.status}`);
 const data = await res.json();

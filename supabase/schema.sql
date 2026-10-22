@@ -157,3 +157,12 @@ ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;
+
+-- 2026-10-22 优化：高频查询索引（与 migrations/003_add_indexes.sql 保持一致）
+CREATE INDEX IF NOT EXISTS idx_mistakes_profile_id ON mistakes ("profileId", id DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_profile_updated ON notes ("profileId", updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vocabulary_profile_due ON vocabulary ("profileId", mastered, "nextReview");
+CREATE INDEX IF NOT EXISTS idx_conversations_profile_id ON conversations ("profileId", id DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages ("conversationId", id);
+CREATE INDEX IF NOT EXISTS idx_messages_profile_id ON messages ("profileId");
+CREATE INDEX IF NOT EXISTS idx_word_history_profile_looked ON word_history ("profileId", looked_at DESC);

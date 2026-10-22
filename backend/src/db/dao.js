@@ -13,6 +13,36 @@
 // ============================================================================
 const { query, pool } = require('./index');
 
+// ---------- 鉴权短缓存（2026-10-22 优化） ----------
+// 人话：几乎每个接口进来都要查一次库验密码/账号凭证，其实这些值很少变。
+// 给最稳定的几个值加 30 秒进程内缓存，少跑很多趟数据库。
+// 注意：serverless 多实例之间缓存不互通，30 秒 TTL 就是为此留的余地，
+// 过期后仍以数据库为准；改密码等写操作会同步刷新缓存，立即生效。
+const AUTH_CACHE_TTL_MS = 30 * 1000;
+// 只缓存这几个稳定的鉴权键；限流计数（site_verify_fail_* 等）变得勤，绝不缓存
+const CACHED_CONFIG_KEYS = new Set([
+  'site_password_hash',
+  'danger_password_hash',
+  'owner_session_hash',
+  'owner_session_expires',
+]);
+const configCache = new Map(); // key -> { value, at }
+const profileAuthCache = new Map(); // String(profileId) -> { value, at }
+
+function cacheGet(map, key) {
+  const hit = map.get(key);
+  if (!hit) return { found: false };
+  if (Date.now() - hit.at > AUTH_CACHE_TTL_MS) {
+    map.delete(key);
+    return { found: false };
+  }
+  return { found: true, value: hit.value };
+}
+
+function cacheSet(map, key, value) {
+  map.set(key, { value, at: Date.now() });
+}
+
 // ---------- 通用小工具 ----------
 
 // 把前端传来的 0/1、true/false 统一转成数据库存的整数 0/1
@@ -35,21 +65,29 @@ function today() {
 async function resetAll() {
   await query(`TRUNCATE TABLE profiles, conversations, messages, mistakes, notes,
     vocabulary, word_history, checkins, settings RESTART IDENTITY`);
+  profileAuthCache.clear(); // 账号全没了，鉴权缓存一起清掉
 }
 
-// 读配置：没有返回 null
+// 读配置：没有返回 null。白名单内的鉴权键先看缓存（含缓存住的 null，避免反复查空）
 async function getSiteConfig(key) {
+  if (CACHED_CONFIG_KEYS.has(key)) {
+    const hit = cacheGet(configCache, key);
+    if (hit.found) return hit.value;
+  }
   const r = await query('SELECT value FROM site_config WHERE key = $1', [key]);
-  return r.rows[0] ? r.rows[0].value : null;
+  const value = r.rows[0] ? r.rows[0].value : null;
+  if (CACHED_CONFIG_KEYS.has(key)) cacheSet(configCache, key, value);
+  return value;
 }
 
-// 写配置：有则更新，无则插入
+// 写配置：有则更新，无则插入。写成功后同步刷新缓存，改密码立即生效不用等 TTL
 async function setSiteConfig(key, value) {
   await query(
     `INSERT INTO site_config (key, value) VALUES ($1, $2)
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
     [key, value]
   );
+  if (CACHED_CONFIG_KEYS.has(key)) cacheSet(configCache, key, value);
 }
 
 
@@ -64,8 +102,12 @@ async function listProfiles(profileId) {
 }
 
 async function getProfileAuthHash(id) {
+  const hit = cacheGet(profileAuthCache, String(id));
+  if (hit.found) return hit.value;
   const r = await query('SELECT auth_token_hash FROM profiles WHERE id = $1', [id]);
-  return r.rows[0] ? r.rows[0].auth_token_hash : null;
+  const value = r.rows[0] ? r.rows[0].auth_token_hash : null;
+  cacheSet(profileAuthCache, String(id), value);
+  return value;
 }
 
 async function createProfile(name, tokenHash) {
@@ -73,6 +115,7 @@ async function createProfile(name, tokenHash) {
     'INSERT INTO profiles (name, auth_token_hash) VALUES ($1, $2) RETURNING id, name, avatar_url',
     [name, tokenHash]
   );
+  if (r.rows[0]) cacheSet(profileAuthCache, String(r.rows[0].id), tokenHash);
   return r.rows[0];
 }
 
@@ -82,6 +125,7 @@ async function claimProfile(id, tokenHash) {
     'UPDATE profiles SET auth_token_hash = $1 WHERE id = $2 AND auth_token_hash IS NULL RETURNING id, name, avatar_url',
     [tokenHash, id]
   );
+  if (r.rows[0]) cacheSet(profileAuthCache, String(id), tokenHash);
   return r.rows[0] || null;
 }
 
@@ -101,6 +145,7 @@ async function setAvatar(id, url) {
 async function deleteProfile(id) {
   // 外键带 CASCADE，删除账号会连带删除该账号的所有数据
   const r = await query('DELETE FROM profiles WHERE id = $1', [id]);
+  if (r.rowCount > 0) profileAuthCache.delete(String(id));
   return r.rowCount;
 }
 
