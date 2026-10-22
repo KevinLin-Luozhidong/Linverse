@@ -252,7 +252,7 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ============ AI 助手页 ============ */
-.chat-wrap { display: flex; flex-direction: column; height: 100%; }
+.chat-wrap { display: flex; flex-direction: column; height: 100%; position: relative; }
 
 /* 顶栏：汉堡 / 模型胶囊 / 状态胶囊 */
 .chat-topbar {
@@ -630,61 +630,82 @@ body {
 .tools-body { flex: 1; overflow: hidden; position: relative; }
 
 /* ============ 每日早报页 ============ */
-.brief-page { padding: 0 0 32px; }
+/* 版式照演示小样：顶部标题行（大标题 + 共 N 条 pill）+ 板块筛选胶囊 + 扁平卡片列表，
+   全部视图下第一张卡是「今日头条」琥珀描边卡 */
+.brief-page { padding: 12px 16px 32px; }
 
-/* 页头：与知识库页同款玻璃卡，图标换成火焰红渐变 */
-.brief-header {
-  display: flex; align-items: center; gap: 14px;
-  margin: 14px 16px 12px;
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: 20px; padding: 16px 18px;
+/* 顶部标题行 */
+.brief-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 2px 2px 14px; }
+.brief-top-title { font-size: calc(21px * var(--fss)); font-weight: 800; margin: 0; }
+.brief-count {
+  flex: none; font-size: calc(11px * var(--fss)); font-weight: 600; color: var(--ink3);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px;
 }
-.brief-header-icon {
-  width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0;
-  background: linear-gradient(135deg, #f43f5e, #fb7185);
-  display: flex; align-items: center; justify-content: center; color: #fff;
-}
-.brief-header-title { font-size: calc(19px * var(--fss)); font-weight: 800; margin: 0 0 2px; }
-.brief-header-sub { font-size: calc(12px * var(--fss)); color: var(--ink2); margin: 0; }
 
-/* 板块筛选：一行横滑胶囊，选中态与 mini-chip 一致 */
+/* 板块筛选：一行横滑胶囊，选中态实心蓝底白字 */
 .brief-chips {
   display: flex; gap: 8px; overflow-x: auto;
-  margin: 2px 16px 2px; padding-bottom: 4px;
+  padding: 2px 2px 8px;
   scrollbar-width: none;
 }
 .brief-chips::-webkit-scrollbar { display: none; }
 .brief-chip {
   flex: none; white-space: nowrap; cursor: pointer;
-  padding: 6px 14px; border-radius: 999px;
+  padding: 7px 15px; border-radius: 999px;
   border: 1px solid var(--line); background: var(--card); color: var(--ink2);
   font-size: calc(13px * var(--fss)); font-weight: 600;
-  transition: transform 0.15s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease);
+  transition: transform 0.15s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease), background 0.2s var(--ease);
 }
 .brief-chip:active { transform: scale(0.94); }
-.brief-chip.on { border-color: var(--blue); color: var(--blue-deep); background: var(--blue-soft); }
+.brief-chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 
-.brief-sec-title { font-size: calc(15px * var(--fss)); font-weight: 800; margin: 18px 18px 8px; }
-.brief-list { display: flex; flex-direction: column; gap: 10px; margin: 0 16px; }
+/* 扁平卡片列表 */
+.brief-list { display: flex; flex-direction: column; gap: 14px; }
 
 /* 条目卡：默认正文只露 3 行，点开看全文 */
 .brief-card {
   background: var(--card); border: 1px solid var(--line);
-  border-radius: 16px; padding: 13px 14px; cursor: pointer;
+  border-radius: 18px; padding: 18px; cursor: pointer;
   animation: brief-in 0.3s var(--ease) both;
   transition: background 0.15s var(--ease);
 }
 .brief-card:active { background: var(--blue-soft); }
-.brief-card-title { font-size: calc(15px * var(--fss)); font-weight: 700; margin-bottom: 5px; }
+.brief-card.featured { border-color: rgba(245,158,11,.55); }
+.brief-cat { font-size: calc(11.5px * var(--fss)); font-weight: 700; letter-spacing: .3px; color: var(--blue-deep); margin-bottom: 6px; }
+.brief-cat.gold { color: var(--orange); }
+.brief-card-title { font-size: calc(16px * var(--fss)); font-weight: 700; line-height: 1.45; margin-bottom: 6px; }
 .brief-card-body {
   font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.65;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .brief-card.open .brief-card-body { display: block; -webkit-line-clamp: unset; overflow: visible; }
-.brief-more { margin-top: 6px; font-size: calc(12px * var(--fss)); font-weight: 600; color: var(--blue-deep); }
-.brief-source { margin-top: 9px; font-size: calc(12px * var(--fss)); color: var(--ink3); }
-.brief-source a { color: var(--blue-deep); text-decoration: none; font-weight: 600; }
+.brief-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: calc(12px * var(--fss)); }
+.brief-src { color: var(--ink3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brief-src a { color: var(--blue-deep); font-weight: 600; text-decoration: none; margin-left: 5px; }
+.brief-more { margin-left: auto; flex: none; color: var(--ink3); }
 @keyframes brief-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* AI 助手页顶部的早报入口横条：紧凑一行，点开早报子页 */
+.brief-strip {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 16px 0; padding: 10px 14px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink);
+  cursor: pointer; text-align: left; font: inherit;
+  transition: transform .15s var(--ease), background .15s var(--ease);
+}
+.brief-strip:active { transform: scale(.98); background: var(--blue-soft); }
+.brief-strip-ic { flex: none; display: flex; color: var(--red); }
+.brief-strip-t { flex: none; font-size: calc(13.5px * var(--fss)); font-weight: 700; }
+.brief-strip-h { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--fss)); color: var(--ink2); }
+.brief-strip > svg { flex: none; color: var(--ink3); }
+
+/* 早报子页覆盖层：盖住 AI 助手页内容区（底部导航之下），自带返回行 */
+.brief-overlay { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); }
+.brief-nav { display: flex; align-items: center; gap: 8px; padding: 10px 12px 2px; }
+.brief-nav-title { flex: 1; text-align: center; font-size: calc(16px * var(--fss)); font-weight: 700; }
+.brief-nav-sp { width: 40px; flex: none; }
+.brief-scroll { flex: 1; overflow-y: auto; }
 
 /* ============ 错题本 ============ */
 .mistake-sec { padding: 6px 14px 90px; }
@@ -1244,7 +1265,7 @@ body::before {
 
 /* G2：大卡片（真玻璃，blur 克制在 14px） */
 .m-card, .stat-card, .more-card, .set-group, .profile-item,
-.me-stat-card, .me-week-card, .tool-slide, .kb-header, .brief-header, .model-pill {
+.me-stat-card, .me-week-card, .tool-slide, .kb-header, .model-pill {
   background-color: var(--g2-bg);
   border-color: var(--g2-bd);
   box-shadow: var(--g2-hi), var(--g2-sh);
@@ -1254,7 +1275,7 @@ body::before {
 }
 
 /* G2 伪玻璃：长列表卡片不加 blur，防滚动卡顿（底色靠 --card 变量已半透明） */
-.note-card, .dict-card, .review-card, .report-row, .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card {
+.note-card, .dict-card, .review-card, .report-row, .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip {
   border-color: var(--g2-bd);
   box-shadow: var(--g2-hi), var(--g2-sh);
   background-image: var(--g-noise);
@@ -1308,8 +1329,8 @@ body::before {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .topbar, .chat-topbar, .tools-bar, .tabbar, .composer, .tools-quote-fixed,
   .m-card, .stat-card, .more-card, .set-group, .profile-item, .me-stat-card, .me-week-card,
-  .tool-slide, .kb-header, .brief-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
-  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
+  .tool-slide, .kb-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
+  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
     background-color: var(--g-solid);
     background-image: none;
   }
@@ -1317,8 +1338,8 @@ body::before {
 @media (prefers-reduced-transparency: reduce) {
   .topbar, .chat-topbar, .tools-bar, .tabbar, .composer, .tools-quote-fixed,
   .m-card, .stat-card, .more-card, .set-group, .profile-item, .me-stat-card, .me-week-card,
-  .tool-slide, .kb-header, .brief-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
-  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
+  .tool-slide, .kb-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
+  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background-color: var(--g-solid);

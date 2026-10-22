@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import Cropper from '../Cropper'
+import Briefing from './Briefing'
 import { cleanLatex } from '../latex'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
-  type ConversationMeta, type ChatMsg,
+  getLatestBriefing,
+  type ConversationMeta, type ChatMsg, type DailyBriefing,
 } from '@api'
 import { toggleFav, isFav } from '../favs'
 
@@ -20,6 +22,13 @@ const MODELS = [
   { v: 'openai', label: 'OpenAI' },
   { v: 'custom', label: '自定义' },
 ]
+
+// 'YYYY-MM-DD' → 「10月22日」：纯字符串拆拼，不用 Date，避免时区差一天（早报入口横条用）
+function briefDay(d: string) {
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return d
+  return `${Number(m[2])}月${Number(m[3])}日`
+}
 
 // ---- 轻量富文本渲染：标题 / 列表 / **重点**（重点变蓝色） ----
 function renderRich(text: string): ReactNode[] {
@@ -179,6 +188,19 @@ function TypeMsg(props: Omit<Parameters<typeof AnswerCard>[0], 'typing' | 'onSki
 
 export default function Assistant({ profileId }: { profileId: string | null }) {
   const [convs, setConvs] = useState<ConversationMeta[]>([])
+  // 每日早报入口：挂载时拉最新一期做横条（标题+头条），失败/暂无早报就静默不显示，
+  // 不弹错、不挡聊天。子页覆盖层首次打开后常驻挂载，display 显隐（同 App 其它面板惯例）
+  const [briefPeek, setBriefPeek] = useState<DailyBriefing | null>(null)
+  const [briefOpen, setBriefOpen] = useState(false)
+  const [briefVisited, setBriefVisited] = useState(false)
+  const openBrief = () => { setBriefVisited(true); setBriefOpen(true) }
+  useEffect(() => {
+    getLatestBriefing().then(setBriefPeek).catch(() => {})
+  }, [])
+  // 截图调试用：?brief=1 直接打开早报子页
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('brief') === '1') openBrief()
+  }, [])
   const [convId, setConvId] = useState<string | null>(null)
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
@@ -501,6 +523,18 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         </div>
       </aside>
 
+      {/* 每日早报入口横条：顶栏下方一条，有新一期才出现，点开早报子页 */}
+      {briefPeek && !briefOpen && (
+        <button className="brief-strip" onClick={openBrief}>
+          <span className="brief-strip-ic"><I n="flame" size={16} /></span>
+          <span className="brief-strip-t">每日早报 · {briefDay(briefPeek.date)}</span>
+          <span className="brief-strip-h">
+            {briefPeek.sections.find((s) => s.items.length > 0)?.items[0]?.title || ''}
+          </span>
+          <I n="chev" size={16} />
+        </button>
+      )}
+
       {/* 聊天区 */}
       <div className="chat-list" ref={listRef}>
         {msgs.length === 0 && (
@@ -572,6 +606,21 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           </button>
         </div>
       </div>
+      {/* 早报子页：覆盖层盖住聊天区，返回回到对话（聊天状态不卸载） */}
+      {briefVisited && (
+        <div className="brief-overlay" style={{ display: briefOpen ? 'flex' : 'none' }}>
+          <div className="brief-nav">
+            <button className="icon-btn" onClick={() => setBriefOpen(false)} aria-label="返回">
+              <I n="back" size={20} />
+            </button>
+            <span className="brief-nav-title">每日早报</span>
+            <span className="brief-nav-sp" />
+          </div>
+          <div className="brief-scroll">
+            <Briefing active={briefOpen} />
+          </div>
+        </div>
+      )}
       <Toast msg={toastMsg} tkey={toastKey} />
       {cropSrc && (
         <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
