@@ -3,11 +3,51 @@ import { I, Toast, Spin, Empty, useToast } from '../components'
 import { getLatestShantouBoard, type ShantouBoard } from '@api'
 
 // 汕头看板页：周末仪表盘，渲染 shantou_boards 里一整期的 JSON 载荷。
-// 版块：天气头区（渐变、无配图）/ 太阳轨迹（按打开时刻实时算圆点）/ 指标 /
+// 版块：天气头区（灯塔图全幅 + 渐变蒙版）/ 太阳轨迹（按打开时刻实时算圆点）/ 指标 /
 // 生活指数 / 四日预报横滑（温度·紫外线·风力切换）/ 周末两日游 / 展会时间线 / 出行建议。
 // 样式全部 st- 前缀、只用现有 CSS 变量，玻璃保持 v1（伪玻璃，见 styles.css 登记）。
 // 防御性：payload 任一子块缺失整块不渲染，数组用 (x || []) 兜底。
 type AnyObj = Record<string, any>
+
+// 固定配图素材（public/ 自托管，不进数据载荷）：南澳岛灯塔照片 / 老城骑楼插画
+type TripImg = { src: string; alt: string; credit?: string }
+const IMG_LIGHTHOUSE: TripImg = {
+  src: '/nanao-lighthouse.jpg',
+  alt: '汕头南澳岛三囱崖灯塔：红白条纹的双塔立在海边礁石上，傍晚海边看日落正合适',
+  credit: '图 / 网易订阅',
+}
+const IMG_QILOU: TripImg = {
+  src: '/oldtown-qilou.webp',
+  alt: '汕头老城骑楼群剪影插画：黄昏天空下连排的骑楼建筑，拱门透出暖光',
+}
+
+// 两日游配图选择：按卡片文本匹配——老城/骑楼/小公园 → 骑楼图；
+// 日落/灯塔/南澳/海边 → 灯塔图；都没命中按下标兜底（第 0 张灯塔、第 1 张骑楼）；
+// 同一张图整页最多用一次，冲突时该卡无图。
+function pickTripImages(items: AnyObj[]): (TripImg | null)[] {
+  const used = new Set<string>()
+  return items.map((it, i) => {
+    const text = `${it.theme || ''}${it.title || ''}${it.body || ''}`
+    let img: TripImg | null = null
+    if (text.includes('老城') || text.includes('骑楼') || text.includes('小公园')) {
+      img = IMG_QILOU
+    } else if (
+      text.includes('日落') ||
+      text.includes('灯塔') ||
+      text.includes('南澳') ||
+      text.includes('海边')
+    ) {
+      img = IMG_LIGHTHOUSE
+    } else if (i === 0) {
+      img = IMG_LIGHTHOUSE
+    } else if (i === 1) {
+      img = IMG_QILOU
+    }
+    if (!img || used.has(img.src)) return null
+    used.add(img.src)
+    return img
+  })
+}
 
 function pad(n: number): string {
   return n < 10 ? '0' + n : String(n)
@@ -215,6 +255,7 @@ export default function Shantou({ active }: { active?: boolean }) {
   const events: AnyObj | undefined = p.events
   const eventItems: AnyObj[] = (events && events.items) || []
   const advice: AnyObj[] = p.advice || []
+  const tripImgs = pickTripImages(tripItems)
 
   const tabs: { k: 'temp' | 'uv' | 'wind'; t: string }[] = [
     { k: 'temp', t: '温度' },
@@ -224,18 +265,30 @@ export default function Shantou({ active }: { active?: boolean }) {
 
   return (
     <div className="st-page">
-      {/* 天气头区：渐变头（无配图资源），地点 / 日期星期 / 天气+温度 / 一行实况 */}
+      {/* 天气头区：灯塔图全幅 + 渐变蒙版，白字压图上（上地点日期 / 下天气实况） */}
       {hero && (
         <section className="st-hero">
-          <div className="st-hero-place">{hero.place}</div>
-          <div className="st-hero-date">
-            {fmtDate(payloadDate)} {p.weekday || ''}
+          <img
+            className="st-hero-img"
+            src="/nanao-lighthouse.jpg"
+            alt="汕头南澳岛三囱崖灯塔：红白条纹的双塔立在海边礁石上，背后是蓝天和大海"
+          />
+          <div className="st-hero-shade" aria-hidden="true" />
+          <div className="st-hero-inner">
+            <div>
+              <div className="st-hero-place">{hero.place}</div>
+              <div className="st-hero-date">
+                {fmtDate(payloadDate)} {p.weekday || ''}
+              </div>
+            </div>
+            <div>
+              <div className="st-hero-main">
+                <span className="st-hero-cond">{hero.condition}</span>
+                <span className="st-hero-temp">{hero.temp_c}°C</span>
+              </div>
+              {hero.sub ? <div className="st-hero-sub">{hero.sub}</div> : null}
+            </div>
           </div>
-          <div className="st-hero-main">
-            <span className="st-hero-cond">{hero.condition}</span>
-            <span className="st-hero-temp">{hero.temp_c}°C</span>
-          </div>
-          {hero.sub ? <div className="st-hero-sub">{hero.sub}</div> : null}
           {hero.credit ? <div className="st-hero-credit">{hero.credit}</div> : null}
         </section>
       )}
@@ -346,6 +399,14 @@ export default function Shantou({ active }: { active?: boolean }) {
           <div className="st-trips-list">
             {tripItems.map((it, i) => (
               <div key={it.title || i} className="st-trip st-card">
+                {tripImgs[i] && (
+                  <div className="st-trip-media">
+                    <img src={tripImgs[i]!.src} alt={tripImgs[i]!.alt} />
+                    {tripImgs[i]!.credit ? (
+                      <span className="st-trip-credit">{tripImgs[i]!.credit}</span>
+                    ) : null}
+                  </div>
+                )}
                 <div className="st-trip-top">
                   <span className="st-trip-day">{it.day_label}</span>
                   <span className="st-trip-theme">{it.theme}</span>

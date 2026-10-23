@@ -1358,15 +1358,18 @@ body::before {
 .st-sec-title svg { color: var(--blue); flex: none; }
 .st-sec-sub { font-size: calc(12px * var(--fss)); color: var(--ink3); }
 
-/* 天气头区：渐变（无配图资源），白字 */
-.st-hero { border-radius: var(--radius); padding: 22px 20px; color: #fff; background: linear-gradient(135deg, var(--blue) 0%, var(--blue-deep) 100%); display: flex; flex-direction: column; gap: 6px; }
+/* 天气头区：灯塔图全幅 + 渐变蒙版（值同原版静态页），白字压图上 */
+.st-hero { position: relative; overflow: hidden; border-radius: var(--radius); height: 300px; padding: 0; color: #fff; background: linear-gradient(135deg, var(--blue) 0%, var(--blue-deep) 100%); }
+.st-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,24,40,.42) 0%, rgba(6,24,40,.08) 34%, rgba(6,24,40,.18) 58%, rgba(6,24,40,.72) 100%); }
+.st-hero-inner { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 20px 20px 34px; text-shadow: 0 1px 6px rgba(6,24,40,.45); }
 .st-hero-place { font-size: calc(15px * var(--fss)); font-weight: 600; opacity: .95; }
 .st-hero-date { font-size: calc(13px * var(--fss)); opacity: .85; }
-.st-hero-main { display: flex; align-items: baseline; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.st-hero-main { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 .st-hero-cond { font-size: calc(20px * var(--fss)); font-weight: 600; }
 .st-hero-temp { font-size: calc(56px * var(--fss)); font-weight: 700; line-height: 1; }
 .st-hero-sub { font-size: calc(13px * var(--fss)); opacity: .92; margin-top: 4px; }
-.st-hero-credit { font-size: calc(11px * var(--fss)); opacity: .65; margin-top: 6px; }
+.st-hero-credit { position: absolute; right: 14px; bottom: 10px; z-index: 1; font-size: calc(11px * var(--fss)); color: rgba(255,255,255,.75); }
 
 /* 太阳轨迹 */
 .st-sun { padding: 14px 14px 12px; }
@@ -1443,7 +1446,10 @@ body::before {
 
 /* 周末两日游 */
 .st-trips-list { display: flex; flex-direction: column; gap: 10px; }
-.st-trip { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.st-trip { padding: 14px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.st-trip-media { position: relative; margin: -14px -14px 2px; }
+.st-trip-media img { display: block; width: 100%; height: 150px; object-fit: cover; }
+.st-trip-credit { position: absolute; left: 10px; bottom: 8px; font-size: calc(11px * var(--fss)); color: rgba(255,255,255,.88); text-shadow: 0 1px 4px rgba(0,0,0,.55); }
 .st-trip-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .st-trip-day { font-size: calc(12px * var(--fss)); color: var(--ink3); }
 .st-trip-theme { font-size: calc(11px * var(--fss)); padding: 2px 8px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-deep); font-weight: 600; }
@@ -1478,7 +1484,9 @@ body::before {
 
 @media (max-width: 560px) {
   .st-page { padding: 10px 10px 36px; gap: 12px; }
-  .st-hero { padding: 18px 16px; }
+  .st-hero { height: 252px; }
+  .st-hero-inner { padding: 16px 16px 32px; }
+  .st-trip-media img { height: 128px; }
   .st-hero-temp { font-size: calc(48px * var(--fss)); }
   .st-tiles, .st-life-grid, .st-advice-grid { gap: 8px; }
   .st-ev { grid-template-columns: 62px 16px 1fr; }
