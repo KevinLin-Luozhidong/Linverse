@@ -3,6 +3,8 @@
 // 生产环境 VITE_API_URL 为空，走同源相对路径 /api/...，由 vercel.json rewrite 转发到 serverless API（前后端同一 Vercel 项目）
 // 字段名与后端契约保持一致，不做改动
 
+import { DEFAULT_REGION_ID } from './regions'
+
 const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
@@ -52,7 +54,10 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authP
       e.needSitePassword = true
       throw e
     }
-    throw new Error(msg)
+    // 把后端给的错误 code 一起带上，调用方能按 code 分流（如看板的 unknown_region）
+    const err = new Error(msg) as Error & { code?: string }
+    err.code = code
+    throw err
   }
   // 204 无内容直接返回空对象
   if (res.status === 204) return {} as T
@@ -510,6 +515,7 @@ export interface ShantouBoardPayload {
 }
 export interface ShantouBoard { date: string; payload: ShantouBoardPayload }
 // 最新一期；还没有任何看板时后端返回 null
-export const getLatestShantouBoard = () => get<ShantouBoard | null>('/shantou')
-export const getShantouBoardByDate = (date: string) =>
-  get<ShantouBoard | null>(`/shantou/${encodeURIComponent(date)}`)
+export const getLatestShantouBoard = (region: string = DEFAULT_REGION_ID) =>
+  get<ShantouBoard | null>(`/shantou?region=${encodeURIComponent(region)}`)
+export const getShantouBoardByDate = (date: string, region: string = DEFAULT_REGION_ID) =>
+  get<ShantouBoard | null>(`/shantou/${encodeURIComponent(date)}?region=${encodeURIComponent(region)}`)

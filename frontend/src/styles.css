@@ -1282,7 +1282,7 @@ body::before {
 }
 
 /* G3：浮层（sheet / 抽屉 / 下拉菜单，高透明度保可读） */
-.sheet, .drawer, .model-menu, .drop-menu {
+.sheet, .drawer, .model-menu, .drop-menu, .st-region-menu {
   background-color: var(--g3-bg);
   border-color: var(--g3-bd);
   box-shadow: var(--g3-hi), var(--g3-sh);
@@ -1352,6 +1352,17 @@ body::before {
    全部 st- 前缀，只用现有 CSS 变量；玻璃保持 v1：.st-card 登记在 G2 伪玻璃名单
    （长列表防卡顿，不加 blur），.st-hero 是彩色强调层、保持实色不进玻璃名单。 */
 .st-page { display: flex; flex-direction: column; gap: 14px; padding: 12px 14px 40px; max-width: 760px; margin: 0 auto; color: var(--ink); font-size: calc(14px * var(--fss)); }
+/* 地区选择器：照 .model-pill/.model-menu 范式，只用现有变量；菜单另进 G3 浮层玻璃组 */
+.st-regionbar { display: flex; }
+.st-region-wrap { position: relative; }
+.st-region-pill { display: flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: calc(15px * var(--fss)); font-weight: 600; padding: 8px 14px; border-radius: 20px; cursor: pointer; transition: transform 0.15s var(--ease), border-color 0.2s var(--ease); }
+.st-region-pill:active { transform: scale(0.95); border-color: var(--blue); }
+.st-region-backdrop { position: fixed; inset: 0; z-index: 49; }
+.st-region-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 170px; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 32px rgba(15, 27, 45, 0.14); padding: 6px; z-index: 50; animation: menuIn 0.2s var(--ease); }
+.st-region-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; color: var(--ink); font-size: calc(15px * var(--fss)); padding: 10px 12px; border-radius: 10px; cursor: pointer; text-align: left; transition: background 0.15s var(--ease); }
+.st-region-menu button:active { background: var(--blue-soft); transform: scale(0.98); }
+.st-region-menu button.on { color: var(--blue-deep); font-weight: 700; }
+.st-region-soon { padding: 9px 12px 7px; margin-top: 4px; border-top: 1px solid var(--line); color: var(--ink3); font-size: calc(12.5px * var(--fss)); }
 .st-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
 .st-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .st-sec-title { display: flex; align-items: center; gap: 6px; font-size: calc(16px * var(--fss)); font-weight: 700; color: var(--ink); }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast } from '../components'
 import { getLatestShantouBoard, type ShantouBoard } from '@api'
+import { BOARD_REGIONS, boardRegionName, loadBoardRegion, saveBoardRegion } from '../regions'
 
 // 汕头看板页：周末仪表盘，渲染 shantou_boards 里一整期的 JSON 载荷。
 // 版块：天气头区（灯塔图全幅 + 渐变蒙版）/ 太阳轨迹（按打开时刻实时算圆点）/ 指标 /
@@ -222,27 +223,44 @@ export default function Shantou({ active }: { active?: boolean }) {
   const [data, setData] = useState<ShantouBoard | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'temp' | 'uv' | 'wind'>('temp') // 预报指标切换
+  const [region, setRegion] = useState(loadBoardRegion()) // 当前地区（localStorage 记住上次选择）
+  const [menuOpen, setMenuOpen] = useState(false) // 地区下拉菜单开关
+  const [regionMissing, setRegionMissing] = useState(false) // 该地区后端还没有看板
   const [toastMsg, toastKey, setToast] = useToast()
 
-  // 覆盖层显隐时 active 变化：切到看板 tab 才拉（首次挂载 active 为 undefined 也拉）
+  // 覆盖层显隐时 active 变化：切到看板 tab 才拉（首次挂载 active 为 undefined 也拉）；切地区重新拉
   useEffect(() => {
     if (active === false) return
     let alive = true
     setLoading(true)
-    getLatestShantouBoard()
-      .then((r) => { if (alive) setData(r) })
-      .catch(() => { if (alive) setToast('看板加载失败，请稍后再试') })
+    setRegionMissing(false)
+    getLatestShantouBoard(region)
+      .then((r) => { if (alive) { setData(r); setRegionMissing(false) } })
+      .catch((e) => {
+        if (!alive) return
+        // 后端明确说这个地区还没有看板：走「即将上线」空状态，不弹失败 toast
+        if ((e as { code?: string }).code === 'unknown_region') {
+          setData(null)
+          setRegionMissing(true)
+        } else {
+          setToast('看板加载失败，请稍后再试')
+        }
+      })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active])
+  }, [active, region])
+
+  // 切换地区：记住选择，下次打开默认它
+  const pickRegion = (id: string) => {
+    setRegion(id)
+    saveBoardRegion(id)
+    setMenuOpen(false)
+  }
 
   const p: AnyObj = useMemo(() => ((data && (data as AnyObj).payload) || {}) as AnyObj, [data])
   const payloadDate: string = p.date || (data ? (data as AnyObj).date : '') || ''
   const today = todayStr()
-
-  if (loading) return <Spin />
-  if (!data) return <Empty text="还没有看板数据，周末会生成新一期" />
 
   const hero: AnyObj | undefined = p.hero
   const sun: AnyObj | undefined = p.sun
@@ -263,8 +281,47 @@ export default function Shantou({ active }: { active?: boolean }) {
     { k: 'wind', t: '风力' },
   ]
 
-  return (
-    <div className="st-page">
+  // 地区选择器：胶囊按钮 + 下拉菜单（照 AI 助手页模型选择器的范式），地区来自注册表
+  const regionBar = (
+    <div className="st-regionbar">
+      <div className="st-region-wrap">
+        <button
+          type="button"
+          className="st-region-pill"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-haspopup="listbox"
+          aria-expanded={menuOpen}
+        >
+          {boardRegionName(region)}
+          <I n="chev" size={14} />
+        </button>
+        {menuOpen && (
+          <>
+            <div className="st-region-backdrop" onClick={() => setMenuOpen(false)} />
+            <div className="st-region-menu" role="listbox" aria-label="选择地区">
+              {BOARD_REGIONS.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  role="option"
+                  aria-selected={r.id === region}
+                  className={r.id === region ? 'on' : ''}
+                  onClick={() => pickRegion(r.id)}
+                >
+                  {r.id === region && <I n="check" size={15} />}
+                  {r.name}
+                </button>
+              ))}
+              <div className="st-region-soon">更多地区即将上线</div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+
+  const sections = (
+    <>
       {/* 天气头区：灯塔图全幅 + 渐变蒙版，白字压图上（上地点日期 / 下天气实况） */}
       {hero && (
         <section className="st-hero">
@@ -495,7 +552,21 @@ export default function Shantou({ active }: { active?: boolean }) {
       )}
 
       {p.foot ? <footer className="st-foot">{p.foot}</footer> : null}
+    </>
+  )
 
+  return (
+    <div className="st-page">
+      {regionBar}
+      {loading ? (
+        <Spin />
+      ) : regionMissing ? (
+        <Empty text="该地区看板即将上线，敬请期待" />
+      ) : !data ? (
+        <Empty text="还没有看板数据，周末会生成新一期" />
+      ) : (
+        sections
+      )}
       <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )
