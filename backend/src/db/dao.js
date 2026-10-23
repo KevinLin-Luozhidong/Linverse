@@ -579,6 +579,26 @@ async function getBriefingByDate(date) {
   return r.rows[0] || null;
 }
 
+// ---------- 汕头看板（全站公共只读，不分账号） ----------
+// date 用 to_char 转字符串的道理同上。payload 是 JSONB，
+// pg 会自动解析成 JS 对象，直接透传。
+async function getLatestShantouBoard() {
+  const r = await query(
+    `SELECT to_char(date, 'YYYY-MM-DD') AS date, payload
+     FROM shantou_boards ORDER BY date DESC LIMIT 1`
+  );
+  return r.rows[0] || null;
+}
+
+async function getShantouBoardByDate(date) {
+  const r = await query(
+    `SELECT to_char(date, 'YYYY-MM-DD') AS date, payload
+     FROM shantou_boards WHERE date = $1`,
+    [date]
+  );
+  return r.rows[0] || null;
+}
+
 module.exports = {
   today,
   listProfiles, getProfileAuthHash, createProfile, claimProfile, updateProfile, deleteProfile, setAvatar,
@@ -594,6 +614,7 @@ module.exports = {
   kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
   kbFaqSearch, kbFaqInsertBatch,
   getLatestBriefing, getBriefingByDate,
+  getLatestShantouBoard, getShantouBoardByDate,
 };
 
 // ---------- RAG 知识库 ----------

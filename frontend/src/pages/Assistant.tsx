@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import Cropper from '../Cropper'
 import Briefing from './Briefing'
+import Shantou from './Shantou'
 import { cleanLatex } from '../latex'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
-  getLatestBriefing,
-  type ConversationMeta, type ChatMsg, type DailyBriefing,
+  getLatestBriefing, getLatestShantouBoard,
+  type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
 import { toggleFav, isFav } from '../favs'
 
@@ -188,18 +189,27 @@ function TypeMsg(props: Omit<Parameters<typeof AnswerCard>[0], 'typing' | 'onSki
 
 export default function Assistant({ profileId }: { profileId: string | null }) {
   const [convs, setConvs] = useState<ConversationMeta[]>([])
-  // 每日早报入口：挂载时拉最新一期做横条（标题+头条），失败/暂无早报就静默不显示，
-  // 不弹错、不挡聊天。子页覆盖层首次打开后常驻挂载，display 显隐（同 App 其它面板惯例）
+  // 每日早报 / 汕头看板共用一条入口横幅：挂载时各拉最新一期，哪个拉到就显示哪个，
+  // 失败/暂无数据都静默（不弹错、不挡聊天）。覆盖层首次打开后常驻挂载，display 显隐
+  // （同 App 其它面板惯例）
   const [briefPeek, setBriefPeek] = useState<DailyBriefing | null>(null)
+  const [shantouPeek, setShantouPeek] = useState<ShantouBoard | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
   const [briefVisited, setBriefVisited] = useState(false)
-  const openBrief = () => { setBriefVisited(true); setBriefOpen(true) }
+  // 覆盖层当前分段：默认早报；横幅点进来时由 openPanel 指定要落在哪一段
+  const [overlayTab, setOverlayTab] = useState<'brief' | 'shantou'>('brief')
+  const openPanel = (tab: 'brief' | 'shantou') => {
+    setBriefVisited(true)
+    setOverlayTab(tab)
+    setBriefOpen(true)
+  }
   useEffect(() => {
     getLatestBriefing().then(setBriefPeek).catch(() => {})
+    getLatestShantouBoard().then(setShantouPeek).catch(() => {})
   }, [])
-  // 截图调试用：?brief=1 直接打开早报子页
+  // 截图调试用：?brief=1 直接打开早报子页（保持原行为，落在早报 tab）
   useEffect(() => {
-    if (new URLSearchParams(location.search).get('brief') === '1') openBrief()
+    if (new URLSearchParams(location.search).get('brief') === '1') openPanel('brief')
   }, [])
   const [convId, setConvId] = useState<string | null>(null)
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
@@ -523,14 +533,29 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         </div>
       </aside>
 
-      {/* 每日早报入口横条：顶栏下方一条，有新一期才出现，点开早报子页 */}
-      {briefPeek && !briefOpen && (
-        <button className="brief-strip" onClick={openBrief}>
-          <span className="brief-strip-ic"><I n="flame" size={16} /></span>
-          <span className="brief-strip-t">每日早报 · {briefDay(briefPeek.date)}</span>
-          <span className="brief-strip-h">
-            {briefPeek.sections.find((s) => s.items.length > 0)?.items[0]?.title || ''}
-          </span>
+      {/* 早报 / 汕头看板共用入口横条：两者任一有数据才出现；早报优先，没有早报才显示看板 */}
+      {(briefPeek || shantouPeek) && !briefOpen && (
+        <button className="brief-strip" onClick={() => (briefPeek ? openPanel('brief') : openPanel('shantou'))}>
+          {briefPeek ? (
+            <>
+              <span className="brief-strip-ic"><I n="flame" size={16} /></span>
+              <span className="brief-strip-t">每日早报 · {briefDay(briefPeek.date)}</span>
+              <span className="brief-strip-h">
+                {briefPeek.sections.find((s) => s.items.length > 0)?.items[0]?.title || ''}
+              </span>
+            </>
+          ) : shantouPeek ? (
+            <>
+              <span className="brief-strip-ic"><I n="chart" size={16} /></span>
+              <span className="brief-strip-t">汕头看板 · {briefDay(shantouPeek.date)}</span>
+              {/* payload 可能缺失（后端老数据），缺了就只显示标题，不拼出 undefined */}
+              <span className="brief-strip-h">
+                {shantouPeek.payload?.hero
+                  ? `${shantouPeek.payload.hero.condition} ${shantouPeek.payload.hero.temp_c}°C`
+                  : ''}
+              </span>
+            </>
+          ) : null}
           <I n="chev" size={16} />
         </button>
       )}
@@ -606,18 +631,32 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           </button>
         </div>
       </div>
-      {/* 早报子页：覆盖层盖住聊天区，返回回到对话（聊天状态不卸载） */}
+      {/* 早报 / 汕头看板子页：覆盖层盖住聊天区，返回回到对话（聊天状态不卸载） */}
       {briefVisited && (
         <div className="brief-overlay" style={{ display: briefOpen ? 'flex' : 'none' }}>
           <div className="brief-nav">
             <button className="icon-btn" onClick={() => setBriefOpen(false)} aria-label="返回">
               <I n="back" size={20} />
             </button>
-            <span className="brief-nav-title">每日早报</span>
+            {/* 分段切换：复用抽屉的 .seg 样式；对应数据为 null 就不显示那一段 */}
+            <div className="seg" style={{ flex: 1, justifyContent: 'center' }}>
+              {briefPeek && (
+                <button className={overlayTab === 'brief' ? 'on' : ''} onClick={() => setOverlayTab('brief')}>早报</button>
+              )}
+              {shantouPeek && (
+                <button className={overlayTab === 'shantou' ? 'on' : ''} onClick={() => setOverlayTab('shantou')}>汕头看板</button>
+              )}
+            </div>
             <span className="brief-nav-sp" />
           </div>
+          {/* 两个页同时挂载、用 display 显隐，不条件卸载，保持各自滚动/展开状态 */}
           <div className="brief-scroll">
-            <Briefing active={briefOpen} />
+            <div style={{ display: overlayTab === 'brief' ? 'block' : 'none' }}>
+              <Briefing active={briefOpen && overlayTab === 'brief'} />
+            </div>
+            <div style={{ display: overlayTab === 'shantou' ? 'block' : 'none' }}>
+              <Shantou active={briefOpen && overlayTab === 'shantou'} />
+            </div>
           </div>
         </div>
       )}

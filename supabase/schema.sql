@@ -162,6 +162,16 @@ CREATE TABLE IF NOT EXISTS daily_briefings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 汕头看板存档：周末仪表盘，周六、周日各一期；date 主键天然去重；
+-- payload 存一整期完整载荷（天气头/太阳轨迹/指标/生活指数/四日预报/
+-- 两日游/展会/出行建议），全站公共只读。
+CREATE TABLE IF NOT EXISTS public.shantou_boards (
+  date DATE PRIMARY KEY,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
@@ -175,9 +185,11 @@ ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_faq ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_briefings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shantou_boards ENABLE ROW LEVEL SECURITY;
 
 -- 2026-10-30 新政：新建的表必须显式 GRANT（见本文件顶部注释）
 GRANT SELECT, INSERT, UPDATE, DELETE ON daily_briefings TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON shantou_boards TO anon, authenticated;
 
 -- 2026-10-22 优化：高频查询索引（与 migrations/003_add_indexes.sql 保持一致）
 CREATE INDEX IF NOT EXISTS idx_mistakes_profile_id ON mistakes ("profileId", id DESC);

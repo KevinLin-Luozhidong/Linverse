@@ -113,6 +113,7 @@ app.use('/api', require('./routes/stats')); // /api/checkin /api/stats /api/badg
 app.use('/api', require('./routes/ai')); // /api/upload /api/ask /api/ocr /api/dictionary
 app.use('/api/kb', require('./routes/kb')); // RAG 知识库：status/ingest/search（走全局 x-site-token 鉴权）
 app.use('/api/briefings', require('./routes/briefings')); // 每日早报：全站公共只读（走全局鉴权，不分账号）
+app.use('/api/shantou', require('./routes/shantou')); // 汕头看板：全站公共只读（走全局鉴权，不分账号）
 
 // 健康检查
 app.get('/api/health', (req, res) => res.json({ ok: true }));

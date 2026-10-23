@@ -1275,7 +1275,7 @@ body::before {
 }
 
 /* G2 伪玻璃：长列表卡片不加 blur，防滚动卡顿（底色靠 --card 变量已半透明） */
-.note-card, .dict-card, .review-card, .report-row, .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip {
+.note-card, .dict-card, .review-card, .report-row, .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .st-card {
   border-color: var(--g2-bd);
   box-shadow: var(--g2-hi), var(--g2-sh);
   background-image: var(--g-noise);
@@ -1330,7 +1330,7 @@ body::before {
   .topbar, .chat-topbar, .tools-bar, .tabbar, .composer, .tools-quote-fixed,
   .m-card, .stat-card, .more-card, .set-group, .profile-item, .me-stat-card, .me-week-card,
   .tool-slide, .kb-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
-  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
+  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .st-card, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
     background-color: var(--g-solid);
     background-image: none;
   }
@@ -1339,11 +1339,148 @@ body::before {
   .topbar, .chat-topbar, .tools-bar, .tabbar, .composer, .tools-quote-fixed,
   .m-card, .stat-card, .more-card, .set-group, .profile-item, .me-stat-card, .me-week-card,
   .tool-slide, .kb-header, .model-pill, .note-card, .dict-card, .review-card, .report-row,
-  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
+  .fav-card, .me-badge, .kb-list, .dict-pack, .brief-card, .brief-strip, .st-card, .sheet, .drawer, .model-menu, .drop-menu, .settings-over {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background-color: var(--g-solid);
     background-image: none;
   }
   body::before { display: none; }
+}
+
+/* ============ 汕头看板（2026-10-23 接入） ============
+   全部 st- 前缀，只用现有 CSS 变量；玻璃保持 v1：.st-card 登记在 G2 伪玻璃名单
+   （长列表防卡顿，不加 blur），.st-hero 是彩色强调层、保持实色不进玻璃名单。 */
+.st-page { display: flex; flex-direction: column; gap: 14px; padding: 12px 14px 40px; max-width: 760px; margin: 0 auto; color: var(--ink); font-size: calc(14px * var(--fss)); }
+.st-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+.st-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.st-sec-title { display: flex; align-items: center; gap: 6px; font-size: calc(16px * var(--fss)); font-weight: 700; color: var(--ink); }
+.st-sec-title svg { color: var(--blue); flex: none; }
+.st-sec-sub { font-size: calc(12px * var(--fss)); color: var(--ink3); }
+
+/* 天气头区：渐变（无配图资源），白字 */
+.st-hero { border-radius: var(--radius); padding: 22px 20px; color: #fff; background: linear-gradient(135deg, var(--blue) 0%, var(--blue-deep) 100%); display: flex; flex-direction: column; gap: 6px; }
+.st-hero-place { font-size: calc(15px * var(--fss)); font-weight: 600; opacity: .95; }
+.st-hero-date { font-size: calc(13px * var(--fss)); opacity: .85; }
+.st-hero-main { display: flex; align-items: baseline; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.st-hero-cond { font-size: calc(20px * var(--fss)); font-weight: 600; }
+.st-hero-temp { font-size: calc(56px * var(--fss)); font-weight: 700; line-height: 1; }
+.st-hero-sub { font-size: calc(13px * var(--fss)); opacity: .92; margin-top: 4px; }
+.st-hero-credit { font-size: calc(11px * var(--fss)); opacity: .65; margin-top: 6px; }
+
+/* 太阳轨迹 */
+.st-sun { padding: 14px 14px 12px; }
+.st-sun-svg { width: 100%; height: auto; display: block; margin-top: 6px; }
+.st-sun-horizon { stroke: var(--line); stroke-width: 1.5; }
+.st-sun-arc { stroke: var(--orange); stroke-width: 2; stroke-dasharray: 4 5; stroke-linecap: round; }
+.st-sun-glow { fill: var(--orange); opacity: .28; }
+.st-sun-dot { fill: var(--orange); }
+.st-sun-t { fill: var(--ink2); font-size: 11px; }
+.st-sun-status { text-align: center; font-size: calc(13px * var(--fss)); color: var(--ink2); margin-top: 4px; }
+
+/* 指标卡 */
+.st-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.st-tile { padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.st-tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.st-tile-label { font-size: calc(13px * var(--fss)); color: var(--ink2); font-weight: 600; }
+.st-tile-val { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.st-tile-num { font-size: calc(30px * var(--fss)); font-weight: 700; color: var(--ink); line-height: 1.1; }
+.st-tile-unit { font-size: calc(14px * var(--fss)); color: var(--ink2); }
+.st-tile-note { font-size: calc(12px * var(--fss)); color: var(--ink3); line-height: 1.5; }
+.st-badge { display: inline-block; font-size: calc(11px * var(--fss)); font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-deep); white-space: nowrap; }
+.st-badge-uv { background: var(--orange); color: #fff; }
+.st-bar { height: 6px; border-radius: 999px; background: var(--blue-soft2); overflow: hidden; }
+.st-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--blue); transition: width .5s var(--ease); }
+.st-bar.is-hot > i { background: var(--orange); }
+
+/* 罗盘（风向） */
+.st-compass { position: relative; width: 44px; height: 44px; border: 1.5px solid var(--line); border-radius: 50%; flex: none; color: var(--blue); }
+.st-compass span { position: absolute; font-size: 9px; color: var(--ink3); line-height: 1; }
+.st-compass-n { top: 2px; left: 50%; transform: translateX(-50%); }
+.st-compass-s { bottom: 2px; left: 50%; transform: translateX(-50%); }
+.st-compass-e { right: 3px; top: 50%; transform: translateY(-50%); }
+.st-compass-w { left: 3px; top: 50%; transform: translateY(-50%); }
+.st-compass-arrow { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transition: transform .5s var(--ease); }
+
+/* AQI 彩条 */
+.st-aqi { position: relative; padding-top: 2px; }
+.st-aqi-segs { display: flex; height: 8px; border-radius: 999px; overflow: hidden; gap: 1px; }
+.st-aqi-segs span { flex: 1; }
+.st-aqi-seg1 { background: #3cc16b; }
+.st-aqi-seg2 { background: #f2d230; }
+.st-aqi-seg3 { background: #f59a23; }
+.st-aqi-seg4 { background: #e8453c; }
+.st-aqi-seg5 { background: #9b4dca; }
+.st-aqi-seg6 { background: #7a1f2e; }
+.st-aqi-marker { position: absolute; top: -2px; width: 4px; height: 14px; margin-left: -2px; border-radius: 2px; background: var(--ink); }
+
+/* 生活指数 */
+.st-life-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.st-life-item { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.st-life-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.st-life-name { font-size: calc(14px * var(--fss)); font-weight: 600; }
+.st-life-level { font-size: calc(13px * var(--fss)); color: var(--blue-deep); text-align: right; }
+.st-life-level.is-hot { color: var(--orange); }
+.st-life-text { font-size: calc(12px * var(--fss)); color: var(--ink3); line-height: 1.5; }
+
+/* 四日预报横滑 */
+.st-fc-tabs { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--blue-soft2); border: 1px solid var(--line); }
+.st-fc-tab { border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: calc(12px * var(--fss)); font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer; transition: background .2s var(--ease), color .2s var(--ease); }
+.st-fc-tab.on { background: var(--blue); color: #fff; }
+.st-fc-scroll { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; scrollbar-width: none; }
+.st-fc-scroll::-webkit-scrollbar { display: none; }
+.st-fc-card { flex: 0 0 140px; scroll-snap-align: start; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.st-fc-card.is-today { border: 2px solid var(--blue); }
+.st-fc-day { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; font-size: calc(13px * var(--fss)); font-weight: 600; }
+.st-fc-date { color: var(--ink3); font-weight: 400; }
+.st-fc-tag { font-size: calc(10px * var(--fss)); padding: 1px 6px; border-radius: 999px; background: var(--blue); color: #fff; }
+.st-fc-icon { color: var(--blue); }
+.st-fc-cond { font-size: calc(13px * var(--fss)); color: var(--ink2); }
+.st-fc-big { display: flex; align-items: baseline; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.st-fc-big b { font-size: calc(24px * var(--fss)); font-weight: 700; color: var(--ink); }
+.st-fc-big span { font-size: calc(12px * var(--fss)); color: var(--ink2); }
+.st-fc-note { font-size: calc(11px * var(--fss)); color: var(--ink3); line-height: 1.5; }
+
+/* 周末两日游 */
+.st-trips-list { display: flex; flex-direction: column; gap: 10px; }
+.st-trip { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.st-trip-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-trip-day { font-size: calc(12px * var(--fss)); color: var(--ink3); }
+.st-trip-theme { font-size: calc(11px * var(--fss)); padding: 2px 8px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-deep); font-weight: 600; }
+.st-trip-title { font-size: calc(16px * var(--fss)); font-weight: 700; }
+.st-trip-body { font-size: calc(13px * var(--fss)); color: var(--ink2); line-height: 1.65; }
+.st-trip-stops { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-pill { font-size: calc(12px * var(--fss)); padding: 3px 10px; border-radius: 999px; background: var(--blue-soft2); border: 1px solid var(--line); color: var(--ink2); }
+
+/* 展会时间线 */
+.st-ev-list { display: flex; flex-direction: column; }
+.st-ev { display: grid; grid-template-columns: 76px 20px 1fr; gap: 6px; align-items: stretch; }
+.st-ev-date { display: flex; flex-direction: column; align-items: flex-end; text-align: right; padding-top: 10px; gap: 2px; }
+.st-ev-date b { font-size: calc(14px * var(--fss)); }
+.st-ev-date span { font-size: calc(11px * var(--fss)); color: var(--ink3); }
+.st-ev-line { position: relative; display: flex; justify-content: center; }
+.st-ev-line::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: var(--line); }
+.st-ev-dot { position: relative; margin-top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); border: 2px solid var(--card); box-sizing: content-box; z-index: 1; }
+.st-ev.is-next .st-ev-dot { background: #d4a017; }
+.st-ev-card { padding: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.st-ev-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: calc(15px * var(--fss)); font-weight: 700; line-height: 1.4; }
+.st-ev-meta { font-size: calc(12px * var(--fss)); line-height: 1.55; color: var(--ink2); }
+.st-ev-k { color: var(--ink3); }
+.st-ev-note { font-size: calc(12px * var(--fss)); color: var(--ink3); margin-top: 2px; line-height: 1.6; }
+
+/* 出行建议 */
+.st-advice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.st-advice-item { padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.st-advice-title { font-size: calc(14px * var(--fss)); font-weight: 700; }
+.st-advice-text { font-size: calc(12px * var(--fss)); color: var(--ink2); line-height: 1.6; }
+
+.st-foot { font-size: calc(11px * var(--fss)); color: var(--ink3); text-align: center; line-height: 1.6; padding: 6px 8px 0; }
+
+@media (max-width: 560px) {
+  .st-page { padding: 10px 10px 36px; gap: 12px; }
+  .st-hero { padding: 18px 16px; }
+  .st-hero-temp { font-size: calc(48px * var(--fss)); }
+  .st-tiles, .st-life-grid, .st-advice-grid { gap: 8px; }
+  .st-ev { grid-template-columns: 62px 16px 1fr; }
+  .st-fc-card { flex: 0 0 128px; }
 }

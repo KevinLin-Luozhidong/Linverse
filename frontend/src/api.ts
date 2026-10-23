@@ -469,3 +469,47 @@ export interface DailyBriefing { date: string; title: string; sections: Briefing
 export const getLatestBriefing = () => get<DailyBriefing | null>('/briefings')
 export const getBriefingByDate = (date: string) =>
   get<DailyBriefing | null>(`/briefings/${encodeURIComponent(date)}`)
+
+// ---- 汕头看板（全站公共只读，不分账号） ----
+export interface ShantouHero {
+  sub: string; place: string; credit: string; temp_c: number; condition: string;
+}
+export interface ShantouSun {
+  sunset: string; sunrise: string; daylight: string; night_low_c: number;
+}
+export interface ShantouTile {
+  key: 'humidity' | 'wind' | 'uv' | 'aqi';
+  label: string; value: string; unit: string; note: string; badge: string;
+  bar?: number; compass_deg?: number; marker_pct?: number;
+}
+export interface ShantouLifeItem {
+  name: string; level: string; text: string; hot: boolean; bar?: number;
+}
+export interface ShantouLife { sub: string; items: ShantouLifeItem[] }
+export interface ShantouForecast {
+  date_label: string; weekday: string; today: boolean; icon: 'sun' | 'cloud' | 'mix';
+  condition: string; hi_c: number; lo_c: number; uv: string; uv_label: string;
+  wind_dir: string; wind_kmh: number; note: string;
+}
+export interface ShantouTrip {
+  day_label: string; title: string; theme: string; body: string; stops: string[];
+}
+export interface ShantouTrips { sub: string; items: ShantouTrip[] }
+export interface ShantouAdvice { title: string; text: string }
+export interface ShantouEventMeta { k: string; v: string; countdown_to?: string }
+export interface ShantouEvent {
+  date_label: string; week_label: string; title: string; badge: string;
+  next: boolean; meta: ShantouEventMeta[];
+}
+export interface ShantouEvents { sub: string; note: string; items: ShantouEvent[] }
+export interface ShantouBoardPayload {
+  date: string; weekday: string; foot: string;
+  hero: ShantouHero; sun: ShantouSun; tiles: ShantouTile[]; life: ShantouLife;
+  forecast: ShantouForecast[]; trips: ShantouTrips; advice: ShantouAdvice[];
+  events: ShantouEvents;
+}
+export interface ShantouBoard { date: string; payload: ShantouBoardPayload }
+// 最新一期；还没有任何看板时后端返回 null
+export const getLatestShantouBoard = () => get<ShantouBoard | null>('/shantou')
+export const getShantouBoardByDate = (date: string) =>
+  get<ShantouBoard | null>(`/shantou/${encodeURIComponent(date)}`)
