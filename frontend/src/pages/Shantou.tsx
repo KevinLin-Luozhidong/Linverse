@@ -10,41 +10,87 @@ import { BOARD_REGIONS, boardRegionName, loadBoardRegion, saveBoardRegion } from
 // 防御性：payload 任一子块缺失整块不渲染，数组用 (x || []) 兜底。
 type AnyObj = Record<string, any>
 
-// 固定配图素材（public/ 自托管，不进数据载荷）：南澳岛灯塔照片 / 老城骑楼插画
-type TripImg = { src: string; alt: string; credit?: string }
-const IMG_LIGHTHOUSE: TripImg = {
-  src: '/nanao-lighthouse.jpg',
-  alt: '汕头南澳岛三囱崖灯塔：红白条纹的双塔立在海边礁石上，傍晚海边看日落正合适',
-  credit: '图 / 网易订阅',
-}
-const IMG_QILOU: TripImg = {
-  src: '/oldtown-qilou.webp',
-  alt: '汕头老城骑楼群剪影插画：黄昏天空下连排的骑楼建筑，拱门透出暖光',
+// 配图素材池（public/ 自托管，不进数据载荷）：头图按期号轮换，卡片图按关键词匹配。
+// 加图只改这两个配置数组，选择逻辑不用动。
+type PoolImg = { src: string; alt: string; credit?: string; keywords?: string[] }
+
+// 头图池：顺序即轮换顺序，按看板期号日期确定性轮换（同一期所有人看到同一张）
+const HERO_POOL: PoolImg[] = [
+  {
+    src: '/nanao-lighthouse.jpg',
+    alt: '汕头南澳岛三囱崖灯塔：红白条纹的双塔立在海边礁石上，背后是蓝天和大海',
+    credit: '图 / 网易订阅',
+  },
+  {
+    src: '/hero-lighthouse-sunset.jpg',
+    alt: '汕头南澳岛三囱崖灯塔黄昏：红白条纹双塔立在礁石上，夕阳把海面染成金色',
+  },
+  {
+    src: '/hero-shantou-bay.jpg',
+    alt: '汕头湾全景：礐石大桥横跨海湾，右边是海滨长廊和城市天际线',
+  },
+]
+
+// 卡片图池：keywords 是匹配词，数组顺序即匹配优先序，也是无命中时的兜底顺序
+const CARD_POOL: PoolImg[] = [
+  {
+    src: '/card-xiaogongyuan.webp',
+    alt: '汕头小公园中山纪念亭剪纸风插画：蓝绿色调的纪念亭居中，骑楼环绕，黄昏天空',
+    keywords: ['小公园', '纪念亭'],
+  },
+  {
+    src: '/card-qingao-bay.jpg',
+    alt: '汕头南澳岛青澳湾：月牙形白沙滩环抱青蓝色海水，远山上有风车',
+    keywords: ['青澳湾', '海滩', '沙滩', '月亮湾'],
+  },
+  {
+    src: '/oldtown-qilou.webp',
+    alt: '汕头老城骑楼群剪影插画：黄昏天空下连排的骑楼建筑，拱门透出暖光',
+    keywords: ['老城', '骑楼'],
+  },
+  {
+    src: '/nanao-lighthouse.jpg',
+    alt: '汕头南澳岛三囱崖灯塔：红白条纹的双塔立在海边礁石上，傍晚海边看日落正合适',
+    credit: '图 / 网易订阅',
+    keywords: ['日落', '灯塔', '南澳', '海边'],
+  },
+]
+
+// 头图选择：按看板期号日期的天数序号对池长取模，日期缺失/格式不对回落池里第 0 张
+function pickHeroImage(dateStr?: string): PoolImg {
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const days = Math.floor(Date.UTC(y, m - 1, d) / 86400000)
+    const idx = ((days % HERO_POOL.length) + HERO_POOL.length) % HERO_POOL.length
+    return HERO_POOL[idx]
+  }
+  return HERO_POOL[0]
 }
 
-// 两日游配图选择：按卡片文本匹配——老城/骑楼/小公园 → 骑楼图；
-// 日落/灯塔/南澳/海边 → 灯塔图；都没命中按下标兜底（第 0 张灯塔、第 1 张骑楼）；
-// 同一张图整页最多用一次，冲突时该卡无图。
-function pickTripImages(items: AnyObj[]): (TripImg | null)[] {
+// 两日游配图选择：按卡片文本（theme+title+body 拼接）匹配 CARD_POOL 的 keywords，
+// 命中且未用过则选用；都没命中按池顺序兜底取第一张未用过的；
+// 同一张图整页最多用一次，池子用光该卡无图。
+function pickTripImages(items: AnyObj[]): (PoolImg | null)[] {
   const used = new Set<string>()
-  return items.map((it, i) => {
+  return items.map((it) => {
     const text = `${it.theme || ''}${it.title || ''}${it.body || ''}`
-    let img: TripImg | null = null
-    if (text.includes('老城') || text.includes('骑楼') || text.includes('小公园')) {
-      img = IMG_QILOU
-    } else if (
-      text.includes('日落') ||
-      text.includes('灯塔') ||
-      text.includes('南澳') ||
-      text.includes('海边')
-    ) {
-      img = IMG_LIGHTHOUSE
-    } else if (i === 0) {
-      img = IMG_LIGHTHOUSE
-    } else if (i === 1) {
-      img = IMG_QILOU
+    let img: PoolImg | null = null
+    for (const cand of CARD_POOL) {
+      if (used.has(cand.src)) continue
+      if (cand.keywords?.some((kw) => text.includes(kw))) {
+        img = cand
+        break
+      }
     }
-    if (!img || used.has(img.src)) return null
+    if (!img) {
+      for (const cand of CARD_POOL) {
+        if (!used.has(cand.src)) {
+          img = cand
+          break
+        }
+      }
+    }
+    if (!img) return null
     used.add(img.src)
     return img
   })
@@ -274,6 +320,10 @@ export default function Shantou({ active }: { active?: boolean }) {
   const eventItems: AnyObj[] = (events && events.items) || []
   const advice: AnyObj[] = p.advice || []
   const tripImgs = pickTripImages(tripItems)
+  const heroImg = pickHeroImage(payloadDate)
+  // 载荷里的 hero.credit 是原灯塔照片（网易订阅）的来源说明，只在轮到那张图时显示；
+  // 其它图用池里自带的 credit（新图都没配，即不显示）
+  const heroCredit = heroImg.src === '/nanao-lighthouse.jpg' ? (hero?.credit ?? heroImg.credit) : heroImg.credit
 
   const tabs: { k: 'temp' | 'uv' | 'wind'; t: string }[] = [
     { k: 'temp', t: '温度' },
@@ -327,8 +377,8 @@ export default function Shantou({ active }: { active?: boolean }) {
         <section className="st-hero">
           <img
             className="st-hero-img"
-            src="/nanao-lighthouse.jpg"
-            alt="汕头南澳岛三囱崖灯塔：红白条纹的双塔立在海边礁石上，背后是蓝天和大海"
+            src={heroImg.src}
+            alt={heroImg.alt}
           />
           <div className="st-hero-shade" aria-hidden="true" />
           <div className="st-hero-inner">
@@ -346,7 +396,7 @@ export default function Shantou({ active }: { active?: boolean }) {
               {hero.sub ? <div className="st-hero-sub">{hero.sub}</div> : null}
             </div>
           </div>
-          {hero.credit ? <div className="st-hero-credit">{hero.credit}</div> : null}
+          {heroCredit ? <div className="st-hero-credit">{heroCredit}</div> : null}
         </section>
       )}
 
