@@ -7,6 +7,7 @@ import { cleanLatex } from '../latex'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, listConversations, getConversation, deleteConversation,
+  toggleConversationFavorite, batchDeleteConversations,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
   getLatestBriefing, getLatestShantouBoard,
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
@@ -249,6 +250,10 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [typingFor, setTypingFor] = useState(-1)
   const typing = typingFor >= 0
   const [deletingId, setDeletingId] = useState('') // 二次确认删除的会话
+  // 会话管理模式：勾选 + 全选 + 批量删除 + 星标收藏（关抽屉自动退出）
+  const [manage, setManage] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchConfirm, setBatchConfirm] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const activeConvRef = useRef<HTMLDivElement>(null)
@@ -319,12 +324,43 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     }
   }
 
-  // 抽屉打开时，滚动到已选中的会话
+  // 抽屉打开时，滚动到已选中的会话；关抽屉时退出管理模式、清空勾选
   useEffect(() => {
     if (drawerOpen && activeConvRef.current) {
       activeConvRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
+    if (!drawerOpen) { setManage(false); setSelected(new Set()); setBatchConfirm(false) }
   }, [drawerOpen])
+
+  // 星标收藏 / 取消收藏：乐观更新列表，失败回滚并提示
+  const toggleFavConv = async (id: string, favorite: boolean) => {
+    if (!profileId) return
+    setConvs((v) => v.map((c) => c.id === id ? { ...c, favorite } : c))
+    try {
+      await toggleConversationFavorite(id, profileId, favorite)
+      // 收藏置顶是后端排序规则，刷新一次让顺序立刻生效
+      reloadConvs()
+    } catch (e) {
+      setConvs((v) => v.map((c) => c.id === id ? { ...c, favorite: !favorite } : c))
+      setToast(e instanceof Error ? e.message : '收藏失败')
+    }
+  }
+
+  // 批量删除：管理栏点两次确认，删完退出管理模式
+  const batchDel = async () => {
+    if (!profileId || selected.size === 0) return
+    if (!batchConfirm) { setBatchConfirm(true); return }
+    try {
+      const ids = [...selected]
+      await batchDeleteConversations(profileId, ids)
+      setConvs((v) => v.filter((c) => !selected.has(c.id)))
+      if (convId && selected.has(convId)) newConv()
+      setSelected(new Set()); setBatchConfirm(false); setManage(false)
+      setToast(`已删除 ${ids.length} 个会话`)
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '批量删除失败')
+    }
+  }
 
   // 聊天区自动滚到底
   useEffect(() => {
@@ -499,20 +535,54 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
               我的收藏{favs.length > 0 ? ` · ${favs.length}` : ''}
             </button>
           </div>
+          {drawerTab === 'conv' && convs.length > 0 && (
+            <div style={{ marginTop: 10, textAlign: 'right' }}>
+              <button className="mini-btn" onClick={() => { setManage(!manage); setSelected(new Set()); setBatchConfirm(false) }}>
+                {manage ? '完成' : '管理'}
+              </button>
+            </div>
+          )}
         </div>
         <div className="drawer-list">
           {drawerTab === 'conv' ? (<>
+            {manage && (
+              <div className="drawer-manage-bar">
+                <button className="mini-btn" onClick={() => {
+                  setBatchConfirm(false)
+                  setSelected(selected.size === convs.length ? new Set() : new Set(convs.map((c) => c.id)))
+                }}>
+                  {selected.size === convs.length ? '取消全选' : '全选'}
+                </button>
+                <span style={{ color: 'var(--ink3)', fontSize: 13 }}>已选 {selected.size} 个</span>
+                <button className="mini-btn" style={{ color: 'var(--red)' }} disabled={selected.size === 0} onClick={batchDel}>
+                  {batchConfirm ? `确认删除 ${selected.size} 个` : '删除所选'}
+                </button>
+              </div>
+            )}
             {convs.length === 0 && <Empty text="还没有会话，开始第一次提问吧" />}
             {convs.map((c) => (
               <div key={c.id} ref={c.id === convId ? activeConvRef : undefined}
-                className={'conv-item' + (c.id === convId ? ' active' : '')}
-                onClick={() => openConv(c.id)}>
+                className={'conv-item' + (c.id === convId ? ' active' : '') + (manage && selected.has(c.id) ? ' selected' : '')}
+                onClick={() => {
+                  if (manage) {
+                    setBatchConfirm(false)
+                    setSelected((v) => { const n = new Set(v); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n })
+                  } else openConv(c.id)
+                }}>
+                {manage && (
+                  <input className="conv-check" type="checkbox" checked={selected.has(c.id)} readOnly
+                    aria-label={`选择会话 ${c.title || '新会话'}`} />
+                )}
                 <span className="conv-title">{c.title || '新会话'}</span>
-                {deletingId === c.id
+                <button className={'conv-star' + (c.favorite ? ' on' : '')} aria-label={c.favorite ? '取消收藏会话' : '收藏会话'}
+                  onClick={(e) => { e.stopPropagation(); toggleFavConv(c.id, !c.favorite) }}>
+                  {c.favorite ? '★' : '☆'}
+                </button>
+                {!manage && (deletingId === c.id
                   ? <button className="mini-btn" style={{ color: 'var(--red)' }}
                       onClick={(e) => { e.stopPropagation(); delConv(c.id) }}>确认删除</button>
                   : <button className="conv-del" aria-label="删除会话"
-                      onClick={(e) => { e.stopPropagation(); delConv(c.id) }}><I n="trash" size={18} /></button>}
+                      onClick={(e) => { e.stopPropagation(); delConv(c.id) }}><I n="trash" size={18} /></button>)}
               </div>
             ))}
           </>) : (<>

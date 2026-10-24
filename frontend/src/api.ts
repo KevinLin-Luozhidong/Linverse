@@ -70,13 +70,15 @@ const post = <T>(p: string, body?: unknown, timeoutMs?: number) =>
 const put = <T>(p: string, body: unknown) =>
   req<T>(p, { method: 'PUT', body: JSON.stringify(body) })
 const del = <T>(p: string) => req<T>(p, { method: 'DELETE' })
+const patch = <T>(p: string, body: unknown) =>
+  req<T>(p, { method: 'PATCH', body: JSON.stringify(body) })
 const putAsProfile = <T>(id: string, p: string, body: unknown) =>
   req<T>(p, { method: 'PUT', body: JSON.stringify(body) }, 20000, id)
 const delAsProfile = <T>(id: string, p: string) =>
   req<T>(p, { method: 'DELETE' }, 20000, id)
 
 // ---- 类型定义（与契约字段一一对应） ----
-export interface ConversationMeta { id: string; title: string; createdAt: string }
+export interface ConversationMeta { id: string; title: string; createdAt: string; favorite?: boolean }
 export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string; webSearched?: boolean; kbUsed?: boolean; thinkSeconds?: number }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
@@ -212,6 +214,12 @@ export const getConversation = (id: string, profileId: string) =>
   get<Conversation>(`/conversations/${id}?profileId=${encodeURIComponent(profileId)}`)
 export const deleteConversation = (id: string, profileId: string) =>
   del(`/conversations/${id}?profileId=${encodeURIComponent(profileId)}`)
+// 会话收藏：星标置顶（后端按 favorite DESC 排序）
+export const toggleConversationFavorite = (id: string, profileId: string, favorite: boolean) =>
+  patch<{ id: string; favorite: boolean }>(`/conversations/${encodeURIComponent(id)}/favorite`, { profileId, favorite })
+// 批量删除会话：ids 上限 200（后端约束）
+export const batchDeleteConversations = (profileId: string, ids: string[]) =>
+  post<{ deleted: number }>(`/conversations/batch-delete`, { profileId, ids })
 
 // ---- 错题 ----
 export const listMistakes = (profileId: string, subject?: string) =>
@@ -463,6 +471,14 @@ export interface KbBook {
 export const kbBooks = () => get<{ books: KbBook[] }>('/kb/books')
 export const kbDeleteBook = (book: string) =>
   del<{ deleted: number; book: string }>(`/kb/books?book=${encodeURIComponent(book)}`)
+// 按书分页列块：点书名展开详情用（不含 embedding 向量）
+export interface KbChunk {
+  id: number; chapter: string; section: string;
+  page_start: number; page_end: number; text: string;
+}
+export const kbBookChunks = (book: string, limit = 20, offset = 0) =>
+  get<{ book: string; total: number; chunks: KbChunk[] }>(
+    `/kb/books/${encodeURIComponent(book)}/chunks?limit=${limit}&offset=${offset}`)
 
 // ---- 每日早报（全站公共只读，不分账号） ----
 export interface BriefingItem {

@@ -80,6 +80,13 @@ export default function Tools({ profileId }: { profileId: string | null }) {
     getStats(profileId).then(setStats).catch((e) => setToast(e instanceof Error ? e.message : '加载失败'))
   }, [profileId])
 
+  // 从工具工作区返回首页时重拉统计：三个工作区常驻挂载、只靠 profileId 变化
+  // 触发的首次加载不够，返回那一刻的数字永远是进页时的旧值（错题增减不刷新即此因）
+  useEffect(() => {
+    if (active !== null || !profileId) return
+    getStats(profileId).then(setStats).catch(() => {})
+  }, [active, profileId])
+
   // 滑动时更新指示点：看哪张卡最接近中心
   const onScroll = () => {
     const el = streamRef.current

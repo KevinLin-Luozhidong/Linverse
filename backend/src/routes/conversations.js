@@ -33,4 +33,24 @@ router.delete('/:id', ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// 批量删除对话（POST /api/conversations/batch-delete，body: { profileId, ids: [] }）
+// 注意：必须放在 '/:id' 之后无冲突——POST 与 DELETE 方法不同，且路径是固定段 batch-delete
+router.post('/batch-delete', ah(async (req, res) => {
+  if (need(res, req.body.profileId, 'profileId 必填')) return;
+  const ids = req.body.ids;
+  if (!Array.isArray(ids) || !ids.length || ids.length > 200) {
+    return res.status(400).json({ error: 'ids 须为 1~200 个会话 id' });
+  }
+  const n = await dao.deleteConversations(ids, req.body.profileId);
+  res.json({ ok: true, deleted: n });
+}));
+
+// 收藏 / 取消收藏对话（PATCH /api/conversations/:id/favorite，body: { profileId, favorite }）
+router.patch('/:id/favorite', ah(async (req, res) => {
+  if (need(res, req.body.profileId, 'profileId 必填')) return;
+  const conv = await dao.setConversationFavorite(req.params.id, req.body.profileId, req.body.favorite);
+  if (!conv) return res.status(404).json({ error: '对话不存在' });
+  res.json(conv);
+}));
+
 module.exports = router;

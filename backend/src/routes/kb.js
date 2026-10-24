@@ -124,6 +124,17 @@ last_ingest: b.last_ingest,
 }))});
 }));
 
+// 知识库管理页：点书名展开，按书分页列块（章节/节/页码/正文摘要）。
+// book 走路径参数（前端 encodeURIComponent），limit 1..100 默认 20，offset >= 0 默认 0。
+router.get('/books/:book/chunks', ah(async (req, res) => {
+const book = (req.params.book || '').trim();
+if (need(res, book, 'book 必填')) return;
+const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+const r = await dao.kbBookChunks(book, limit, offset);
+res.json({ book, total: r.total, chunks: r.chunks });
+}));
+
 // 知识库管理页：删除整本书。危险操作，前端必须二次确认。
 // book 走 query（给前端 del helper 用），也兼容 body。
 router.delete('/books', ah(async (req, res) => {

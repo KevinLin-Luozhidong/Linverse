@@ -329,6 +329,16 @@ body {
 .conv-item.active { background: var(--blue-soft); }
 .conv-title { flex: 1; font-size: calc(14px * var(--fss)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-del { color: var(--ink3); border: 0; background: none; cursor: pointer; padding: 4px; display: flex; }
+/* 会话管理模式：勾选框 + 星标收藏 + 管理栏（关抽屉自动退出，见 Assistant.tsx） */
+.conv-item.selected { background: var(--blue-soft); }
+.conv-check { width: 18px; height: 18px; accent-color: var(--blue); flex-shrink: 0; cursor: pointer; }
+.conv-star { color: var(--ink3); border: 0; background: none; cursor: pointer; padding: 4px; font-size: 18px; line-height: 1; flex-shrink: 0; }
+.conv-star.on { color: var(--blue); }
+.drawer-manage-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; margin-bottom: 6px;
+  background: var(--blue-soft); border-radius: var(--radius-sm);
+}
 
 /* 聊天区 */
 .chat-list { flex: 1; overflow-y: auto; padding: 8px 18px 12px; display: flex; flex-direction: column; gap: 18px; }
@@ -566,6 +576,13 @@ body {
 @media (prefers-color-scheme: dark) { .kb-badge-purple { color: #c4b5fd; } }
 :root[data-theme='dark'] .kb-badge-purple { color: #c4b5fd; }
 .kb-item-date { font-size: calc(11px * var(--fss)); color: var(--ink3); margin-left: 2px; }
+/* 知识库书详情：点书名展开，原书 PDF 行 + 按页码排序的知识块 */
+.kb-detail { padding: 10px 12px 12px 46px; border-bottom: 1px solid var(--line); }
+.kb-pdf-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.kb-pdf-name { font-size: calc(13px * var(--fss)); color: var(--ink2); }
+.kb-chunk { padding: 10px 0; border-top: 1px solid var(--line); }
+.kb-chunk-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.kb-chunk-text { font-size: calc(13px * var(--fss)); line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 
 /* 删除按钮：默认透明图标，confirm 变红药丸 */
 .kb-del-btn {

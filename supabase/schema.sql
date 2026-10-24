@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   "profileId" INTEGER NOT NULL,
   title TEXT NOT NULL DEFAULT '新的对话',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  favorite BOOLEAN NOT NULL DEFAULT FALSE,
   FOREIGN KEY ("profileId") REFERENCES profiles(id) ON DELETE CASCADE
 );
 

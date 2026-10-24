@@ -152,11 +152,33 @@ async function deleteProfile(id) {
 // ---------- 对话（conversations / messages） ----------
 
 async function listConversations(profileId) {
+  // 收藏的会话置顶（favorite DESC），其余按 id DESC（最新在前）
   const r = await query(
-    'SELECT * FROM conversations WHERE "profileId" = $1 ORDER BY id DESC',
+    'SELECT * FROM conversations WHERE "profileId" = $1 ORDER BY favorite DESC, id DESC',
     [profileId]
   );
   return r.rows;
+}
+
+// 收藏 / 取消收藏单个会话（只改本账号的会话）
+async function setConversationFavorite(id, profileId, favorite) {
+  const r = await query(
+    'UPDATE conversations SET favorite = $3 WHERE id = $1 AND "profileId" = $2 RETURNING *',
+    [id, profileId, !!favorite]
+  );
+  return r.rows[0] || null;
+}
+
+// 批量删除会话（只删本账号的；消息靠外键 CASCADE 连带删除）
+// ids 为空或超限时直接返回 0，不执行删除
+async function deleteConversations(ids, profileId) {
+  const list = (Array.isArray(ids) ? ids : []).map((v) => Number(v)).filter((v) => Number.isInteger(v));
+  if (!list.length || list.length > 200) return 0;
+  const r = await query(
+    'DELETE FROM conversations WHERE id = ANY($1::int[]) AND "profileId" = $2',
+    [list, profileId]
+  );
+  return r.rowCount;
 }
 
 async function getConversation(id, profileId) {
@@ -603,6 +625,7 @@ module.exports = {
   today,
   listProfiles, getProfileAuthHash, createProfile, claimProfile, updateProfile, deleteProfile, setAvatar,
   listConversations, getConversation, createConversation, addMessage, deleteConversation,
+  setConversationFavorite, deleteConversations,
   listMistakes, createMistake, updateMistake, deleteMistake, countMistakes,
   listNotes, createNote, updateNote, deleteNote, countNotes,
   listVocabulary, createVocabulary, setVocabularyMastered, reviewVocabulary,
@@ -611,7 +634,7 @@ module.exports = {
   checkin, countCheckinDays, streakDays,
   getSettings, updateSettings,
   getSiteConfig, setSiteConfig, resetAll, recentCheckinDates,
-  kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbDeleteBook,
+  kbCount, kbClear, kbInsertBatch, kbReplaceBatch, kbSearch, kbKeywordSearch, kbBookStats, kbBookChunks, kbDeleteBook,
   kbFaqSearch, kbFaqInsertBatch,
   getLatestBriefing, getBriefingByDate,
   getLatestShantouBoard, getShantouBoardByDate,
@@ -675,6 +698,24 @@ async function kbBookStats() {
      ORDER BY MIN(created_at) ASC`
   );
   return r.rows;
+}
+
+// 按书分页列块：知识库管理页点书名展开详情用。按书页码排序；embedding 不返回
+// （向量只给检索用，列表不需要，省流量）。total 用窗口函数一次查出，免二次 COUNT。
+async function kbBookChunks(book, limit, offset) {
+  const r = await query(
+    `SELECT id, chapter, section, page_start, page_end, text,
+            COUNT(*) OVER()::int AS total
+     FROM kb_chunks
+     WHERE book = $1
+     ORDER BY page_start ASC NULLS LAST, id ASC
+     LIMIT $2 OFFSET $3`,
+    [book, limit, offset]
+  );
+  return {
+    total: r.rows.length > 0 ? r.rows[0].total : 0,
+    chunks: r.rows.map(({ total, ...c }) => c),
+  };
 }
 
 // 按书名删除整本书的知识块（知识库管理页的删除按钮用，前端必须二次确认）
