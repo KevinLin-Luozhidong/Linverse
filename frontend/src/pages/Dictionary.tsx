@@ -12,7 +12,11 @@ type Sub = 'dict' | 'vocab'
 
 // ---- 离线词典包（ECDICT 英汉，IndexedDB 存储） ----
 // 词典数据约 1.4 万词，下载一次后断网也能查
-type EcdictEntry = { w: string; p: string; t: string; e: string }
+// 离线词库 v2：e 由字符串改为英文释义数组（与 t 的中文释义按下标对齐），
+// x 为 ECDICT exchange 词形变化串（d:过去分词/p:过去式/...），词形变化展示靠它；
+// version 门：旧包无 version，读到旧包一律视为无效、提示重新下载
+type EcdictEntry = { w: string; p: string; t: string; e: string[]; x?: string }
+const DICT_PACKAGE_VERSION = 2
 
 // 模块级缓存：只开一次 IndexedDB 连接，后续复用
 let _dictDB: IDBDatabase | null = null
@@ -30,7 +34,7 @@ function openDictDB(): Promise<IDBDatabase> {
   })
 }
 
-async function getDictMeta(db: IDBDatabase): Promise<{ count: number } | null> {
+async function getDictMeta(db: IDBDatabase): Promise<{ count: number; version?: number } | null> {
   return new Promise((resolve) => {
     const tx = db.transaction('meta', 'readonly')
     const req = tx.objectStore('meta').get('ecdict')
@@ -49,19 +53,20 @@ async function queryOfflineDict(word: string): Promise<DictResult | null> {
     req.onsuccess = () => {
       const e = req.result as EcdictEntry | undefined
       if (!e) { resolve(null); return }
-      // 词形变化解析：d:perceived/p:perceived → [{form, label}]
+      // 词形变化解析：v2 包的 x 字段就是 exchange 串（d:abandoned/p:abandoned/...），
+      // 沿用旧解析逻辑，只把数据源从 e 字符串换成 x 字符串
       const wordForms: { form: string; label: string }[] = []
       const labelMap: Record<string, string> = {
         p: '过去式', d: '过去分词', i: '现在分词', '3': '第三人称单数',
         r: '比较级', t: '最高级', s: '复数',
       }
-      for (const part of (e.e || '').split('/')) {
+      for (const part of (e.x || '').split('/')) {
         const [k, v] = part.split(':')
         if (k && v && labelMap[k]) wordForms.push({ form: v, label: labelMap[k] })
       }
-      // 中文释义按行拆成多条
-      const meanings = (e.t || '').split('\n').filter(Boolean).slice(0, 5).map((zh) => ({
-        pos: '', zh: zh.trim(), en: '', examples: [],
+      // 中文释义按行拆成多条，英文释义取 e 数组同下标（v2 格式）
+      const meanings = (e.t || '').split('\n').filter(Boolean).slice(0, 5).map((zh, i) => ({
+        pos: '', zh: zh.trim(), en: (e.e[i] || '').trim(), examples: [],
       }))
       resolve({
         word: e.w,
@@ -163,6 +168,18 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       } catch {}
       loadHistory()
     } catch (e) {
+      // 在线失败三级回落：已下载的离线词库 → 本地旧缓存 → 报错。
+      // 在线 404/超时/其他异常都走这里，不再要求用户手动切到离线词典
+      if (dictPkg) {
+        const pkgHit = await queryOfflineDict(target)
+        if (pkgHit) {
+          setResult(pkgHit)
+          setOfflineHit(false)
+          setOfflinePkgHit(true)
+          setToast('在线词典不可用，已用离线词库')
+          return
+        }
+      }
       // 没网：试试离线缓存
       const hit = readCache()[target]
       if (hit) {
@@ -181,11 +198,20 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [offlinePkgHit, setOfflinePkgHit] = useState(false) // 当前结果来自离线词典包
   const [cachedCount, setCachedCount] = useState(0)
   // 离线词典包状态
-  const [dictPkg, setDictPkg] = useState<{ count: number } | null>(null)
+  const [dictPkg, setDictPkg] = useState<{ count: number; version?: number } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [dlProgress, setDlProgress] = useState('')
+  // 版本门：只认 version 2 的包；旧包（无 version）视为无效，提示重新下载，
+  // 避免新旧格式混读导致查词异常
   useEffect(() => {
-    openDictDB().then(getDictMeta).then(setDictPkg).catch(() => {})
+    openDictDB().then(getDictMeta).then((m) => {
+      if (m && m.version === DICT_PACKAGE_VERSION) {
+        setDictPkg(m)
+      } else {
+        setDictPkg(null)
+        if (m) setToast('离线词库已升级，请重新下载')
+      }
+    }).catch(() => {})
   }, [])
 
   // 下载离线词典包
@@ -193,7 +219,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     setDownloading(true)
     setDlProgress('下载中…')
     try {
-      const res = await fetch('ecdict.mini.json')
+      const res = await fetch('ecdict.v2.json')
       if (!res.ok) throw new Error('下载失败')
       setDlProgress('解析中…')
       const words = await res.json() as EcdictEntry[]
@@ -223,11 +249,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       }
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction('meta', 'readwrite')
-        tx.objectStore('meta').put({ k: 'ecdict', v: { count: words.length } })
+        tx.objectStore('meta').put({ k: 'ecdict', v: { count: words.length, version: DICT_PACKAGE_VERSION } })
         tx.oncomplete = () => resolve()
         tx.onerror = () => reject(tx.error)
       })
-      setDictPkg({ count: words.length })
+      setDictPkg({ count: words.length, version: DICT_PACKAGE_VERSION })
       setToast(`离线词典下载完成，共 ${words.length} 词`)
       // 下载完成后，如果已有输入单词，自动重新查词
       if (word.trim()) { search(word.trim(), 'offline') }
@@ -341,17 +367,20 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             <button className={dictSource === 'dict' ? 'on' : ''} onClick={() => pickSource('dict')}>在线词典</button>
             <button className={dictSource === 'offline' ? 'on' : ''} onClick={() => pickSource('offline')}>离线词典</button>
           </div>
-          {/* 离线词典包：下载一次，断网也能查 1.4 万常用词 */}
+          {/* 离线词典包：下载一次，断网也能查 5.9 万常用词 */}
           {dictSource === 'offline' && (
             <div style={{ marginTop: 10 }}>
               {dictPkg ? (
                 <div style={{ fontSize: `calc(13px * var(--fss))`, color: 'var(--ink2)' }}>
                   ✓ 离线词典包已下载（{dictPkg.count} 词，断网可用）
+                  <div style={{ fontSize: `calc(11px * var(--fss))`, color: 'var(--ink3)', marginTop: 4 }}>
+                    词库数据来源：ECDICT（MIT 开源词库）
+                  </div>
                 </div>
               ) : (
                 <button className="btn btn-ghost" style={{ width: '100%' }}
                   onClick={downloadDictPkg} disabled={downloading}>
-                  {downloading ? (dlProgress || '下载中…') : '下载离线词典包（约 600K，一次下载断网可用）'}
+                  {downloading ? (dlProgress || '下载中…') : '下载离线词典包（约 10.6MB，一次下载断网可用）'}
                 </button>
               )}
             </div>
@@ -362,7 +391,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             <div className="dict-card">
               <div className="dict-word">{result.word}
                 {offlineHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线缓存</span>}
-                {offlinePkgHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线词典</span>}
+                {offlinePkgHit && <span className="tag" style={{ marginLeft: 10, verticalAlign: 'middle' }}>离线词库</span>}
               </div>
               {result.phonetic && <div className="dict-phonetic" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {result.phonetic.startsWith('/') ? result.phonetic : `/${result.phonetic}/`}
