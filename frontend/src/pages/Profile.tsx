@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, useToast} from '../components'
 import Cropper from '../Cropper'
-import { getStats, getBadges, listMistakes, listProfiles, setAvatar, uploadImage, imgSrc, type Stats, type Badge } from '@api'
+import { getStats, getBadges, listMistakes, listProfiles, setAvatar, uploadImage, imgSrc, checkin, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
 // 徽章解锁以后端为准，阈值兜底保证演示/离线也能亮
@@ -64,6 +64,28 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   const [totalMistakes, setTotalMistakes] = useState(0)
   const [toastMsg, toastKey, setToast] = useToast()
   const [cropSrc, setCropSrc] = useState('')
+  // 每日打卡：与词典生词本共用同一个本地标记（linverse.checkinDate），两边状态一致；
+  // 后端同一天重复打卡只记一次（UNIQUE 约束），另一页按钮状态没来得及同步也无害
+  const [checkinDone, setCheckinDone] = useState(() =>
+    localStorage.getItem('linverse.checkinDate') === new Date().toISOString().slice(0, 10))
+  const [checkinBusy, setCheckinBusy] = useState(false)
+  const doCheckin = async () => {
+    if (!profileId || checkinBusy) return
+    setCheckinBusy(true)
+    try {
+      await checkin(profileId)
+      const today = new Date().toISOString().slice(0, 10)
+      localStorage.setItem('linverse.checkinDate', today)
+      setCheckinDone(true)
+      setToast('打卡成功')
+      // 打完立刻重拉统计，让连续天数和 7 天圆点当场点亮，不用切页再回来
+      getStats(profileId).then(setStats).catch(() => {})
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '打卡失败')
+    } finally {
+      setCheckinBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!profileId) return
@@ -244,6 +266,10 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
               </div>
             ))}
           </div>
+          <button className="btn" style={{ width: '100%', marginTop: 12 }}
+            disabled={checkinDone || checkinBusy} onClick={doCheckin}>
+            {checkinDone ? '✓ 今日已打卡' : checkinBusy ? '打卡中…' : '每日打卡'}
+          </button>
         </div>
 
         {/* 成长记录 / 成就徽章：横向滚动大卡片 */}
