@@ -10,7 +10,7 @@
     "install:all": "npm install",
     "start": "npm start --workspace=backend"
   },
-  "version": "0.3.2",
+  "version": "0.3.3",
   "workspaces": [
     "frontend",
     "backend"
