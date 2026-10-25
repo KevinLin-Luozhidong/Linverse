@@ -203,8 +203,13 @@ router.post('/ocr', ah(async (req, res) => {
 // ---------- 词典 ----------
 // GET /api/dictionary?word=&profileId=&source=dict|ai&aiKey=&model=
 // 数据源：
-//   dict（默认）：dictionaryapi.dev（免费、无需 Key）+ Datamuse 备用（免费、无需 Key）；
-//   中文释义用 MyMemory 免费翻译（失败就保留英文，不报错）
+//   在线查词（2026-10-25 定）：
+//   1. 维基词典官方接口（Wikimedia，免费、无需 Key）——主查，释义最全；
+//   2. 自有 ECDICT 词库（backend/data/ecdict.v2.json，与前端离线包同源）——补漏，中文释义现成、有音标；
+//   中文释义：维基词典的英文释义用 MyMemory 免费翻译（失败就保留英文，不报错）；
+//   ECDICT 自带中文释义，不再翻译。
+// 弃用史：dictionaryapi.dev 对个别词（如 bot/bots）回 5xx（Cloudflare 1033），
+//   且曾把服务故障误报成“查不到”，2026-10-25 弃用；Datamuse 同日由用户拍板去掉。
 router.get('/dictionary', ah(async (req, res) => {
   const word = (req.query.word || '').trim().toLowerCase();
   if (need(res, word, 'word 必填')) return;
@@ -215,70 +220,74 @@ router.get('/dictionary', ah(async (req, res) => {
   let displayWord = word;
   let phonetic = '';
   let audioUrl = '';
+  let wordForms = [];
 
-  // 主词典：dictionaryapi.dev，加 6 秒超时。
-  // 教训（2026-10-25 实测）：它对个别词（如 bot/bots）会回 5xx（Cloudflare 1033 隧道错），
-  // 不是词不存在。所以只有它明确回 404 才算“查不到”，其他失败一律走备用词典，
-  // 别把服务故障说成词不存在（之前就是这么误报的）。
-  let primaryStatus = 0;
+  // ---------- 1. 维基词典主查 ----------
+  // 释义带网页标记（链接、用法标签），只留纯文本；en 键下还混着 Translingual 等语言，必须按 language 过滤。
+  // 注意：维基词典的 definition 接口不给音标和发音音频，这一路的 phonetic/audioUrl 留空。
+  let wiktStatus = 0;
   try {
-    const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, {
+    const wr = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`, {
       signal: AbortSignal.timeout(6000),
+      headers: { 'User-Agent': 'Linverse/0.3.3 (https://linverse.vercel.app)' },
     });
-    primaryStatus = r.status;
-    if (r.ok) {
-      const data = await r.json();
-      const entry = data[0] || {};
-      displayWord = entry.word || word;
-      phonetic = entry.phonetic || entry.phonetics?.find((p) => p.text)?.text || '';
-      audioUrl = entry.phonetics?.find((p) => p.audio)?.audio || '';
-      for (const m of entry.meanings || []) {
-        for (const d of m.definitions || []) {
-          meanings.push({ pos: m.partOfSpeech || '', zh: '', en: d.definition || '' });
-          if (d.example) examples.push(d.example);
-          for (const s of [...(d.synonyms || []), ...(m.synonyms || [])]) synonyms.add(s);
+    wiktStatus = wr.status;
+    if (wr.ok) {
+      const wdata = await wr.json();
+      for (const sec of wdata?.en || []) {
+        if (sec.language !== 'English') continue;
+        for (const d of sec.definitions || []) {
+          const en = stripHtml(d.definition);
+          if (!en) continue;
+          meanings.push({ pos: sec.partOfSpeech || '', zh: '', en });
+          for (const ex of d.examples || []) {
+            const clean = stripHtml(typeof ex === 'string' ? ex : ex.example || '');
+            if (clean) examples.push(clean);
+          }
         }
       }
     }
   } catch {
-    // 主词典连不上/超时：往下走备用词典，不直接报错
+    // 维基词典连不上/超时：往下走自有词库，不直接报错
   }
 
-  // 备用词典：Datamuse（免费、无需 Key，WordNet 释义，defs 形如 "n\t释义"）。
-  // 主词典没给到释义时顶上（404 词不存在也试一次，万一备用有收录）。
+  // ---------- 2. 自有 ECDICT 词库补漏 ----------
+  // 与前端离线包同源，服务端随函数打包一份（backend/data/ecdict.v2.json），
+  // 在线查词不用等用户下载离线包也能用上自有词库；手机端下载仍只用于断网场景，绝不自动下载。
+  // 映射沿用前端离线词典的口径：t 按行拆成多条中文释义，与 e 数组同下标对齐，x 解析词形变化。
   if (meanings.length === 0) {
-    try {
-      const dr = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=1`, {
-        signal: AbortSignal.timeout(6000),
-      });
-      if (dr.ok) {
-        const ddata = await dr.json();
-        const defs = ddata?.[0]?.defs || [];
-        for (const def of defs) {
-          const tab = def.indexOf('\t');
-          meanings.push({
-            pos: tab >= 0 ? def.slice(0, tab) : '',
-            zh: '',
-            en: (tab >= 0 ? def.slice(tab + 1) : def).trim(),
-          });
-        }
+    const hit = lookupEcdict(word);
+    if (hit) {
+      displayWord = hit.w;
+      phonetic = hit.p || '';
+      const labelMap = { p: '过去式', d: '过去分词', i: '现在分词', '3': '第三人称单数', r: '比较级', t: '最高级', s: '复数' };
+      for (const part of (hit.x || '').split('/')) {
+        const [k, v] = part.split(':');
+        if (k && v && labelMap[k]) wordForms.push({ form: v, label: labelMap[k] });
       }
-    } catch {
-      // 备用也挂了：往下统一报错
+      const zhLines = (hit.t || '').split('\n').filter(Boolean).slice(0, 5);
+      zhLines.forEach((zh, i) => {
+        meanings.push({ pos: '', zh: zh.trim(), en: (hit.e[i] || '').trim() });
+      });
+      if (meanings.length === 0) {
+        meanings.push({ pos: '', zh: '(暂无释义)', en: '' });
+      }
     }
   }
+
   if (meanings.length === 0) {
-    // 两边都没释义：主词典明确 404 才是词不存在，其他情况都是服务出问题，说实话
-    if (primaryStatus === 404) {
+    // 两边都没释义：维基明确 404 才是词不存在，其他情况都是服务出问题，说实话
+    if (wiktStatus === 404) {
       return res.status(404).json({ error: '查不到这个单词' });
     }
     return res.status(502).json({ error: '在线词典服务暂时出问题，稍后再试，也可以切到离线词典' });
   }
 
-  // 中文释义：用 MyMemory 免费翻译把英文释义翻成中文；翻译失败就保留英文，接口照常返回不报错
+  // 中文释义：只翻 zh 为空的（维基词典来的）；ECDICT 自带中文，不动。
+  // MyMemory 免费翻译把英文释义翻成中文；翻译失败就保留英文，接口照常返回不报错
   try {
     await Promise.all(
-      meanings.slice(0, 6).map(async (m) => {
+      meanings.slice(0, 6).filter((m) => !m.zh && m.en).map(async (m) => {
         const tr = await fetch(
           `https://api.mymemory.translated.net/get?q=${encodeURIComponent(m.en)}&langpair=en|zh-CN`,
           { signal: AbortSignal.timeout(5000) } // 国内连不上就快速跳过，别卡住整个查词
@@ -306,11 +315,12 @@ router.get('/dictionary', ah(async (req, res) => {
   const result = {
     word: displayWord,
     phonetic,
-    // audioUrl：主词典 phonetics 数组中第一个有 audio 的条目；备用词典没有发音，留空
+    // audioUrl：维基词典和 ECDICT 都不给发音音频，留空（以前 dictionaryapi.dev 给过，已弃用）
     audioUrl,
     meanings,
     examples,
     synonyms: [...synonyms],
+    ...(wordForms.length ? { wordForms: wordForms.slice(0, 8) } : {}),
   };
 
   // 写入查词历史（同一账号同一词只保留一条）
@@ -320,5 +330,41 @@ router.get('/dictionary', ah(async (req, res) => {
 
   res.json(result);
 }));
+
+// ---------- 维基释义清洗 + 自有 ECDICT 词库（服务端版） ----------
+// stripHtml：维基释义带网页标记（链接、用法标签），只留纯文本。
+function stripHtml(html) {
+  return String(html || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// lookupEcdict：数据文件 backend/data/ecdict.v2.json（与前端离线包同源；前端包更新时同步拷一份过来）。
+// 懒加载：首次补漏时解析并建成 Map，之后常驻内存，不重复解析；文件缺失/损坏时只返回 null，不炸接口。
+let _ecdictMap = null;
+let _ecdictFailed = false;
+function lookupEcdict(word) {
+  if (_ecdictFailed) return null;
+  if (!_ecdictMap) {
+    try {
+      const list = require('../../data/ecdict.v2.json');
+      _ecdictMap = new Map();
+      for (const e of list) {
+        if (e && e.w) _ecdictMap.set(String(e.w).toLowerCase(), e);
+      }
+    } catch {
+      _ecdictFailed = true;
+      return null;
+    }
+  }
+  return _ecdictMap.get(word) || null;
+}
 
 module.exports = router;
