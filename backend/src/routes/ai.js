@@ -260,11 +260,7 @@ router.get('/dictionary', ah(async (req, res) => {
     if (hit) {
       displayWord = hit.w;
       phonetic = hit.p || '';
-      const labelMap = { p: '过去式', d: '过去分词', i: '现在分词', '3': '第三人称单数', r: '比较级', t: '最高级', s: '复数' };
-      for (const part of (hit.x || '').split('/')) {
-        const [k, v] = part.split(':');
-        if (k && v && labelMap[k]) wordForms.push({ form: v, label: labelMap[k] });
-      }
+      wordForms = parseWordForms(hit.x);
       const zhLines = (hit.t || '').split('\n').filter(Boolean).slice(0, 5);
       zhLines.forEach((zh, i) => {
         meanings.push({ pos: '', zh: zh.trim(), en: (hit.e[i] || '').trim() });
@@ -272,6 +268,17 @@ router.get('/dictionary', ah(async (req, res) => {
       if (meanings.length === 0) {
         meanings.push({ pos: '', zh: '(暂无释义)', en: '' });
       }
+    }
+  }
+
+  // ---------- 补音标和词形变化 ----------
+  // 维基词典不给音标和词形变化，统一从自有 ECDICT 补（只补这两项，释义不动），
+  // 这样维基优先的结果也有音标和“复数/过去式”那一栏；ECDICT 那路已经带了，这里就跳过。
+  if (!phonetic || wordForms.length === 0) {
+    const hit = lookupEcdict(word);
+    if (hit) {
+      if (!phonetic) phonetic = hit.p || '';
+      if (wordForms.length === 0) wordForms = parseWordForms(hit.x);
     }
   }
 
@@ -344,6 +351,17 @@ function stripHtml(html) {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// parseWordForms：ECDICT x 字段是 exchange 词形变化串（d:过去分词/p:过去式/...），解析成前端展示用的标签。
+function parseWordForms(x) {
+  const labelMap = { p: '过去式', d: '过去分词', i: '现在分词', '3': '第三人称单数', r: '比较级', t: '最高级', s: '复数' };
+  const out = [];
+  for (const part of (x || '').split('/')) {
+    const [k, v] = part.split(':');
+    if (k && v && labelMap[k]) out.push({ form: v, label: labelMap[k] });
+  }
+  return out.slice(0, 8);
 }
 
 // lookupEcdict：数据文件 backend/data/ecdict.v2.json（与前端离线包同源；前端包更新时同步拷一份过来）。
