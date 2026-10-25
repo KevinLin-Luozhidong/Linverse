@@ -146,9 +146,9 @@ const data = await res.json();
 return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
 }
 
-// SSRF 防护：自定义接口地址只允许 http/https，并拦掉内网/回环/云元数据目标。
-// 注意：localhost 单独放行——Ollama 本地模型是文档写明的合法用途；但 127.0.0.1 这类
-// 字面量回环地址照样拦（与 localhost 同义，却是常见的混淆写法）。
+// SSRF 防护：自定义接口地址只允许 http/https，并拦掉内网/云元数据目标。
+// 注意：localhost 与字面量回环（127.0.0.1、::1）同等放行——Ollama 本地模型的文档写明用途，
+// 测试也明确祝福 127.0.0.1:11434；域名解析到内网仍照拦（防 DNS 重绑定），两者分开。
 // 残留局限：发请求时若 DNS 被重绑定到内网（检查时解析是公网、请求时变内网），
 // 或服务端 302 跳转到内网地址，仍可能绕过；本应用威胁模型下（持号者本人填地址）可接受。
 const net = require('net');
@@ -184,7 +184,7 @@ async function assertSafeEndpoint(endpoint) {
     throw new Error('自定义接口地址只支持 http/https');
   }
   const host = u.hostname.toLowerCase();
-  if (host === 'localhost') return; // 文档写明的 Ollama 合法用途
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return; // Ollama 本地：localhost 与字面量回环同等放行
   // 云元数据主机名
   if (host === 'metadata.google.internal' || host === 'metadata.google' || host === 'instance-data-compute-internal') {
     throw new Error('自定义接口地址不合法');

@@ -38,7 +38,7 @@ describe('密码哈希（site.js）', () => {
 });
 
 describe('自定义 AI 接口 SSRF 防护（providers.js）', () => {
-  it('拦掉危险协议和云元数据地址', () => {
+  it('拦掉危险协议和云元数据地址', async () => {
     for (const u of [
       'ftp://evil.com/v1',
       'file:///etc/passwd',
@@ -48,22 +48,23 @@ describe('自定义 AI 接口 SSRF 防护（providers.js）', () => {
       'http://metadata.google.internal/',
       'not-a-url',
     ]) {
-      assert.throws(() => providers.assertSafeEndpoint(u), /./, `应拦掉: ${u}`);
+      // assertSafeEndpoint 已改为 async（含 DNS 解析），必须 await 断言，否则拒绝会漏网
+      await assert.rejects(providers.assertSafeEndpoint(u), /./, `应拦掉: ${u}`);
     }
   });
-  it('放行合法地址（含 Ollama 本地）', () => {
+  it('放行合法地址（含 Ollama 本地）', async () => {
     for (const u of [
       'https://open.bigmodel.cn/api/paas/v4',
       'https://api.openai.com/v1',
       'http://localhost:11434',
       'http://127.0.0.1:11434',
     ]) {
-      providers.assertSafeEndpoint(u); // 不抛错即通过
+      await providers.assertSafeEndpoint(u); // 不抛错即通过（必须 await，否则拒绝测不出来）
     }
   });
-  it('resolveCustomEndpoint 先校验再拼 URL', () => {
-    assert.throws(() => providers.resolveCustomEndpoint('http://169.254.169.254/x'));
-    const r = providers.resolveCustomEndpoint('https://open.bigmodel.cn/api/paas/v4');
+  it('resolveCustomEndpoint 先校验再拼 URL', async () => {
+    await assert.rejects(providers.resolveCustomEndpoint('http://169.254.169.254/x'));
+    const r = await providers.resolveCustomEndpoint('https://open.bigmodel.cn/api/paas/v4');
     assert.equal(r.url, 'https://open.bigmodel.cn/api/paas/v4/chat/completions');
     assert.equal(r.format, 'openai');
   });
