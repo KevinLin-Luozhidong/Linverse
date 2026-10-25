@@ -203,35 +203,76 @@ router.post('/ocr', ah(async (req, res) => {
 // ---------- 词典 ----------
 // GET /api/dictionary?word=&profileId=&source=dict|ai&aiKey=&model=
 // 数据源：
-//   dict（默认）：dictionaryapi.dev（免费、无需 Key）；中文释义用 MyMemory 免费翻译（失败就保留英文，不报错）
+//   dict（默认）：dictionaryapi.dev（免费、无需 Key）+ Datamuse 备用（免费、无需 Key）；
+//   中文释义用 MyMemory 免费翻译（失败就保留英文，不报错）
 router.get('/dictionary', ah(async (req, res) => {
   const word = (req.query.word || '').trim().toLowerCase();
   if (need(res, word, 'word 必填')) return;
-  // 默认词典：dictionaryapi.dev 在国内经常连不上，加 6 秒超时，失败就快速报错（前端会试离线缓存）
-  let r
-  try {
-    r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, {
-      signal: AbortSignal.timeout(6000),
-    })
-  } catch {
-    return res.status(502).json({ error: '词典接口连不上，看看离线缓存' })
-  }
-  if (!r.ok) {
-    return res.status(404).json({ error: '查不到这个单词' });
-  }
-  const data = await r.json();
-  const entry = data[0] || {};
-
   // 把接口返回的结构整理成契约格式
   const meanings = [];
   const examples = [];
   const synonyms = new Set();
-  for (const m of entry.meanings || []) {
-    for (const d of m.definitions || []) {
-      meanings.push({ pos: m.partOfSpeech || '', zh: '', en: d.definition || '' });
-      if (d.example) examples.push(d.example);
-      for (const s of [...(d.synonyms || []), ...(m.synonyms || [])]) synonyms.add(s);
+  let displayWord = word;
+  let phonetic = '';
+  let audioUrl = '';
+
+  // 主词典：dictionaryapi.dev，加 6 秒超时。
+  // 教训（2026-10-25 实测）：它对个别词（如 bot/bots）会回 5xx（Cloudflare 1033 隧道错），
+  // 不是词不存在。所以只有它明确回 404 才算“查不到”，其他失败一律走备用词典，
+  // 别把服务故障说成词不存在（之前就是这么误报的）。
+  let primaryStatus = 0;
+  try {
+    const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, {
+      signal: AbortSignal.timeout(6000),
+    });
+    primaryStatus = r.status;
+    if (r.ok) {
+      const data = await r.json();
+      const entry = data[0] || {};
+      displayWord = entry.word || word;
+      phonetic = entry.phonetic || entry.phonetics?.find((p) => p.text)?.text || '';
+      audioUrl = entry.phonetics?.find((p) => p.audio)?.audio || '';
+      for (const m of entry.meanings || []) {
+        for (const d of m.definitions || []) {
+          meanings.push({ pos: m.partOfSpeech || '', zh: '', en: d.definition || '' });
+          if (d.example) examples.push(d.example);
+          for (const s of [...(d.synonyms || []), ...(m.synonyms || [])]) synonyms.add(s);
+        }
+      }
     }
+  } catch {
+    // 主词典连不上/超时：往下走备用词典，不直接报错
+  }
+
+  // 备用词典：Datamuse（免费、无需 Key，WordNet 释义，defs 形如 "n\t释义"）。
+  // 主词典没给到释义时顶上（404 词不存在也试一次，万一备用有收录）。
+  if (meanings.length === 0) {
+    try {
+      const dr = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=1`, {
+        signal: AbortSignal.timeout(6000),
+      });
+      if (dr.ok) {
+        const ddata = await dr.json();
+        const defs = ddata?.[0]?.defs || [];
+        for (const def of defs) {
+          const tab = def.indexOf('\t');
+          meanings.push({
+            pos: tab >= 0 ? def.slice(0, tab) : '',
+            zh: '',
+            en: (tab >= 0 ? def.slice(tab + 1) : def).trim(),
+          });
+        }
+      }
+    } catch {
+      // 备用也挂了：往下统一报错
+    }
+  }
+  if (meanings.length === 0) {
+    // 两边都没释义：主词典明确 404 才是词不存在，其他情况都是服务出问题，说实话
+    if (primaryStatus === 404) {
+      return res.status(404).json({ error: '查不到这个单词' });
+    }
+    return res.status(502).json({ error: '在线词典服务暂时出问题，稍后再试，也可以切到离线词典' });
   }
 
   // 中文释义：用 MyMemory 免费翻译把英文释义翻成中文；翻译失败就保留英文，接口照常返回不报错
@@ -263,10 +304,10 @@ router.get('/dictionary', ah(async (req, res) => {
   }
 
   const result = {
-    word: entry.word || word,
-    phonetic: entry.phonetic || entry.phonetics?.find((p) => p.text)?.text || '',
-    // audioUrl：从 phonetics 数组中找第一个有 audio 的条目
-    audioUrl: entry.phonetics?.find((p) => p.audio)?.audio || '',
+    word: displayWord,
+    phonetic,
+    // audioUrl：主词典 phonetics 数组中第一个有 audio 的条目；备用词典没有发音，留空
+    audioUrl,
     meanings,
     examples,
     synonyms: [...synonyms],
