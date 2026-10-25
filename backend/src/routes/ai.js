@@ -2,7 +2,6 @@
 // POST /api/upload  POST /api/ask  POST /api/ocr  GET /api/dictionary
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
 const dao = require('../db/dao');
 const { ask } = require('../ai/providers');
 const { ah, need } = require('./helpers');
@@ -64,9 +63,12 @@ router.post('/upload', upload.single('file'), ah(async (req, res) => {
     return res.status(500).json({ error: '未配置 Supabase（SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）' });
   }
   await ensureBucket(supabase);
-  // 文件名：时间戳 + 随机数 + 原扩展名，避免重名和路径注入
-  const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg';
-  const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+  // 文件名：时间戳 + 随机数 + 按 MIME 白名单定的扩展名（原文件名的后缀不可信，不直接用），
+  // 并按账号分区存放（为以后按账号计配额留口子；桶本身仍是公开读，分区不等于私有）。
+  const extByMime = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
+  const ext = extByMime[req.file.mimetype] || '.jpg';
+  const owner = req.profileId || 'shared';
+  const filename = `${owner}/${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
   const { error } = await supabase.storage
     .from(BUCKET)
     .upload(filename, req.file.buffer, { contentType: req.file.mimetype });

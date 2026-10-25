@@ -146,10 +146,37 @@ const data = await res.json();
 return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
 }
 
-// SSRF 防护：自定义接口地址只允许 http/https，并拦掉云元数据地址这类危险目标。
-// 注意：localhost 刻意保留——Ollama 本地模型是文档写明的合法用途。
-// 局限：这里只拦字面量的危险地址；完整的内网防护需要请求时解析 DNS，本应用威胁模型下够用。
-function assertSafeEndpoint(endpoint) {
+// SSRF 防护：自定义接口地址只允许 http/https，并拦掉内网/回环/云元数据目标。
+// 注意：localhost 单独放行——Ollama 本地模型是文档写明的合法用途；但 127.0.0.1 这类
+// 字面量回环地址照样拦（与 localhost 同义，却是常见的混淆写法）。
+// 残留局限：发请求时若 DNS 被重绑定到内网（检查时解析是公网、请求时变内网），
+// 或服务端 302 跳转到内网地址，仍可能绕过；本应用威胁模型下（持号者本人填地址）可接受。
+const net = require('net');
+const dns = require('dns');
+function isBlockedIp(ip) {
+  if (!ip) return false;
+  let v = String(ip).toLowerCase().split('%')[0]; // 去掉 IPv6 zone id
+  // IPv4-mapped IPv6（如 ::ffff:192.168.1.1）按内嵌的 IPv4 判断
+  const mapped = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) v = mapped[1];
+  if (net.isIP(v) === 4) {
+    const [a, b] = v.split('.').map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a === 169 && b === 254) return true; // 链路本地（含云元数据 169.254.169.254）
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    return false;
+  }
+  if (net.isIP(v) === 6) {
+    if (v === '::1' || v === '::') return true;
+    if (v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb')) return true; // fe80::/10
+    if (v.startsWith('fc') || v.startsWith('fd')) return true; // ULA
+    return false;
+  }
+  return false;
+}
+async function assertSafeEndpoint(endpoint) {
   let u;
   try { u = new URL(String(endpoint)); }
   catch { throw new Error('自定义接口地址写得不对，检查一下'); }
@@ -157,8 +184,24 @@ function assertSafeEndpoint(endpoint) {
     throw new Error('自定义接口地址只支持 http/https');
   }
   const host = u.hostname.toLowerCase();
-  // 云元数据服务（打中可泄露云主机凭证）、0.0.0.0 一律拦掉
-  if (host === '169.254.169.254' || host === 'metadata.google.internal' || host === '0.0.0.0') {
+  if (host === 'localhost') return; // 文档写明的 Ollama 合法用途
+  // 云元数据主机名
+  if (host === 'metadata.google.internal' || host === 'metadata.google' || host === 'instance-data-compute-internal') {
+    throw new Error('自定义接口地址不合法');
+  }
+  // 字面量 IP：直接判网段（WHATWG URL 解析已把 0x7f.0.0.1、2130706433 这类变形 IP 归一化成标准点分形式）
+  if (net.isIP(host)) {
+    if (isBlockedIp(host)) throw new Error('自定义接口地址不合法');
+    return;
+  }
+  // 域名：解析后逐个判（防域名指向内网）；解析失败直接拒绝，不让请求带着未知目标发出去
+  let addrs;
+  try {
+    addrs = await dns.promises.lookup(host, { all: true });
+  } catch {
+    throw new Error('自定义接口地址解析失败，检查一下地址');
+  }
+  if (addrs.some((a) => isBlockedIp(a.address))) {
     throw new Error('自定义接口地址不合法');
   }
 }
@@ -168,8 +211,8 @@ function assertSafeEndpoint(endpoint) {
 // - 以 /v1 结尾 → 拼上 /chat/completions（OpenAI 兼容服务）
 // - 只有根地址（如 http://localhost:11434）→ 走 Ollama 的 /api/chat
 // - 已经是完整端点 → 原样使用
-function resolveCustomEndpoint(endpoint) {
-assertSafeEndpoint(endpoint);
+async function resolveCustomEndpoint(endpoint) {
+await assertSafeEndpoint(endpoint);
 const e = String(endpoint || '').replace(/\/+$/, ''); // 去掉末尾多余的斜杠
 if (!e) throw new Error('未配置自定义 AI 接口地址');
 // OpenAI 标准（/v1 结尾）和智谱（/v4 结尾）：自动拼上 /chat/completions
@@ -192,7 +235,7 @@ return { url: e, format: 'openai'}; // 完整端点原样用，按 OpenAI 格式
 // Custom：用户自己填的接口（兼容 Ollama 本地模型）
 // 中文注释：Ollama 的 /api/chat 和 OpenAI 的 /chat/completions 请求/响应格式不同，这里分别处理
 async function askCustom({ question, imageUrl, aiKey, endpoint, modelName}) {
-const { url, format} = resolveCustomEndpoint(endpoint);
+const { url, format} = await resolveCustomEndpoint(endpoint);
 const headers = { 'Content-Type': 'application/json'};
 if (aiKey) headers.Authorization = `Bearer ${aiKey}`; // Ollama 本地一般不需要 Key，有就带上
 let body;
@@ -313,4 +356,4 @@ return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)
 
 module.exports = { ask };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp };

@@ -26,6 +26,8 @@ const res = await fetch('https://open.bigmodel.cn/api/paas/v4/embeddings', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`},
 body: JSON.stringify({ model: EMBED_MODEL, input: text}),
+// 以前这里没有超时：上游挂起会拖住整条 /ask（前端要 120 秒才放弃）；与问答主链路同档，60 秒放弃
+signal: AbortSignal.timeout(60000),
 });
 if (!res.ok) {
 throw new Error(`embedding 请求失败：HTTP ${res.status}`);
@@ -58,20 +60,26 @@ return [...map.values()].sort((a, b) => b.score - a.score).map((e) => e.row);
 // 可通过环境变量 FAQ_THRESHOLD 调整（默认 0.3；值越小要求越严格）。
 const FAQ_DISTANCE_THRESHOLD = parseFloat(process.env.FAQ_THRESHOLD) || 0.3;
 async function searchKbContext(question, topK = 5) {
-let vec = null;
-let vecRows = [];
+// 向量链和关键词链互不依赖，并行跑（以前是串行等三段）；标准问答复用向量，拿到向量后再跑
+const vecChain = (async () => {
 try {
-vec = await embedQuery(question);
-vecRows = await dao.kbSearch(vec, topK + 4);
+const vec = await embedQuery(question);
+const vecRows = await dao.kbSearch(vec, topK + 4);
+return { vec, vecRows };
 } catch (e) {
 console.warn('[rag] 向量检索失败，降级为纯关键词检索：', e.message);
+return { vec: null, vecRows: [] };
 }
-let kwRows = [];
+})();
+const kwChain = (async () => {
 try {
-kwRows = await dao.kbKeywordSearch(question, topK + 4);
+return await dao.kbKeywordSearch(question, topK + 4);
 } catch (e) {
 console.warn('[rag] 关键词检索失败：', e.message);
+return [];
 }
+})();
+const [{ vec, vecRows }, kwRows] = await Promise.all([vecChain, kwChain]);
 // 标准问答匹配：复用问题向量，不额外花钱再调一次 embedding
 let faq = null;
 if (vec) {

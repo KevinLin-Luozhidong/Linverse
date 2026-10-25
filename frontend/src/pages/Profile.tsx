@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, useToast} from '../components'
 import Cropper from '../Cropper'
-import { getStats, getBadges, listMistakes, listProfiles, setAvatar, uploadImage, imgSrc, checkin, type Stats, type Badge } from '@api'
+import { getStats, getBadges, listProfiles, setAvatar, uploadImage, imgSrc, checkin, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
 // 徽章解锁以后端为准，阈值兜底保证演示/离线也能亮
@@ -64,6 +64,10 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   const [totalMistakes, setTotalMistakes] = useState(0)
   const [toastMsg, toastKey, setToast] = useToast()
   const [cropSrc, setCropSrc] = useState('')
+  // 统计加载失败：以前只有骨架屏 + 一闪而过的 toast，失败后骨架永远不消失；
+  // 现在失败原因常驻 + 重试按钮，打卡按钮也放进失败块（打卡本身不需要统计先加载）。
+  const [statsError, setStatsError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
   // 每日打卡：与词典生词本共用同一个本地标记（linverse.checkinDate），两边状态一致；
   // 后端同一天重复打卡只记一次（UNIQUE 约束），另一页按钮状态没来得及同步也无害
   const [checkinDone, setCheckinDone] = useState(() =>
@@ -90,7 +94,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   useEffect(() => {
     if (!profileId) return
     // 切账号先清空旧数据，避免闪一下上个人的信息
-    setStats(null); setBadges([]); setName(''); setAvatarUrl(''); setTotalMistakes(0); setMastered(0)
+    setStats(null); setBadges([]); setName(''); setAvatarUrl(''); setTotalMistakes(0); setMastered(0); setStatsError('')
     // 秒开：先从本地缓存恢复上次的数据立刻渲染，后台再静默刷新
     // （Vercel 无服务器冷启动时要几秒，不能让用户干等）
     const ck = (k: string) => `linverse.cache.${profileId}.${k}`
@@ -105,16 +109,31 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
       if (ca) setAvatarUrl(ca)
       const cm = localStorage.getItem(ck('mistakes'))
       if (cm) {
-        const ms = JSON.parse(cm) as { mastered?: boolean }[]
-        setTotalMistakes(ms.length)
-        setMastered(ms.filter((m) => m.mastered).length)
+        const parsed = JSON.parse(cm) as { mastered?: boolean }[] | { total: number; mastered: number }
+        // 兼容两种缓存格式：旧版存的是 mastered 标记数组，新版直接存总数/已掌握数
+        if (Array.isArray(parsed)) {
+          setTotalMistakes(parsed.length)
+          setMastered(parsed.filter((m) => m.mastered).length)
+        } else {
+          setTotalMistakes(parsed.total)
+          setMastered(parsed.mastered)
+        }
       }
     } catch { /* 缓存坏了就忽略，走网络 */ }
     // 后台刷新：拿到新数据后更新界面 + 覆盖缓存
+    // 已掌握 x/y 直接取统计接口的聚合计数，不再全量拉错题列表（省一次大数据请求）
     getStats(profileId).then((s) => {
       setStats(s)
+      setTotalMistakes(s.mistakeCount)
+      if (typeof s.masteredMistakeCount === 'number') {
+        setMastered(s.masteredMistakeCount)
+        try { localStorage.setItem(ck('mistakes'), JSON.stringify({ total: s.mistakeCount, mastered: s.masteredMistakeCount })) } catch {}
+      }
       try { localStorage.setItem(ck('stats'), JSON.stringify(s)) } catch {}
-    }).catch((e) => setToast(e instanceof Error ? e.message : '加载失败'))
+    }).catch((e) => {
+      setToast(e instanceof Error ? e.message : '加载失败')
+      setStatsError(e instanceof Error ? e.message : '加载失败')
+    })
     getBadges(profileId).then((b) => {
       setBadges(b)
       try { localStorage.setItem(ck('badges'), JSON.stringify(b)) } catch {}
@@ -131,13 +150,8 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
         }
       }
     }).catch(() => {})
-    // 已掌握 x/y：从错题列表里数 mastered
-    listMistakes(profileId).then((ms) => {
-      setTotalMistakes(ms.length)
-      setMastered(ms.filter((m) => m.mastered).length)
-      try { localStorage.setItem(ck('mistakes'), JSON.stringify(ms.map((m) => ({ mastered: m.mastered })))) } catch {}
-    }).catch(() => {})
-  }, [profileId])
+    // （已掌握 x/y 已由上面的 getStats 聚合计数提供，不再全量拉错题列表）
+  }, [profileId, reloadKey])
 
   // 徽章是否解锁：后端状态优先，数值阈值兜底
   const unlockedOf = (b: (typeof BADGE_DEFS)[number], s: Stats) =>
@@ -222,7 +236,22 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
         </button>
       )}
 
-      {!stats ? (
+      {!stats ? (statsError ? (
+        // 加载失败：以前只有骨架屏，失败后骨架永远不消失；现在原因常驻 + 重试，
+        // 打卡按钮也放这里（打卡本身不需要统计先加载，统计挂了也能打卡）。
+        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <div style={{ color: 'var(--red)', fontSize: `calc(14px * var(--fss))` }}>加载失败：{statsError}</div>
+          <div style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))`, marginTop: 8 }}>
+            如果是账号问题，先去恢复账号再重试
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
+            <button className="btn" onClick={() => setReloadKey((k) => k + 1)}>重试</button>
+            <button className="btn btn-ghost" disabled={checkinDone || checkinBusy} onClick={doCheckin}>
+              {checkinDone ? '✓ 今日已打卡' : checkinBusy ? '打卡中…' : '先打卡'}
+            </button>
+          </div>
+        </div>
+      ) : (
         // 骨架屏：占位块尺寸位置与最终布局一致，数据回来只填文字，布局不跳变
         <div className="me-skel" aria-hidden>
           <div className="me-stat-card"><div className="sk" style={{ height: 84 }} /></div>
@@ -235,7 +264,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
             <div className="sk" style={{ flex: '0 0 108px', height: 132, borderRadius: 18 }} />
           </div>
         </div>
-      ) : (<>
+      )) : (<>
         {/* 双栏统计卡：连续打卡 / 累计刷题 */}
         <div className="me-stat-card">
           <div className="me-stat">

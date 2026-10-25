@@ -9,6 +9,8 @@ const { ah } = require('./helpers');
 const router = express.Router();
 
 router.get('/', ah(async (req, res) => {
+  // 早报一天一期：浏览器可缓存 10 分钟，助手页挂载和早报子页就不用各查一次
+  res.set('Cache-Control', 'private, max-age=600');
   res.json(await dao.getLatestBriefing());
 }));
 

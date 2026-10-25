@@ -112,7 +112,7 @@ export interface VocabWord {
   id: string; profileId: string; word: string; phonetic?: string; meaning: string;
 }
 
-export interface Stats { streakDays: number; checkinDays: number; mistakeCount: number; noteCount: number; wordCount: number; recentCheckins?: string[] }
+export interface Stats { streakDays: number; checkinDays: number; mistakeCount: number; masteredMistakeCount?: number; noteCount: number; wordCount: number; recentCheckins?: string[] }
 export interface Badge { id: string; name: string; desc: string; unlocked: boolean }
 
 export interface Settings {
@@ -139,6 +139,8 @@ export async function uploadImage(file: File): Promise<string> {
   try {
     res = await fetch(`${BASE}/api/upload`, {
       method: 'POST', body: fd,
+      // 上传以前没有超时：弱网下能无限挂住；5MB 图片 120 秒很宽松，超时即报错走正常失败提示
+      signal: AbortSignal.timeout(120000),
       headers: {
         ...(token ? { 'x-site-token': token } : {}),
         ...(getPid() && getProfileToken() ? { 'x-profile-id': getPid()!, 'x-profile-token': getProfileToken() } : {}),
@@ -209,6 +211,9 @@ function demoAnswer(q: string): string {
 // ---- 会话 ----
 export const listConversations = (profileId: string) =>
   get<ConversationMeta[]>(`/conversations?profileId=${encodeURIComponent(profileId)}`)
+// 新建会话：点“＋新会话”立刻在服务端建一条，列表马上能看到（以前只清本地，列表里不出新会话）
+export const createConversation = (profileId: string) =>
+  post<ConversationMeta>('/conversations', { profileId })
 // 后端详情/删除接口要求带 profileId 做数据隔离，这里按后端契约拼接（字段名不变）
 export const getConversation = (id: string, profileId: string) =>
   get<Conversation>(`/conversations/${id}?profileId=${encodeURIComponent(profileId)}`)
@@ -292,6 +297,8 @@ export const reviewVocab = (id: string, known: boolean, profileId?: string) =>
   post(`/vocabulary/${id}/review${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, { known })
 export const dueVocab = (profileId: string) =>
   get<VocabWord[]>(`/vocabulary/due?profileId=${encodeURIComponent(profileId)}`)
+export const deleteVocab = (id: string, profileId?: string) =>
+  req<{ ok: boolean }>(`/vocabulary/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, { method: 'DELETE' })
 
 // ---- 打卡 / 统计 / 徽章 ----
 export const checkin = (profileId: string) => post<{ streakDays: number }>('/checkin', { profileId })

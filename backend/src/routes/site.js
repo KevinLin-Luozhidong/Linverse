@@ -23,6 +23,10 @@ const OWNER_SESSION_KEY = 'owner_session_hash';
 const OWNER_SESSION_EXPIRES_KEY = 'owner_session_expires';
 const OWNER_VERIFY_FAILS_KEY = 'owner_verify_failures';
 const OWNER_VERIFY_LOCK_KEY = 'owner_verify_lock_until';
+// 所有者验证锁按 IP 分桶：旧的全局单键会被任一持站点凭证者故意输错 5 次就锁死所有者本人，
+// 分桶后每 IP 各算各的，锁死范围只剩攻击者自己的 IP（与 /verify 的按 IP 锁同款思路）。
+const ownerFailKey = (ip) => `${OWNER_VERIFY_FAILS_KEY}_${ip}`;
+const ownerLockKey = (ip) => `${OWNER_VERIFY_LOCK_KEY}_${ip}`;
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -96,6 +100,32 @@ async function clearVerifyFails(req) {
   await dao.setSiteConfig(`site_verify_lock_${ip}`, '0');
 }
 
+// 改密码类接口的失败锁定：与 /verify 同款规则（同一 IP 失败 5 次锁 15 分钟），
+// 防止有人拿着站点凭证无限猜旧密码/所有者密码。scope 区分接口，避免互相干扰。
+async function pwChangeLocked(req, res, scope) {
+  const lockUntil = Number(await dao.getSiteConfig(`pwchange_lock_${scope}_${clientIp(req)}`) || 0);
+  if (lockUntil > Date.now()) {
+    res.status(429).json({ error: 'pwchange_locked', message: '失败次数过多，请 15 分钟后再试' });
+    return true;
+  }
+  return false;
+}
+async function pwChangeFail(req, scope) {
+  const ip = clientIp(req);
+  const fails = Number(await dao.getSiteConfig(`pwchange_fail_${scope}_${ip}`) || 0) + 1;
+  if (fails >= 5) {
+    await dao.setSiteConfig(`pwchange_fail_${scope}_${ip}`, '0');
+    await dao.setSiteConfig(`pwchange_lock_${scope}_${ip}`, String(Date.now() + 15 * 60 * 1000));
+  } else {
+    await dao.setSiteConfig(`pwchange_fail_${scope}_${ip}`, String(fails));
+  }
+}
+async function pwChangeClear(req, scope) {
+  const ip = clientIp(req);
+  await dao.setSiteConfig(`pwchange_fail_${scope}_${ip}`, '0');
+  await dao.setSiteConfig(`pwchange_lock_${scope}_${ip}`, '0');
+}
+
 // 状态：有没有设密码（公开接口，密码门页面靠它决定展不展示输入框）
 router.get('/status', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
@@ -126,13 +156,18 @@ router.post('/verify', ah(async (req, res) => {
 // 设置/修改：第一次直接设（库里没有）；之后必须带对旧密码
 router.post('/password', ah(async (req, res) => {
   const pw = (req.body.password || '').trim();
-  if (need(res, pw && pw.length >= 4, '密码至少 4 位')) return;
+  if (need(res, pw && pw.length >= 8, '密码至少 8 位')) return;
   if (need(res, pw.length <= 64, '密码太长了')) return;
   const old = await dao.getSiteConfig(HASH_KEY);
   if (old) {
+    if (await pwChangeLocked(req, res, 'site')) return;
     const oldPw = (req.body.oldPassword || '').trim();
     if (need(res, oldPw, '请输入旧密码')) return;
-    if (!verifyPw(oldPw, old)) return res.status(401).json({ error: '旧密码不对' });
+    if (!verifyPw(oldPw, old)) {
+      await pwChangeFail(req, 'site');
+      return res.status(401).json({ error: '旧密码不对' });
+    }
+    await pwChangeClear(req, 'site');
   }
   const h = hashPw(pw);
   await dao.setSiteConfig(HASH_KEY, h);
@@ -151,13 +186,18 @@ router.post('/danger-password', ah(async (req, res) => {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const pw = (req.body.password || '').trim();
-  if (need(res, pw && pw.length >= 4, '密码至少 4 位')) return;
+  if (need(res, pw && pw.length >= 8, '密码至少 8 位')) return;
   if (need(res, pw.length <= 64, '密码太长了')) return;
   const old = await dao.getSiteConfig(DANGER_KEY);
   if (old) {
+    if (await pwChangeLocked(req, res, 'danger')) return;
     const oldPw = (req.body.oldPassword || '').trim();
     if (need(res, oldPw, '请输入旧的所有者密码')) return;
-    if (!verifyPw(oldPw, old)) return res.status(401).json({ error: '旧的所有者密码不对' });
+    if (!verifyPw(oldPw, old)) {
+      await pwChangeFail(req, 'danger');
+      return res.status(401).json({ error: '旧的所有者密码不对' });
+    }
+    await pwChangeClear(req, 'danger');
   }
   await dao.setSiteConfig(DANGER_KEY, hashPw(pw));
   // 所有者密码变更后，撤销旧的管理会话。
@@ -179,7 +219,8 @@ router.post('/owner-verify', ah(async (req, res) => {
   if (!safeEqual(req.headers['x-site-token'], siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
-  const lockUntil = Number(await dao.getSiteConfig(OWNER_VERIFY_LOCK_KEY) || 0);
+  const ip = clientIp(req);
+  const lockUntil = Number(await dao.getSiteConfig(ownerLockKey(ip)) || 0);
   if (lockUntil > Date.now()) {
     return res.status(429).json({ error: 'owner_verify_locked', message: '所有者验证失败次数过多，请 15 分钟后重试' });
   }
@@ -187,17 +228,17 @@ router.post('/owner-verify', ah(async (req, res) => {
   if (!stored) return res.status(403).json({ error: 'owner_password_not_set', message: '请先设置所有者密码' });
   const password = (req.body.password || '').trim();
   if (!password || !verifyPw(password, stored)) {
-    const failures = Number(await dao.getSiteConfig(OWNER_VERIFY_FAILS_KEY) || 0) + 1;
+    const failures = Number(await dao.getSiteConfig(ownerFailKey(ip)) || 0) + 1;
     if (failures >= 5) {
-      await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
-      await dao.setSiteConfig(OWNER_VERIFY_LOCK_KEY, String(Date.now() + 15 * 60 * 1000));
+      await dao.setSiteConfig(ownerFailKey(ip), '0');
+      await dao.setSiteConfig(ownerLockKey(ip), String(Date.now() + 15 * 60 * 1000));
       return res.status(429).json({ error: 'owner_verify_locked', message: '连续验证失败 5 次，请 15 分钟后重试' });
     }
-    await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, String(failures));
+    await dao.setSiteConfig(ownerFailKey(ip), String(failures));
     return res.status(401).json({ error: 'owner_password_invalid', message: '所有者密码不正确' });
   }
-  await dao.setSiteConfig(OWNER_VERIFY_FAILS_KEY, '0');
-  await dao.setSiteConfig(OWNER_VERIFY_LOCK_KEY, '0');
+  await dao.setSiteConfig(ownerFailKey(ip), '0');
+  await dao.setSiteConfig(ownerLockKey(ip), '0');
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + 30 * 60 * 1000;
   await dao.setSiteConfig(OWNER_SESSION_KEY, hashToken(token));
@@ -211,11 +252,16 @@ router.post('/owner-verify', ah(async (req, res) => {
 router.post('/reset', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
   if (need(res, h, '还没设访问密码，不能清空')) return;
-  if (need(res, req.headers['x-site-token'] === h, '访问密码不对')) return;
+  if (need(res, safeEqual(req.headers['x-site-token'], h), '访问密码不对')) return;
   const dh = await dao.getSiteConfig(DANGER_KEY);
   if (need(res, dh, '还没设所有者密码，不能清空（去设置 → 访问密码里设置）')) return;
+  if (await pwChangeLocked(req, res, 'reset')) return;
   const danger = (req.body.danger || '').trim();
-  if (need(res, danger && verifyPw(danger, dh), '所有者密码不对：只有本人能清空数据')) return;
+  if (need(res, danger && verifyPw(danger, dh), '所有者密码不对：只有本人能清空数据')) {
+    await pwChangeFail(req, 'reset');
+    return;
+  }
+  await pwChangeClear(req, 'reset');
   if (need(res, req.body.confirm === 'RESET', '请二次确认')) return;
   await dao.resetAll();
   await dao.setSiteConfig(OWNER_SESSION_KEY, '');
@@ -235,8 +281,13 @@ router.get('/signup-status', ah(async (req, res) => {
 router.post('/signup-allow', ah(async (req, res) => {
   const dh = await dao.getSiteConfig(DANGER_KEY);
   if (need(res, dh, '请先去设置 → 访问密码里设置所有者密码')) return;
+  if (await pwChangeLocked(req, res, 'signup')) return;
   const pw = (req.body.dangerPassword || '').trim();
-  if (need(res, pw && verifyPw(pw, dh), '所有者密码不对：只有本人能改这个开关')) return;
+  if (need(res, pw && verifyPw(pw, dh), '所有者密码不对：只有本人能改这个开关')) {
+    await pwChangeFail(req, 'signup');
+    return;
+  }
+  await pwChangeClear(req, 'signup');
   const allow = req.body.allow === true;
   await dao.setSiteConfig(ALLOW_SIGNUP_KEY, allow ? '1' : '0');
   res.json({ ok: true, allow });

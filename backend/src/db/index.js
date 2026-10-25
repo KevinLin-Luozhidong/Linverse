@@ -27,6 +27,9 @@ const pool = new Pool({
   max: 5, // 单实例最大连接数
   idleTimeoutMillis: 10000, // 空闲 10 秒就回收
   connectionTimeoutMillis: 10000, // 连不上 10 秒就报错，不无限卡住
+  // 语句级超时：以前只有建连超时，慢查询能无限拖住请求；单条 SQL 超 30 秒就报错，
+  // 兜底不让一条慢查询拖垮整个 serverless 函数（正常查询都在毫秒级，30 秒很宽松）
+  statement_timeout: 30000,
 });
 
 // 池子自己抛错（比如网络断了）时只打日志，不让整个进程崩掉

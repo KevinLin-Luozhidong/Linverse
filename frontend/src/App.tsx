@@ -5,7 +5,7 @@ import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import Report from './pages/Report'
 import SiteGate from './SiteGate'
-import { I, Toast } from './components'
+import { I, Toast, Spin } from './components'
 import { listProfiles, createProfile, claimProfile, getSettings, siteStatus, getSiteToken, getPid, setPid, getProfileToken, setProfileToken, clearPid } from '@api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
@@ -22,6 +22,10 @@ export default function App() {
   const [meView, setMeView] = useState<MeView>(initView) // 个人中心内当前视图
   const [profileId, setProfileId] = useState<string | null>(() => getPid())
   const [toast, setToast] = useState('')
+  // 账号卡住：本地记得账号 ID 但登录凭证丢了（比如浏览器数据被清理），
+  // 此时所有业务接口都会 401，不能只弹一次 toast 就把人留在残缺状态，必须给恢复入口。
+  const [accountError, setAccountError] = useState<string | null>(null)
+  const [accountBusy, setAccountBusy] = useState(false)
   // 新账号被站长关掉时：新设备显示"未开放注册"，不进 App
   const [signupBlocked, setSignupBlocked] = useState(false)
   const [restoreId, setRestoreId] = useState('')
@@ -109,7 +113,14 @@ export default function App() {
           setProfileId(newId)
         }
       } catch (e) {
-        if (alive) setToast(e instanceof Error ? e.message : '账号验证失败，请重试')
+        const msg = e instanceof Error ? e.message : '账号验证失败，请重试'
+        if (alive) {
+          setToast(msg)
+          // 真卡住才拦：没凭证（认领/新建失败）或凭证与账号对不上；
+          // 纯网络抖动不拦（有凭证时各页自己会重试），避免小题大做吓到用户。
+          const stuck = !getProfileToken() || /凭证|不匹配|找不到当前账号/.test(msg)
+          if (stuck) setAccountError(msg)
+        }
       }
     })()
     return () => { alive = false }
@@ -156,6 +167,60 @@ export default function App() {
     }
   }
 
+  // 账号卡住时的恢复：重新认领本账号（需要访问密码已设好，否则后端会明说先设密码）
+  const retryClaim = async () => {
+    const saved = getPid()
+    if (!saved || accountBusy) return
+    setAccountBusy(true)
+    try {
+      const p = await claimProfile(saved)
+      setProfileId(String(p.id))
+      setAccountError(null)
+    } catch (e) {
+      setAccountError(e instanceof Error ? e.message : '认领失败')
+    } finally { setAccountBusy(false) }
+  }
+  // 账号卡住时的恢复：新建一个账号（POST /profiles 不需要账号凭证，卡住时也能建；
+  // 旧账号的数据不会丢，以后用恢复密钥还能找回来）
+  const createNewAccount = async () => {
+    if (accountBusy) return
+    setAccountBusy(true)
+    try {
+      const p = await createProfile('我')
+      setPid(String(p.id))
+      setProfileId(String(p.id))
+      setAccountError(null)
+    } catch (e) {
+      setAccountError(e instanceof Error ? e.message : '新建账号失败')
+    } finally { setAccountBusy(false) }
+  }
+  // 账号卡住时的恢复：用恢复密钥找回（与注册关闭屏的恢复不同：失败不清除已存的账号 ID，
+  // 否则连“重新认领”这条路也没了；只清刚填错的凭证，之前存的 ID 失败时原样恢复）
+  const restoreAccountFromKey = async () => {
+    const id = restoreId.trim()
+    const token = restoreToken.trim()
+    if (!id || !token) { setRestoreError('请输入账号 ID 和恢复密钥'); return }
+    if (restoring) return
+    const prevPid = getPid()
+    setRestoring(true)
+    setRestoreError('')
+    try {
+      setPid(id)
+      setProfileToken(token, id)
+      const ps = await listProfiles()
+      if (!ps.some((p) => String(p.id) === String(id))) throw new Error('账号 ID 或恢复密钥不正确')
+      setProfileId(id)
+      setAccountError(null)
+      setSignupBlocked(false)
+      setRestoreToken('')
+    } catch (e) {
+      if (prevPid) setPid(prevPid)
+      else clearPid()
+      setProfileToken('', id)
+      setRestoreError(e instanceof Error ? e.message : '账号恢复失败')
+    } finally { setRestoring(false) }
+  }
+
   // 切换账号：更新本地记录并通知各页重新拉数据
   const switchProfile = (id: string) => {
     setPid(id)
@@ -189,9 +254,52 @@ export default function App() {
     document.querySelector('.main')?.scrollTo({ top: 0 })
   }
 
-  // 密码门：查状态中显示空白闪屏，要输密码显示密码页，通过后进主界面
-  if (gate === 'loading') return <div className="app"><div className="gate"><div className="gate-title">Linverse</div></div></div>
+  // 密码门：查状态中显示转圈（原来只有标题，慢网下像卡死），要输密码显示密码页，通过后进主界面
+  if (gate === 'loading') return <div className="app"><div className="gate"><div className="gate-title">Linverse</div><Spin /></div></div>
   if (gate === 'open') return <div className="app"><SiteGate onPass={() => setGate('pass')} /></div>
+  // 账号卡住屏：凭证丢了时不让用户进一个处处 401 的残缺 App，给三条恢复路。
+  // 注意：重新认领需要访问密码已设好（后端认领接口的硬性要求）；访问密码还没设时，
+  // 认领会明说“先设置访问密码”，等不及可直接新建账号或用恢复密钥找回。
+  if (accountError) return (
+    <div className="app"><div className="gate">
+      <div className="gate-title">账号验证出了问题</div>
+      <div style={{ color: 'var(--ink2)', fontSize: 'calc(14px * var(--fss))', marginTop: 12, maxWidth: 320, lineHeight: 1.6 }}>
+        这台设备记得账号 ID {getPid() || '（未知）'}，但登录凭证丢了（比如浏览器数据被清理），
+        现在对话、词典、设置这些需要账号的功能都用不了。选一条路恢复：
+      </div>
+      <div style={{ color: 'var(--red)', fontSize: 'calc(13px * var(--fss))', marginTop: 10, maxWidth: 320 }}>
+        {accountError}
+      </div>
+      <div style={{ width: 'min(320px, 88vw)', marginTop: 20 }}>
+        {getPid() && (
+          <button className="btn" style={{ width: '100%' }}
+            onClick={retryClaim} disabled={accountBusy}>
+            {accountBusy ? '认领中…' : '重新认领本账号'}
+          </button>
+        )}
+        <button className="btn btn-ghost" style={{ width: '100%', marginTop: 10 }}
+          onClick={createNewAccount} disabled={accountBusy}>
+          新建一个账号
+        </button>
+        <div style={{ color: 'var(--ink3)', fontSize: 'calc(13px * var(--fss))', marginTop: 20, marginBottom: 8 }}>
+          或者用恢复密钥找回
+        </div>
+        <input className="input" value={restoreId} placeholder="已有账号 ID"
+          onChange={(e) => setRestoreId(e.target.value)} />
+        <input className="input" style={{ marginTop: 8 }} value={restoreToken}
+          placeholder="账号恢复密钥" autoComplete="off"
+          onChange={(e) => setRestoreToken(e.target.value)} />
+        {restoreError && <div style={{ color: 'var(--red)', fontSize: 'calc(13px * var(--fss))', marginTop: 8 }}>{restoreError}</div>}
+        <button className="btn" style={{ width: '100%', marginTop: 10 }}
+          onClick={restoreAccountFromKey} disabled={restoring}>
+          {restoring ? '验证中…' : '验证并恢复账号'}
+        </button>
+        <div style={{ color: 'var(--ink3)', fontSize: 'calc(12px * var(--fss))', marginTop: 12, lineHeight: 1.6 }}>
+          旧账号的数据不会丢：新建账号后，以后拿到恢复密钥还能找回来。
+        </div>
+      </div>
+    </div></div>
+  )
   // 注册关闭时不允许新建账号，但仍提供恢复已有账号的入口。
   if (signupBlocked) return (
     <div className="app"><div className="gate">

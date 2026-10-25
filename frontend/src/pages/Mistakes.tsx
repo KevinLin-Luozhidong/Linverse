@@ -38,6 +38,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [delId, setDelId] = useState('') // 二次确认删除（单条）
   const [batchConfirm, setBatchConfirm] = useState(false) // 批量删除二次确认
   const [saving, setSaving] = useState(false) // 保存中：防连点
+  const [masteredBusy, setMasteredBusy] = useState<string | null>(null) // 正在提交掌握态的错题 id：防连点
   const [selectMode, setSelectMode] = useState(false) // 批量选择模式
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchBusy, setBatchBusy] = useState(false)
@@ -211,15 +212,17 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   }
 
   const toggleMastered = async (m: Mistake) => {
+    if (masteredBusy) return
     const next = !m.mastered
     // 先改本地（响应快），失败再回滚
     setList((v) => v.map((x) => x.id === m.id ? { ...x, mastered: next } : x))
+    setMasteredBusy(m.id)
     try {
       await updateMistake(m.id, { mastered: next }, profileId || undefined)
     } catch (e) {
       setList((v) => v.map((x) => x.id === m.id ? { ...x, mastered: !next } : x))
       setToast(e instanceof Error ? e.message : '更新失败')
-    }
+    } finally { setMasteredBusy(null) }
   }
 
   const ed = editing // 表单编辑中的数据
@@ -301,8 +304,8 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
               </div>
               {!selectMode && (
                 <div className="m-foot">
-                  <button className="mini-btn" onClick={(e) => { e.stopPropagation(); toggleMastered(m) }}>
-                    {m.mastered ? '标为未掌握' : '标为已掌握'}
+                  <button className="mini-btn" disabled={masteredBusy === m.id} onClick={(e) => { e.stopPropagation(); toggleMastered(m) }}>
+                    {masteredBusy === m.id ? '提交中…' : m.mastered ? '标为未掌握' : '标为已掌握'}
                   </button>
                   <button className="mini-btn" onClick={(e) => { e.stopPropagation(); setEditing({ ...m }) }}>编辑</button>
                   {delId === m.id
@@ -328,6 +331,12 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
           <span style={{ fontSize: `calc(13px * var(--fss))`, color: 'var(--ink2)', flex: 1 }}>
             已选 {selected.size} 条
           </span>
+          <button className="mini-chip" onClick={() => {
+            if (selected.size === list.length && list.length > 0) setSelected(new Set())
+            else setSelected(new Set(list.map((m) => m.id)))
+          }}>
+            {selected.size === list.length && list.length > 0 ? '全不选' : '全选'}
+          </button>
           <button className="mini-btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
             onClick={batchRemove} disabled={selected.size === 0 || batchBusy}>
             {batchBusy ? '删除中…' : batchConfirm ? `确认删除(${selected.size})` : `删除(${selected.size})`}

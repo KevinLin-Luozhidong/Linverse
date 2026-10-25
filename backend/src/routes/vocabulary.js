@@ -40,6 +40,15 @@ router.put('/:id', ah(async (req, res) => {
   res.json(v);
 }));
 
+// 删除生词：只删本账号的（dao 层 id + profileId 双条件）
+router.delete('/:id', ah(async (req, res) => {
+  if (need(res, req.query.profileId || req.body.profileId, 'profileId 必填')) return;
+  const profileId = req.query.profileId || req.body.profileId;
+  const n = await dao.deleteVocabulary(req.params.id, profileId);
+  if (!n) return res.status(404).json({ error: '单词不存在' });
+  res.json({ ok: true });
+}));
+
 // 复习打卡：{known:true/false}，按记忆曲线 1/3/7/15/30 天推进或重置
 router.post('/:id/review', ah(async (req, res) => {
   if (need(res, req.query.profileId || req.body.profileId, 'profileId 必填')) return;

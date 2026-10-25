@@ -12,6 +12,15 @@ function safeEqual(a, b) {
   return ba.length > 0 && ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
 
+// 路径归一化：压掉重复斜杠、去掉末尾斜杠、统一小写。
+// Express 默认非严格路由且大小写不敏感，'/kb/ingest/'、'/KB/ingest' 都会命中同一路由，
+// 所以所有“按路径匹配”的安全校验都必须先归一化再比对，否则变体路径可绕过校验。
+function normalizePath(p) {
+  let s = String(p || '').replace(/\/{2,}/g, '/');
+  if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
+  return s.toLowerCase();
+}
+
 // 跨域：生产环境默认只允许同源（前后端同域部署，浏览器同源请求不需要 CORS 头）；
 // 如需开放给其他域名，设环境变量 CORS_ORIGINS=https://a.com,https://b.com。
 // 开发环境保持宽松，方便本地联调。
@@ -83,10 +92,13 @@ app.use('/api', async (req, res, next) => {
 });
 
 // 知识库写入/删除属于管理员操作：除账号凭证外，还必须提供短期所有者会话。
+// 路径必须先归一化再匹配：不归一化时 '/kb/ingest/'、'/KB/ingest' 会绕过精确相等校验
+// 却仍命中同一路由（Express 默认非严格路由且大小写不敏感），等于无所有者会话也能写库。
 app.use('/api', async (req, res, next) => {
+  const p = normalizePath(req.path);
   const adminAction =
-    (req.method === 'POST' && (req.path === '/kb/ingest' || req.path === '/kb/faq/ingest')) ||
-    (req.method === 'DELETE' && req.path === '/kb/books');
+    (req.method === 'POST' && (p === '/kb/ingest' || p === '/kb/faq/ingest')) ||
+    (req.method === 'DELETE' && p === '/kb/books');
   if (!adminAction) return next();
   try {
     const expected = await dao.getSiteConfig('owner_session_hash');

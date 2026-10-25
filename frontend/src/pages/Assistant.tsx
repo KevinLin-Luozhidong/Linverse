@@ -6,7 +6,7 @@ import Shantou from './Shantou'
 import { cleanLatex } from '../latex'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
-  ask, listConversations, getConversation, deleteConversation,
+  ask, listConversations, createConversation, getConversation, deleteConversation,
   toggleConversationFavorite, batchDeleteConversations,
   getSettings, getAiKey, uploadImage, imgSrc, createMistake,
   getLatestBriefing, getLatestShantouBoard,
@@ -217,6 +217,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const sendReqIdRef = useRef<string>('') // 发送请求时的唯一ID，防止切会话后消息串台
+  const openSeqRef = useRef(0) // 打开会话的序号，只让最后一次点击的响应写状态，防止后发先至
   const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
   // 联网搜索开关：默认关，用户手动打开；只在智谱线路可用（isZhipu）
@@ -254,6 +255,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [manage, setManage] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchConfirm, setBatchConfirm] = useState(false)
+  const [batchBusy, setBatchBusy] = useState(false) // 批量删除中：防连点
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const activeConvRef = useRef<HTMLDivElement>(null)
@@ -291,23 +293,41 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   // 打开会话：加载历史消息
   const openConv = async (id: string) => {
     if (!profileId) return
+    // 切会话先作废在途的旧提问回包（旧序号对不上就丢弃，不再追加进新会话），
+    // 再记一次打开序号：连点两个会话时，只有最后一次的响应能写状态。
+    sendReqIdRef.current = ''
+    const seq = ++openSeqRef.current
     try {
       const c = await getConversation(id, profileId)
+      if (seq !== openSeqRef.current) return // 已被更新的点击超车，丢弃过期响应
       setConvId(id)
       setMsgs(c.messages)
       setTypingFor(-1)
       setDrawerOpen(false)
     } catch (e) {
+      if (seq !== openSeqRef.current) return
       setToast(e instanceof Error ? e.message : '加载失败')
     }
   }
 
-  // 新建会话：清空当前聊天
-  const newConv = () => {
-    setConvId(null)
-    setMsgs([])
-    setTypingFor(-1)
+  // 新建会话：立刻在服务端建一条并切过去，列表马上能看到（以前只清本地，列表里不出新会话，
+  // 用户会以为“点了没反应”）；已在空白会话上时只关抽屉，不重复建空行。
+  const newConv = async () => {
+    sendReqIdRef.current = '' // 同 openConv：作废在途的旧提问回包
     setDrawerOpen(false)
+    if (msgs.length === 0) { setTypingFor(-1); return }
+    if (!profileId) { setConvId(null); setMsgs([]); setTypingFor(-1); return }
+    try {
+      const c = await createConversation(profileId)
+      setConvId(String(c.id))
+      setMsgs([])
+      setTypingFor(-1)
+      setConvs((v) => [c, ...v.filter((x) => String(x.id) !== String(c.id))])
+    } catch (e) {
+      // 建失败也不卡住：先本地切到空白会话，失败原因弹出来，不静默
+      setConvId(null); setMsgs([]); setTypingFor(-1)
+      setToast(e instanceof Error ? e.message : '新建会话失败')
+    }
   }
 
   // 删除会话：点两次确认
@@ -346,10 +366,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     }
   }
 
-  // 批量删除：管理栏点两次确认，删完退出管理模式
+  // 批量删除：管理栏点两次确认，删完退出管理模式；删除中禁用按钮防连点
   const batchDel = async () => {
-    if (!profileId || selected.size === 0) return
+    if (!profileId || selected.size === 0 || batchBusy) return
     if (!batchConfirm) { setBatchConfirm(true); return }
+    setBatchBusy(true)
     try {
       const ids = [...selected]
       await batchDeleteConversations(profileId, ids)
@@ -359,7 +380,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       setToast(`已删除 ${ids.length} 个会话`)
     } catch (e) {
       setToast(e instanceof Error ? e.message : '批量删除失败')
-    }
+    } finally { setBatchBusy(false) }
   }
 
   // 聊天区自动滚到底
@@ -444,14 +465,14 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       }
       reloadConvs()
     } catch (e) {
-      // 出错时：如果还在同一会话，移除用户消息并恢复图片；已切走就不动
+      // 出错时：如果还在同一会话，移除用户消息并恢复图片、弹失败提示；已切走就不动也不弹（别在新会话里报旧会话的错）
       if (sendReqIdRef.current === reqId) {
         setMsgs((v) => v.slice(0, -1))
         // 只在用户没有在等待期间主动清除图片时才恢复（避免违背用户意图）
         setImgUrl((cur) => cur === '' && savedImgUrl ? savedImgUrl : cur)
+        setToast(e instanceof Error ? e.message : '发送失败')
       }
       setTypingFor(-1)
-      setToast(e instanceof Error ? e.message : '发送失败')
     } finally {
       setSending(false)
     }
@@ -554,8 +575,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                   {selected.size === convs.length ? '取消全选' : '全选'}
                 </button>
                 <span style={{ color: 'var(--ink3)', fontSize: 13 }}>已选 {selected.size} 个</span>
-                <button className="mini-btn" style={{ color: 'var(--red)' }} disabled={selected.size === 0} onClick={batchDel}>
-                  {batchConfirm ? `确认删除 ${selected.size} 个` : '删除所选'}
+                <button className="mini-btn" style={{ color: 'var(--red)' }} disabled={selected.size === 0 || batchBusy} onClick={batchDel}>
+                  {batchBusy ? '删除中…' : batchConfirm ? `确认删除 ${selected.size} 个` : '删除所选'}
                 </button>
               </div>
             )}

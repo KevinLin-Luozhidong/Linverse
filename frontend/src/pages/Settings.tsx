@@ -137,7 +137,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     appearTimer.current = setTimeout(() => {
       saveSettings({ profileId, fontSize: fs, theme: th })
         .then(() => setToast('已保存'))
-        .catch(() => setToast('保存失败'))
+        // 别吞后端原文：账号没验证时后端明说“请先验证账号”，吞成“保存失败”用户无从下手
+        .catch((e) => setToast(e instanceof Error ? e.message : '保存失败'))
     }, 300)
   }
 
@@ -165,17 +166,23 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const doRename = async (id: string) => {
     const n = editingName.trim()
     if (!n) { setEditingId(''); return }
+    if (renameBusy) return
+    setRenameBusy(true)
     try {
       await renameProfile(id, n)
       setEditingId('')
       reloadProfiles()
+      setToast('已保存')
     } catch (e) { setToast(e instanceof Error ? e.message : '改名失败') }
+    finally { setRenameBusy(false) }
   }
   // 换设备恢复必须同时提供账号 ID 和随机恢复密钥，不能只凭可猜测的 ID 认领账号。
   const doFind = async () => {
     const id = findId.trim()
     const token = findToken.trim()
     if (!id || !token) { setToast('请输入账号 ID 和恢复密钥'); return }
+    if (findBusy) return
+    setFindBusy(true)
     const previousId = profileId
     const previousToken = getProfileToken(previousId || undefined)
     try {
@@ -195,7 +202,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
         clearPid()
       }
       setToast(e instanceof Error ? e.message : '找回失败')
-    }
+    } finally { setFindBusy(false) }
   }
   // 个人资料：改当前账号的显示名
   const saveDisplayName = async () => {
@@ -286,6 +293,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [savingAi, setSavingAi] = useState(false)
   const [savingSitePw, setSavingSitePw] = useState(false)
   const [savingDangerPw, setSavingDangerPw] = useState(false)
+  const [renameBusy, setRenameBusy] = useState(false) // 改名提交中：防连点
+  const [findBusy, setFindBusy] = useState(false) // 账号恢复提交中：防连点
   const [oldPw, setOldPw] = useState('')
   const [newPw, setNewPw] = useState('')
   useEffect(() => {
@@ -293,7 +302,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   }, [])
   const saveSitePw = async () => {
     const p = newPw.trim()
-    if (p.length < 4) { setToast('密码至少 4 位'); return }
+    if (p.length < 8) { setToast('密码至少 8 位'); return }
     if (savingSitePw) return
     setSavingSitePw(true)
     try {
@@ -359,7 +368,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const saveDangerPw = async () => {
     if (!pwSet) { setToast('请先设置访问密码，再设置所有者密码'); return }
     const p = newDanger.trim()
-    if (p.length < 4) { setToast('密码至少 4 位'); return }
+    if (p.length < 8) { setToast('密码至少 8 位'); return }
     if (savingDangerPw) return
     setSavingDangerPw(true)
     try {
@@ -411,7 +420,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </span>
   )}
   {editingId === p.id ? (
-  <button className="mini-btn" onClick={() => doRename(p.id)}>确定</button>
+  <button className="mini-btn" disabled={renameBusy} onClick={() => doRename(p.id)}>{renameBusy ? '保存中…' : '确定'}</button>
   ) : (
   <button className="mini-btn" onClick={() => { setEditingId(p.id); setEditingName(p.name) }}>改名</button>
   )}
@@ -453,7 +462,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     <input className="input" value={findToken} placeholder="恢复密钥"
       onChange={(e) => setFindToken(e.target.value)} autoComplete="off" />
   </div>
-  <button className="btn" style={{ width: '100%' }} onClick={doFind}>验证并恢复</button>
+  <button className="btn" style={{ width: '100%' }} disabled={findBusy} onClick={doFind}>{findBusy ? '验证中…' : '验证并恢复'}</button>
   </>),
 
   ai: (<>
@@ -549,7 +558,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   )}
   <div className="field">
-  <div className="field-label">{pwSet ? '新密码' : '访问密码'}（至少 4 位）</div>
+  <div className="field-label">{pwSet ? '新密码' : '访问密码'}（至少 8 位）</div>
   <input className="input" type="password" value={newPw}
   onChange={(e) => setNewPw(e.target.value)} placeholder={pwSet ? '输入新密码' : '定一个密码'} />
   </div>
@@ -570,7 +579,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   </div>
   )}
   <div className="field">
-  <div className="field-label">{dangerSet ? '新的所有者密码' : '所有者密码'}（至少 4 位）</div>
+  <div className="field-label">{dangerSet ? '新的所有者密码' : '所有者密码'}（至少 8 位）</div>
   <input className="input" type="password" value={newDanger}
   onChange={(e) => setNewDanger(e.target.value)} placeholder={dangerSet ? '输入新密码' : '定一个只有你知道的密码'} />
   </div>

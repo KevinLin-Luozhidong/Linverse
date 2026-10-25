@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
-  lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab,
+  lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab, deleteVocab,
   dueVocab, checkin, type DictResult, type DictSource, type VocabWord,
 } from '@api'
 
@@ -11,7 +11,7 @@ import {
 type Sub = 'dict' | 'vocab'
 
 // ---- 离线词典包（ECDICT 英汉，IndexedDB 存储） ----
-// 词典数据约 1.4 万词，下载一次后断网也能查
+// 词典数据 5.9 万词（ECDICT v2），下载一次后断网也能查
 // 离线词库 v2：e 由字符串改为英文释义数组（与 t 的中文释义按下标对齐），
 // x 为 ECDICT exchange 词形变化串（d:过去分词/p:过去式/...），词形变化展示靠它；
 // version 门：旧包无 version，读到旧包一律视为无效、提示重新下载
@@ -86,7 +86,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [word, setWord] = useState('')
   const [result, setResult] = useState<DictResult | null>(null)
   const [searching, setSearching] = useState(false)
-  // 词典接口：dict = 在线词典（默认），offline = 离线词典包（断网备胎），ai = AI 详解（联网、更详细）
+  // 查词失败的行内提示：只靠 2 秒 toast 时，用户一晃神就只剩空白结果区，以为“静默失败”；
+  // 失败原因常驻在结果区，直到下次查词成功或重查。
+  const [dictError, setDictError] = useState('')
+  // 词典接口：dict = 在线词典（默认），offline = 离线词典包（断网备胎）——AI 详解已移除，只剩两档
   const [dictSource, setDictSource] = useState<DictSource>(() => {
     const s = localStorage.getItem('linverse.dictSource') as DictSource
     return (s === 'offline' || s === 'dict') ? s : 'dict'
@@ -103,6 +106,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     const today = new Date().toISOString().slice(0, 10)
     return localStorage.getItem('linverse.checkinDate') === today
   })
+  const [checkinBusy, setCheckinBusy] = useState(false) // 打卡中：防连点（与个人中心页同款）
+  const [reviewBusy, setReviewBusy] = useState(false) // 复习提交中：防连点
+  const [clearBusy, setClearBusy] = useState(false) // 清除历史中：防连点
+  const [delVocabId, setDelVocabId] = useState<string | null>(null) // 生词删除二次确认
+  const [delVocabBusy, setDelVocabBusy] = useState(false) // 生词删除提交中：防连点
 
   const loadHistory = () => {
     if (!profileId) return
@@ -121,6 +129,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     if (!target) return
     const source = src || dictSource
     setSearching(true)
+    setDictError('')
     // 离线缓存：查过的词存本地，没网时也能看（真正的"离线词典包"基础）
     const cacheKey = `linverse.dictCache.${profileId || 'anon'}`
     const readCache = (): Record<string, DictResult> => {
@@ -130,6 +139,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     if (source === 'offline') {
       if (!dictPkg) {
         setToast('先下载离线词典包才能用')
+        setDictError('先下载离线词典包才能用')
         setSearching(false)
         return
       }
@@ -149,6 +159,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         }
       } catch (e) {
         setToast(e instanceof Error ? e.message : '查词失败')
+        setDictError(e instanceof Error ? e.message : '查词失败')
       } finally {
         setSearching(false)
       }
@@ -189,6 +200,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         setToast('')
       } else {
         setToast(e instanceof Error ? e.message : '查词失败')
+        setDictError(e instanceof Error ? e.message : '查词失败')
       }
     } finally {
       setSearching(false)
@@ -307,8 +319,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     } finally { setJoining(false) }
   }
 
-  // 复习反馈：懂 / 不懂
+  // 复习反馈：懂 / 不懂（提交中禁用按钮，防连点重复提交）
   const review = async (v: VocabWord, known: boolean) => {
+    if (reviewBusy) return
+    setReviewBusy(true)
     try {
       await reviewVocab(v.id, known, profileId || undefined)
       setDue((list) => {
@@ -320,12 +334,29 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       setRevealed((r) => ({ ...r, [v.id]: true }))
     } catch (e) {
       setToast(e instanceof Error ? e.message : '提交失败')
-    }
+    } finally { setReviewBusy(false) }
   }
 
-  // 每日打卡
+  // 删除生词：点一次进确认态，再点一次真正删除（与错题本单条删除同款）
+  const delVocab = async (v: VocabWord) => {
+    if (delVocabId !== v.id) { setDelVocabId(v.id); return }
+    if (delVocabBusy) return
+    setDelVocabBusy(true)
+    try {
+      await deleteVocab(v.id, profileId || undefined)
+      setAll((list) => list.filter((x) => x.id !== v.id))
+      setDue((list) => list.filter((x) => x.id !== v.id))
+      setDelVocabId(null)
+      setToast('已删除')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '删除失败')
+    } finally { setDelVocabBusy(false) }
+  }
+
+  // 每日打卡（与个人中心页同款：打卡中禁用 + 进行中文案，防连点）
   const doCheckin = async () => {
-    if (!profileId) return
+    if (!profileId || checkinBusy) return
+    setCheckinBusy(true)
     try {
       await checkin(profileId)
       const today = new Date().toISOString().slice(0, 10)
@@ -334,7 +365,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       setToast('打卡成功')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '打卡失败')
-    }
+    } finally { setCheckinBusy(false) }
   }
 
   return (
@@ -362,7 +393,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             </div>
             <button className="btn" onClick={() => search()} disabled={searching}>查词</button>
           </div>
-          {/* 词典三选一：在线词典（默认）/ 离线词典（断网备胎）/ AI 详解（联网、更详细） */}
+          {/* 词典二选一：在线词典（默认）/ 离线词典（断网备胎）——AI 详解已移除 */}
           <div className="seg" style={{ marginTop: 10 }}>
             <button className={dictSource === 'dict' ? 'on' : ''} onClick={() => pickSource('dict')}>在线词典</button>
             <button className={dictSource === 'offline' ? 'on' : ''} onClick={() => pickSource('offline')}>离线词典</button>
@@ -387,6 +418,14 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           )}
 
           {searching && <Spin />}
+          {!searching && dictError && (
+            <div className="safe-note" style={{ color: 'var(--red)' }}>
+              查词失败：{dictError}
+              <div style={{ marginTop: 8 }}>
+                <button className="mini-btn" onClick={() => search()}>重试</button>
+              </div>
+            </div>
+          )}
           {result && !searching && (
             <div className="dict-card">
               <div className="dict-word">{result.word}
@@ -474,16 +513,18 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               <div className="sec-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span><I n="clock" size={14} />查词历史</span>
                 <button className="mini-btn" style={{ color: 'var(--red)', fontSize: `calc(12px * var(--fss))` }}
+                  disabled={clearBusy}
                   onClick={async () => {
-                    if (!profileId) return
+                    if (!profileId || clearBusy) return
+                    setClearBusy(true)
                     try {
                       await clearWordHistory(profileId)
                       setHistory([])
                       setToast('历史已清除')
                     } catch (e) {
                       setToast(e instanceof Error ? e.message : '清除失败')
-                    }
-                  }}>清除历史</button>
+                    } finally { setClearBusy(false) }
+                  }}>{clearBusy ? '清除中…' : '清除历史'}</button>
               </div>
               {history.slice(0, 20).map((h, i) => (
                 <div key={i} className="hist-item" onClick={() => { setWord(h.word); search(h.word) }}>
@@ -525,8 +566,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       {sub === 'vocab' && (
         <>
           <div className="btn-row" style={{ marginTop: 12 }}>
-            <button className="btn" style={{ flex: 1 }} onClick={doCheckin} disabled={checkinDone}>
-              {checkinDone ? '✓ 今日已打卡' : '每日打卡'}
+            <button className="btn" style={{ flex: 1 }} onClick={doCheckin} disabled={checkinDone || checkinBusy}>
+              {checkinDone ? '✓ 今日已打卡' : checkinBusy ? '打卡中…' : '每日打卡'}
             </button>
           </div>
 
@@ -543,7 +584,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   释义已遮住，先自己想想，点我查看
                 </div>}
               <div className="btn-row" style={{ justifyContent: 'center' }}>
-                <button className="btn btn-line" onClick={() => review(v, false)}>不懂</button>
+                <button className="btn btn-line" disabled={reviewBusy} onClick={() => review(v, false)}>不懂</button>
                 <button className="btn btn-ghost" onClick={() => {
                   // 跳过：移到队列末尾
                   setDue((list) => {
@@ -551,7 +592,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                     return [...rest, v]
                   })
                 }}>跳过</button>
-                <button className="btn" onClick={() => review(v, true)}>懂了</button>
+                <button className="btn" disabled={reviewBusy} onClick={() => review(v, true)}>懂了</button>
               </div>
             </div>
           ))}
@@ -568,7 +609,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                     search(v.word, 'dict')
                   }}>
                   <span><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))` }}>{v.meaning}</span></span>
-                  <span style={{ color: 'var(--ink3)', fontSize: `calc(12px * var(--fss))` }}>查词 →</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button className="mini-btn" style={{ color: 'var(--red)' }} disabled={delVocabBusy}
+                      onClick={(e) => { e.stopPropagation(); delVocab(v) }}>
+                      {delVocabBusy && delVocabId === v.id ? '删除中…' : delVocabId === v.id ? '确认删除' : '删除'}
+                    </button>
+                    <span style={{ color: 'var(--ink3)', fontSize: `calc(12px * var(--fss))` }}>查词 →</span>
+                  </span>
                 </div>
               ))}
             </>

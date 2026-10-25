@@ -23,6 +23,8 @@ router.get('/', ah(async (req, res) => {
   if (!KNOWN_REGIONS.has(region)) {
     return res.status(404).json({ error: 'unknown_region', message: '该地区看板即将上线' });
   }
+  // 看板一天一期：浏览器可缓存 10 分钟，助手页挂载和看板子页就不用各查一次
+  res.set('Cache-Control', 'private, max-age=600');
   res.json(await dao.getLatestShantouBoard());
 }));
 

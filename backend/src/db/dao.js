@@ -66,6 +66,7 @@ async function resetAll() {
   await query(`TRUNCATE TABLE profiles, conversations, messages, mistakes, notes,
     vocabulary, word_history, checkins, settings RESTART IDENTITY`);
   profileAuthCache.clear(); // 账号全没了，鉴权缓存一起清掉
+  settingsCache.clear(); // 设置缓存一起清掉
 }
 
 // 读配置：没有返回 null。白名单内的鉴权键先看缓存（含缓存住的 null，避免反复查空）
@@ -131,14 +132,16 @@ async function claimProfile(id, tokenHash) {
 
 async function updateProfile(id, name) {
   await query('UPDATE profiles SET name = $1 WHERE id = $2', [name, id]);
-  const r = await query('SELECT * FROM profiles WHERE id = $1', [id]);
+  // 只返回展示字段：凭证哈希等内部字段绝不进 API 响应（与 listProfiles 口径一致）
+  const r = await query('SELECT id, name, avatar_url FROM profiles WHERE id = $1', [id]);
   return r.rows[0] || null;
 }
 
 // 换头像：存 Supabase Storage 的图片地址
 async function setAvatar(id, url) {
   await query('UPDATE profiles SET avatar_url = $1 WHERE id = $2', [url, id]);
-  const r = await query('SELECT * FROM profiles WHERE id = $1', [id]);
+  // 只返回展示字段：凭证哈希等内部字段绝不进 API 响应（与 listProfiles 口径一致）
+  const r = await query('SELECT id, name, avatar_url FROM profiles WHERE id = $1', [id]);
   return r.rows[0] || null;
 }
 
@@ -274,13 +277,10 @@ async function updateMistake(id, profileId, patch) {
     return r0.rows[0] || null;
   }
   values.push(id, profileId);
-  await query(
-    `UPDATE mistakes SET ${fields.join(', ')} WHERE id = $${i++} AND "profileId" = $${i++}`,
-    values
-  );
+  // UPDATE ... RETURNING * 一条搞定，不用 UPDATE 完再 SELECT（返回结构与原来一致）
   const r = await query(
-    'SELECT * FROM mistakes WHERE id = $1 AND "profileId" = $2',
-    [id, profileId]
+    `UPDATE mistakes SET ${fields.join(', ')} WHERE id = $${i++} AND "profileId" = $${i++} RETURNING *`,
+    values
   );
   return r.rows[0] || null;
 }
@@ -296,6 +296,15 @@ async function deleteMistake(id, profileId) {
 async function countMistakes(profileId) {
   const r = await query(
     'SELECT COUNT(*) AS n FROM mistakes WHERE "profileId" = $1',
+    [profileId]
+  );
+  return Number(r.rows[0].n);
+}
+
+// 已掌握错题数：个人中心“已掌握 x/y”以前是全量拉错题列表再数，改成聚合计数
+async function countMasteredMistakes(profileId) {
+  const r = await query(
+    'SELECT COUNT(*) AS n FROM mistakes WHERE "profileId" = $1 AND mastered = 1',
     [profileId]
   );
   return Number(r.rows[0].n);
@@ -365,13 +374,10 @@ async function updateNote(id, profileId, patch) {
   }
   fields.push('updated_at = now()');
   values.push(id, profileId);
-  await query(
-    `UPDATE notes SET ${fields.join(', ')} WHERE id = $${i++} AND "profileId" = $${i++}`,
-    values
-  );
+  // UPDATE ... RETURNING * 一条搞定，不用 UPDATE 完再 SELECT（返回结构与原来一致）
   const r = await query(
-    'SELECT * FROM notes WHERE id = $1 AND "profileId" = $2',
-    [id, profileId]
+    `UPDATE notes SET ${fields.join(', ')} WHERE id = $${i++} AND "profileId" = $${i++} RETURNING *`,
+    values
   );
   return r.rows[0] || null;
 }
@@ -414,13 +420,10 @@ async function createVocabulary(v) {
 }
 
 async function setVocabularyMastered(id, profileId, mastered) {
-  await query(
-    'UPDATE vocabulary SET mastered = $1 WHERE id = $2 AND "profileId" = $3',
-    [bool(mastered), id, profileId]
-  );
+  // UPDATE ... RETURNING * 一条搞定，不用 UPDATE 完再 SELECT
   const r = await query(
-    'SELECT * FROM vocabulary WHERE id = $1 AND "profileId" = $2',
-    [id, profileId]
+    'UPDATE vocabulary SET mastered = $1 WHERE id = $2 AND "profileId" = $3 RETURNING *',
+    [bool(mastered), id, profileId]
   );
   return r.rows[0] || null;
 }
@@ -446,15 +449,21 @@ async function reviewVocabulary(id, profileId, known) {
   const d = new Date();
   d.setDate(d.getDate() + next);
   const nextReview = d.toISOString().slice(0, 10);
-  await query(
-    'UPDATE vocabulary SET "intervalDays" = $1, "nextReview" = $2, "reviewCount" = "reviewCount" + 1 WHERE id = $3 AND "profileId" = $4',
+  // UPDATE ... RETURNING * 一条搞定（前面的 SELECT 是算间隔必需的，保留；只省掉更新后的再查）
+  const r = await query(
+    'UPDATE vocabulary SET "intervalDays" = $1, "nextReview" = $2, "reviewCount" = "reviewCount" + 1 WHERE id = $3 AND "profileId" = $4 RETURNING *',
     [next, nextReview, id, profileId]
   );
+  return r.rows[0] || null;
+}
+
+// 删除生词：只删本账号的（id + profileId 双条件，防越权删别人的词）
+async function deleteVocabulary(id, profileId) {
   const r = await query(
-    'SELECT * FROM vocabulary WHERE id = $1 AND "profileId" = $2',
+    'DELETE FROM vocabulary WHERE id = $1 AND "profileId" = $2',
     [id, profileId]
   );
-  return r.rows[0] || null;
+  return r.rowCount;
 }
 
 // 今天该复习的词：nextReview <= 今天 且还没掌握
@@ -485,8 +494,9 @@ async function recordWordHistory(profileId, word) {
 }
 
 async function listWordHistory(profileId) {
+  // 界面只展示前 20 条（前端 slice(0, 20)），后端直接 LIMIT 20，别把几年历史全量返回
   const r = await query(
-    'SELECT word, looked_at AS "createdAt" FROM word_history WHERE "profileId" = $1 ORDER BY looked_at DESC',
+    'SELECT word, looked_at AS "createdAt" FROM word_history WHERE "profileId" = $1 ORDER BY looked_at DESC LIMIT 20',
     [profileId]
   );
   return r.rows;
@@ -549,13 +559,21 @@ async function streakDays(profileId) {
 
 // ---------- 设置（settings，一个账号一行） ----------
 
+// 设置短缓存：与鉴权缓存同款 30 秒进程内缓存。助手页挂载时同一接口会被连查多次
+// （两个 effect + App 层），问答/OCR 的 custom 路径每次还要再查一次；设置本身很少变，
+// 30 秒 TTL + 写时立即清缓存，跨实例最长 30 秒后一致（与鉴权缓存同款取舍）。
+const settingsCache = new Map(); // String(profileId) -> { value, at }
 async function getSettings(profileId) {
+  const key = String(profileId);
+  const hit = cacheGet(settingsCache, key);
+  if (hit.found) return { ...hit.value }; // 拷一份，避免调用方误改缓存里的对象
   let r = await query('SELECT * FROM settings WHERE "profileId" = $1', [profileId]);
   if (r.rows.length === 0) {
     // 第一次访问自动建一行默认设置
     await query('INSERT INTO settings ("profileId") VALUES ($1)', [profileId]);
     r = await query('SELECT * FROM settings WHERE "profileId" = $1', [profileId]);
   }
+  cacheSet(settingsCache, key, r.rows[0]);
   return r.rows[0];
 }
 
@@ -572,10 +590,14 @@ async function updateSettings(profileId, patch) {
   }
   if (fields.length > 0) {
     values.push(profileId);
-    await query(
-      `UPDATE settings SET ${fields.join(', ')} WHERE "profileId" = $${i}`,
+    // UPDATE ... RETURNING * 直接拿回更新后的行，不用再查一次（无字段可改时仍走老路查一次）
+    const r = await query(
+      `UPDATE settings SET ${fields.join(', ')} WHERE "profileId" = $${i} RETURNING *`,
       values
     );
+    // 写后立即清缓存：否则最后的 getSettings 会命中开头的旧缓存，返回改前的值
+    settingsCache.delete(String(profileId));
+    if (r.rows[0]) return r.rows[0];
   }
   return getSettings(profileId);
 }
@@ -626,9 +648,9 @@ module.exports = {
   listProfiles, getProfileAuthHash, createProfile, claimProfile, updateProfile, deleteProfile, setAvatar,
   listConversations, getConversation, createConversation, addMessage, deleteConversation,
   setConversationFavorite, deleteConversations,
-  listMistakes, createMistake, updateMistake, deleteMistake, countMistakes,
+  listMistakes, createMistake, updateMistake, deleteMistake, countMistakes, countMasteredMistakes,
   listNotes, createNote, updateNote, deleteNote, countNotes,
-  listVocabulary, createVocabulary, setVocabularyMastered, reviewVocabulary,
+  listVocabulary, createVocabulary, setVocabularyMastered, reviewVocabulary, deleteVocabulary,
   listDueVocabulary, countWords,
   recordWordHistory, listWordHistory, clearWordHistory,
   checkin, countCheckinDays, streakDays,
@@ -658,7 +680,7 @@ async function kbReplaceBatch(chunks) {
   const params = [];
   chunks.forEach((c, i) => {
     const b = i * 7;
-    vals.push(`(${b + 1},${b + 2},${b + 3},${b + 4},${b + 5},${b + 6},${b + 7}::vector)`);
+    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector)`);
     params.push(
       c.book || '', c.chapter || '', c.section || '',
       c.page_start || 0, c.page_end || 0, c.text || '',
