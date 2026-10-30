@@ -60,6 +60,45 @@ function readFraction(source: string, start: number): { numerator: string; denom
   return { numerator: num.content, denominator: den.content, end: den.end }
 }
 
+// 用户气泡：只把 \frac{分子}{分母} 转成叠排分数，其他内容原样显示。
+// 不走 renderRich：用户原话不做标题/列表/**重点**二次排版；分子分母递归同一套；
+// 解析失败时拼成 a/b（或分子/），不留 \frac 命令字符。
+function renderUserText(text: string): ReactNode[] {
+  const out: ReactNode[] = []
+  let cursor = 0
+  let key = 0
+  const pushPlain = (plain: string) => {
+    if (plain) { out.push(<span key={key}>{plain}</span>); key += 1 }
+  }
+  while (cursor < text.length) {
+    const at = text.indexOf('\\frac', cursor)
+    if (at < 0) { pushPlain(text.slice(cursor)); break }
+    pushPlain(text.slice(cursor, at))
+    const f = readFraction(text, at)
+    if (f) {
+      out.push(
+        <span className="frac" key={key}>
+          <span className="frac-num">{renderUserText(f.numerator)}</span>
+          <span className="frac-den">{renderUserText(f.denominator)}</span>
+        </span>,
+      )
+      key += 1
+      cursor = f.end
+      continue
+    }
+    const num = readFractionGroup(text, at + 5)
+    if (num) {
+      const den = readFractionGroup(text, num.end)
+      if (den) { pushPlain(`${num.content}/${den.content}`); cursor = den.end }
+      else { pushPlain(`${num.content}/`); cursor = num.end }
+    } else {
+      pushPlain('\\frac')
+      cursor = at + 5
+    }
+  }
+  return out
+}
+
 // ---- 轻量富文本渲染：标题 / 列表 / **重点**（重点变蓝色）+ 分数叠排 ----
 function renderRich(text: string): ReactNode[] {
   const out: ReactNode[] = []
@@ -686,7 +725,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
             {favs.map((f) => (
               <div key={f.id} className="fav-card">
                 <div className="fav-q" onClick={() => setFavOpenId(favOpenId === f.id ? '' : f.id)}>
-                  {f.q}
+                  {renderUserText(f.q)}
                 </div>
                 {favOpenId === f.id && <div className="fav-a" style={{ WebkitLineClamp: 'unset' }}>{renderRich(f.a)}</div>}
                 <div className="fav-foot">
@@ -739,7 +778,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
             {m.role === 'user' ? (
               <div className="user-bubble">
                 {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" />}
-                {m.content}
+                {renderUserText(m.content)}
               </div>
             ) : i === typingFor && typingFor >= 0 ? (
               // 只有正在打字的那条 AI 消息用打字机效果（按下标，不按"最后一条"，避免重播上一条）
