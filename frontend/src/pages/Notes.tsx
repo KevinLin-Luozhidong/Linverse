@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
+import MathKeyboard, { insertIntoTextarea } from '../MathKeyboard'
 import Cropper from '../Cropper'
 import {
   listNotes, createNote, updateNote, deleteNote,
@@ -26,6 +27,9 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   const [tagInput, setTagInput] = useState('') // 编辑中的标签输入
   const [toastMsg, toastKey, setToast] = useToast()
   const [uploading, setUploading] = useState(false)
+  // 数学符号盘：笔记本正文框用
+  const [mathOpen, setMathOpen] = useState(false)
+  const contentRef = useRef<HTMLTextAreaElement>(null)
   const [saving, setSaving] = useState(false) // 保存中：防连点重复提交
   const [delId, setDelId] = useState('') // 二次确认删除
   // 批量选择模式
@@ -323,7 +327,20 @@ export default function Notes({ profileId }: { profileId: string | null }) {
                 onChange={(e) => setEditing({ ...ed, title: e.target.value })} />
             </div>
             <div className="field">
-              <textarea className="textarea" style={{ minHeight: 140 }} value={ed.content}
+              <button className={'math-toggle' + (mathOpen ? ' on' : '')}
+                style={{ width: '100%', height: 40, borderRadius: 'var(--radius-sm)', marginBottom: 8 }}
+                onClick={() => setMathOpen(!mathOpen)} aria-pressed={mathOpen}>
+                ∑ 数学符号盘
+              </button>
+              {mathOpen && (
+                <div style={{ marginBottom: 8 }}>
+                  <MathKeyboard
+                    onInsert={(s, c) => insertIntoTextarea(contentRef.current, ed.content,
+                      (v) => setEditing({ ...ed, content: v }), s, c)}
+                    onClose={() => setMathOpen(false)} />
+                </div>
+              )}
+              <textarea ref={contentRef} className="textarea" style={{ minHeight: 140 }} value={ed.content}
                 placeholder="写下知识点…"
                 onChange={(e) => setEditing({ ...ed, content: e.target.value })} />
             </div>

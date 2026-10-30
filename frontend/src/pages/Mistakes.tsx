@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
+import MathKeyboard, { insertIntoTextarea } from '../MathKeyboard'
 import Cropper from '../Cropper'
 import { cleanLatex } from '../latex'
 import {
@@ -38,6 +39,12 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const [delId, setDelId] = useState('') // 二次确认删除（单条）
   const [batchConfirm, setBatchConfirm] = useState(false) // 批量删除二次确认
   const [saving, setSaving] = useState(false) // 保存中：防连点
+  // 数学符号盘：三个文本框共用一块盘，点哪个框、符号就插到哪个框
+  const [mathOpen, setMathOpen] = useState(false)
+  const [mathField, setMathField] = useState<'q' | 'a' | 'r'>('q')
+  const qRef = useRef<HTMLTextAreaElement>(null)
+  const aRef = useRef<HTMLTextAreaElement>(null)
+  const rRef = useRef<HTMLTextAreaElement>(null)
   const [masteredBusy, setMasteredBusy] = useState<string | null>(null) // 正在提交掌握态的错题 id：防连点
   const [selectMode, setSelectMode] = useState(false) // 批量选择模式
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -386,10 +393,31 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
                 </button>
               )}
             </div>
+            <div style={{ marginBottom: 10 }}>
+              <button className={'math-toggle' + (mathOpen ? ' on' : '')}
+                style={{ width: '100%', height: 40, borderRadius: 'var(--radius-sm)' }}
+                onClick={() => setMathOpen(!mathOpen)} aria-pressed={mathOpen}>
+                ∑ 数学符号盘
+              </button>
+              {mathOpen && (
+                <div style={{ marginTop: 8 }}>
+                  <MathKeyboard
+                    onInsert={(s, c) => {
+                      const refs = { q: qRef, a: aRef, r: rRef }
+                      const vals = { q: ed.questionText, a: ed.answerText || '', r: ed.reason || '' }
+                      const keys = { q: 'questionText', a: 'answerText', r: 'reason' } as const
+                      insertIntoTextarea(refs[mathField].current, vals[mathField],
+                        (v) => setEditing({ ...ed, [keys[mathField]]: v }), s, c)
+                    }}
+                    onClose={() => setMathOpen(false)} />
+                </div>
+              )}
+            </div>
             <div className="field">
               <div className="field-label">题目（可选）</div>
-              <textarea className="textarea" value={ed.questionText}
+              <textarea ref={qRef} className="textarea" value={ed.questionText}
                 placeholder="手打或点上方识别文字自动填入"
+                onFocus={() => setMathField('q')}
                 onChange={(e) => setEditing({ ...ed, questionText: e.target.value })} />
             </div>
             <div className="field">
@@ -408,13 +436,15 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
             </div>
             <div className="field">
               <div className="field-label">正确答案（可选）</div>
-              <textarea className="textarea" style={{ minHeight: 64 }} value={ed.answerText || ''}
+              <textarea ref={aRef} className="textarea" style={{ minHeight: 64 }} value={ed.answerText || ''}
+                onFocus={() => setMathField('a')}
                 onChange={(e) => setEditing({ ...ed, answerText: e.target.value })} />
             </div>
             <div className="field">
               <div className="field-label">错因（可选）</div>
-              <textarea className="textarea" style={{ minHeight: 64 }} value={ed.reason || ''}
+              <textarea ref={rRef} className="textarea" style={{ minHeight: 64 }} value={ed.reason || ''}
                 placeholder="比如概念混淆、审题失误，多行详细记录"
+                onFocus={() => setMathField('r')}
                 onChange={(e) => setEditing({ ...ed, reason: e.target.value })} />
             </div>
             <div className="set-row">

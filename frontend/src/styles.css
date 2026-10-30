@@ -442,6 +442,36 @@ body {
 }
 .send-btn:active { transform: scale(0.88); }
 .send-btn:disabled { opacity: 0.35; }
+/* 数学符号键盘：输入框上方的计算器式符号盘（AI 助手 / 错题本 / 笔记本共用） */
+.math-toggle {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid var(--line); background: var(--card); color: var(--blue);
+  font-size: 18px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s var(--ease), background 0.2s var(--ease);
+}
+.math-toggle:active { transform: scale(0.88); }
+.math-toggle.on { background: var(--blue-soft); }
+.math-panel {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); padding: 10px 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+.math-tabs { display: flex; gap: 4px; margin-bottom: 8px; align-items: center; }
+.math-tabs button {
+  border: 0; background: transparent; color: var(--ink3); cursor: pointer;
+  font-size: calc(13px * var(--fss)); padding: 6px 10px; border-radius: 999px;
+}
+.math-tabs button.on { background: var(--blue-soft); color: var(--blue-deep); font-weight: 600; }
+.math-tabs .math-close { margin-left: auto; font-size: 20px; padding: 2px 10px; color: var(--ink3); }
+.math-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.math-key {
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  border-radius: var(--radius-sm); cursor: pointer;
+  font-size: calc(17px * var(--fss)); padding: 9px 0;
+  transition: transform 0.12s var(--ease), background 0.2s var(--ease);
+}
+.math-key:active { transform: scale(0.92); background: var(--blue-soft); }
 .photo-preview {
   position: relative; width: 52px; height: 52px; border-radius: 14px;
   overflow: hidden; flex-shrink: 0; border: 1px solid var(--line);

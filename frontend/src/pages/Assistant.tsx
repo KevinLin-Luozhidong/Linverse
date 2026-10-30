@@ -13,6 +13,7 @@ import {
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
 import { toggleFav, isFav } from '../favs'
+import MathKeyboard, { insertIntoTextarea } from '../MathKeyboard'
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉
 // 视觉对齐演示版：顶部汉堡 + 模型胶囊 + 状态胶囊，回答无边框、重点蓝高亮
@@ -259,6 +260,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const activeConvRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [mathOpen, setMathOpen] = useState(false) // 数学符号盘开关
 
   // 读设置里的默认模型 + 自定义模型名
   useEffect(() => {
@@ -697,6 +700,13 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       </div>
 
       {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}
+      {mathOpen && (
+        <div style={{ padding: '0 14px 8px' }}>
+          <MathKeyboard
+            onInsert={(s, c) => insertIntoTextarea(inputRef.current, input, setInput, s, c)}
+            onClose={() => setMathOpen(false)} />
+        </div>
+      )}
       <div className="composer">
         <input ref={fileRef} type="file" accept="image/*"
           style={{ display: 'none' }} onChange={(e) => onPickImage(e.target.files?.[0])} />
@@ -710,7 +720,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           </div>
         )}
         <div className="composer-box">
-          <textarea className="chat-input" rows={1} value={input}
+          <button className={'math-toggle' + (mathOpen ? ' on' : '')}
+            onClick={() => setMathOpen(!mathOpen)} aria-label="数学符号盘" aria-pressed={mathOpen}>
+            ∑
+          </button>
+          <textarea ref={inputRef} className="chat-input" rows={1} value={input}
             placeholder="随时问问题"
             readOnly={sending}
             style={sending ? { opacity: 0.6 } : undefined}

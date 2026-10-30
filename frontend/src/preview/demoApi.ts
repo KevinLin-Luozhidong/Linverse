@@ -2,7 +2,7 @@
 // 函数名、签名、类型与 src/api.ts 完全一致，靠 vite alias（@api）在构建时切换
 
 // ---- 类型定义（与 api.ts 一一对应） ----
-export interface ConversationMeta { id: string; title: string; createdAt: string }
+export interface ConversationMeta { id: string; title: string; createdAt: string; favorite?: boolean }
 export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
@@ -38,7 +38,19 @@ export interface Settings {
   aiProvider?: string; aiModel?: string; aiEndpoint?: string;
 }
 
-export interface Profile { id: string; name: string }
+export interface Profile { id: string; name: string; avatar_url?: string }
+export interface AuthenticatedProfile extends Profile { authToken: string }
+export type DictSource = 'dict' | 'offline'
+export interface KbBook {
+  book: string; chunks: number; fig_chunks: number; text_chunks: number;
+  first_ingest: string | null; last_ingest: string | null;
+}
+export interface KbChunk {
+  id: number; chapter: string; section: string;
+  page_start: number; page_end: number; text: string;
+}
+// 预览版没有后端看板数据：返回 null，走页面空状态，与后端“还没有看板”一致
+export interface ShantouBoard { date: string; payload: Record<string, unknown> }
 
 // ---- 本地数据库（单个 key 存整个库，4MB 上限） ----
 const DB_KEY = 'linverse.demo.db.v1'
@@ -258,7 +270,17 @@ export async function ask(p: AskParams): Promise<AskResult> {
 export const listConversations = async (profileId: string) =>
   load().conversations
     .filter((c) => c.profileId === profileId)
-    .map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt }))
+    .map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, favorite: c.favorite }))
+export const createConversation = async (profileId: string) => {
+  const db = load()
+  const conv = {
+    id: nid(), profileId, title: '新会话',
+    createdAt: new Date().toISOString(), messages: [] as ChatMsg[],
+  }
+  db.conversations.unshift(conv)
+  save(db)
+  return { id: conv.id, title: conv.title, createdAt: conv.createdAt }
+}
 export const getConversation = async (id: string, profileId: string) => {
   const c = load().conversations.find((x) => x.id === id && x.profileId === profileId)
   if (!c) throw new Error('对话不存在')
@@ -268,6 +290,21 @@ export const deleteConversation = async (id: string, profileId: string) => {
   const db = load()
   db.conversations = db.conversations.filter((x) => !(x.id === id && x.profileId === profileId))
   save(db)
+}
+export const toggleConversationFavorite = async (id: string, profileId: string, favorite: boolean) => {
+  const db = load()
+  const c = db.conversations.find((x) => x.id === id && x.profileId === profileId)
+  if (!c) throw new Error('对话不存在')
+  c.favorite = favorite
+  save(db)
+  return { id, favorite }
+}
+export const batchDeleteConversations = async (profileId: string, ids: string[]) => {
+  const db = load()
+  const before = db.conversations.length
+  db.conversations = db.conversations.filter((x) => !(x.profileId === profileId && ids.includes(x.id)))
+  save(db)
+  return { deleted: before - db.conversations.length }
 }
 
 // ---- 错题 ----
@@ -404,6 +441,12 @@ export const getWordHistory = async (profileId: string) => {
     .filter((h) => h.profileId === profileId)
     .map((h) => ({ word: h.word, createdAt: h.createdAt }))
 }
+export const clearWordHistory = async (profileId: string) => {
+  const db = load()
+  db.wordHistory = db.wordHistory.filter((h) => h.profileId !== profileId)
+  save(db)
+  return { ok: true }
+}
 
 // 查词时顺手记一条历史
 async function recordHistory(profileId: string, word: string) {
@@ -423,6 +466,12 @@ export const addVocab = async (v: { profileId: string; word: string; phonetic?: 
   db.vocab.unshift(row)
   save(db)
   return row
+}
+export const deleteVocab = async (id: string, _profileId?: string) => {
+  const db = load()
+  db.vocab = db.vocab.filter((x) => x.id !== id)
+  save(db)
+  return { ok: true }
 }
 export const updateVocab = async (id: string, v: Partial<VocabWord>) => {
   const db = load()
@@ -516,10 +565,31 @@ export const listProfiles = async (): Promise<Profile[]> => {
   }
   return db.profiles
 }
-export const createProfile = async (name: string): Promise<Profile> => {
+export const createProfile = async (name: string): Promise<AuthenticatedProfile> => {
   const db = load()
-  const p = { id: nid(), name }
+  const p: Profile = { id: nid(), name }
   db.profiles.push(p)
+  save(db)
+  const authToken = nid() + nid()
+  setProfileToken(authToken, p.id)
+  return { ...p, authToken }
+}
+export const claimProfile = async (id: string): Promise<AuthenticatedProfile> => {
+  const db = load()
+  const p = db.profiles.find((x) => x.id === id)
+  if (!p) throw new Error('账号不存在')
+  let authToken = getProfileToken(id)
+  if (!authToken) {
+    authToken = nid() + nid()
+    setProfileToken(authToken, id)
+  }
+  return { ...p, authToken }
+}
+export const setAvatar = async (id: string, avatarUrl: string): Promise<Profile> => {
+  const db = load()
+  const p = db.profiles.find((x) => x.id === id)
+  if (!p) throw new Error('账号不存在')
+  p.avatar_url = avatarUrl
   save(db)
   return p
 }
@@ -536,6 +606,115 @@ export const deleteProfile = async (id: string) => {
   db.profiles = db.profiles.filter((x) => x.id !== id)
   save(db)
 }
+
+// ---- 账号 ID 与凭证（预览版：只存本浏览器 localStorage，演示数据专用） ----
+const PID_KEY = 'linverse.profileId'
+const PID_COOKIE = 'linverse_pid'
+export function getPid(): string | null {
+  try {
+    const ls = localStorage.getItem(PID_KEY)
+    if (ls) return ls
+    const m = document.cookie.match(new RegExp('(?:^|; )' + PID_COOKIE + '=([^;]*)'))
+    if (m) {
+      const id = decodeURIComponent(m[1])
+      try { localStorage.setItem(PID_KEY, id) } catch {}
+      return id
+    }
+  } catch {}
+  return null
+}
+export function setPid(id: string) {
+  try { localStorage.setItem(PID_KEY, id) } catch {}
+  try { document.cookie = `${PID_COOKIE}=${encodeURIComponent(id)}; max-age=315360000; path=/; SameSite=Lax` } catch {}
+}
+export function clearPid() {
+  try { localStorage.removeItem(PID_KEY) } catch {}
+  try { document.cookie = `${PID_COOKIE}=; max-age=0; path=/` } catch {}
+}
+const PROFILE_TOKEN = 'linverse.demo.profileToken'
+const profileTokenKey = (id: string) => `${PROFILE_TOKEN}.${id}`
+export const getProfileToken = (id = getPid()) => {
+  if (id) return localStorage.getItem(profileTokenKey(String(id))) || ''
+  return localStorage.getItem(PROFILE_TOKEN) || ''
+}
+export const setProfileToken = (t: string, id = getPid()) => {
+  if (id) {
+    if (t) localStorage.setItem(profileTokenKey(String(id)), t)
+    else localStorage.removeItem(profileTokenKey(String(id)))
+  } else if (t) {
+    localStorage.setItem(PROFILE_TOKEN, t)
+  } else {
+    localStorage.removeItem(PROFILE_TOKEN)
+  }
+}
+export const clearProfileAuth = () => {
+  const keys: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && (key === PROFILE_TOKEN || key.startsWith(`${PROFILE_TOKEN}.`))) keys.push(key)
+  }
+  keys.forEach((key) => localStorage.removeItem(key))
+}
+
+// ---- 全站访问密码 / 所有者密码 / 注册总闸（预览版：只记“设没设”开关，不存密码原文、不做真实校验） ----
+const SITE_TOKEN_KEY = 'linverse.demo.siteToken'
+const SITE_PW_FLAG = 'linverse.demo.sitePwSet'
+const DANGER_FLAG = 'linverse.demo.dangerSet'
+const SIGNUP_FLAG = 'linverse.demo.signupAllow'
+const OWNER_TOKEN_KEY = 'linverse.demo.ownerToken'
+export const getSiteToken = () => {
+  try { return localStorage.getItem(SITE_TOKEN_KEY) || '' } catch { return '' }
+}
+export const setSiteToken = (t: string) => {
+  try {
+    if (t) localStorage.setItem(SITE_TOKEN_KEY, t)
+    else localStorage.removeItem(SITE_TOKEN_KEY)
+  } catch {}
+}
+export const siteStatus = async () => {
+  try { return { passwordSet: localStorage.getItem(SITE_PW_FLAG) === '1' } } catch { return { passwordSet: false } }
+}
+export const siteVerify = async (_password: string) => ({ ok: true, token: 'demo-site-token' })
+export const siteSetPassword = async (_password: string, _oldPassword?: string) => {
+  try { localStorage.setItem(SITE_PW_FLAG, '1') } catch {}
+  return { ok: true, token: 'demo-site-token' }
+}
+// 预览版清空：只清演示数据库，访问密码开关保留（与真实版“访问密码保留”一致）
+export const siteReset = async (_danger: string) => {
+  try { localStorage.removeItem(DB_KEY) } catch {}
+  return { ok: true }
+}
+export const dangerStatus = async () => {
+  try { return { dangerSet: localStorage.getItem(DANGER_FLAG) === '1' } } catch { return { dangerSet: false } }
+}
+export const setDangerPassword = async (_password: string, _oldPassword?: string) => {
+  try { localStorage.setItem(DANGER_FLAG, '1') } catch {}
+  return { ok: true }
+}
+export const signupStatus = async () => {
+  try { return { allow: localStorage.getItem(SIGNUP_FLAG) !== '0' } } catch { return { allow: true } }
+}
+export const setSignupAllow = async (allow: boolean, _dangerPassword: string) => {
+  try { localStorage.setItem(SIGNUP_FLAG, allow ? '1' : '0') } catch {}
+  return { ok: true, allow }
+}
+export const clearOwnerToken = () => {
+  try { localStorage.removeItem(OWNER_TOKEN_KEY) } catch {}
+}
+export const verifyOwnerPassword = async (_password: string) => {
+  const token = 'demo-owner-token'
+  try { localStorage.setItem(OWNER_TOKEN_KEY, token) } catch {}
+  return { ok: true, token, expiresAt: Date.now() + 30 * 60 * 1000 }
+}
+
+// ---- 知识库管理（预览版：没有后端知识库，返回空列表） ----
+export const kbBooks = async () => ({ books: [] as KbBook[] })
+export const kbDeleteBook = async (book: string) => ({ deleted: 0, book })
+export const kbBookChunks = async (book: string, _limit = 20, _offset = 0) =>
+  ({ book, total: 0, chunks: [] as KbChunk[] })
+
+// ---- 汕头看板（预览版：没有后端看板，返回 null，走页面空状态） ----
+export const getLatestShantouBoard = async (_region = 'shantou'): Promise<ShantouBoard | null> => null
 
 // AI Key 存取：只放 localStorage
 const AI_KEY = 'linverse.aiKey'
