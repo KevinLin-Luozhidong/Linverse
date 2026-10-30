@@ -13,7 +13,7 @@ import {
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
 import { toggleFav, isFav } from '../favs'
-import MathKeyboard, { insertIntoTextarea } from '../MathKeyboard'
+import MathKeyboard, { insertIntoTextarea, deleteBackward } from '../MathKeyboard'
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉
 // 视觉对齐演示版：顶部汉堡 + 模型胶囊 + 状态胶囊，回答无边框、重点蓝高亮
@@ -33,7 +33,34 @@ function briefDay(d: string) {
   return `${Number(m[2])}月${Number(m[3])}日`
 }
 
-// ---- 轻量富文本渲染：标题 / 列表 / **重点**（重点变蓝色） ----
+// 从 source[start] 起读一个 {…} 组：按花括号深度配对，支持嵌套。
+// 失败（不配对、到文末未闭合、起首不是 {）返回 null，调用方负责回退。
+function readFractionGroup(source: string, start: number): { content: string; end: number } | null {
+  if (source[start] !== '{') return null
+  let depth = 0
+  for (let i = start; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1
+    else if (source[i] === '}') {
+      depth -= 1
+      if (depth === 0) return { content: source.slice(start + 1, i), end: i + 1 }
+      if (depth < 0) return null
+    }
+  }
+  return null
+}
+
+// 从 source[start] 起读 \frac{分子}{分母}；分子或分母为空也返回 null（走回退）。
+function readFraction(source: string, start: number): { numerator: string; denominator: string; end: number } | null {
+  if (!source.startsWith('\\frac', start)) return null
+  const num = readFractionGroup(source, start + 5)
+  if (!num) return null
+  const den = readFractionGroup(source, num.end)
+  if (!den) return null
+  if (!num.content || !den.content) return null
+  return { numerator: num.content, denominator: den.content, end: den.end }
+}
+
+// ---- 轻量富文本渲染：标题 / 列表 / **重点**（重点变蓝色）+ 分数叠排 ----
 function renderRich(text: string): ReactNode[] {
   const out: ReactNode[] = []
   const lines = text.split('\n')
@@ -44,14 +71,55 @@ function renderRich(text: string): ReactNode[] {
     out.push(<L key={'l' + out.length}>{listBuf.items.map((t, i) => <li key={i}>{inline(t)}</li>)}</L>)
     listBuf = null
   }
-  // 行内：**重点** 转蓝色高亮
-  function inline(s: string): ReactNode {
-    const parts = s.split(/(\*\*[^*]+\*\*)/g)
-    return parts.map((p, i) =>
-      p.startsWith('**') && p.endsWith('**') && p.length > 4
-        ? <span key={i} className="hl">{p.slice(2, -2)}</span>
-        : <span key={i}>{p}</span>,
-    )
+  // 行内：**重点** 转蓝色高亮；\frac{分子}{分母} 转叠排分数（分子在上、分母在下）。
+  // 分数段不经过 cleanLatex（它会把分数压成 a/b）；普通文本段在下面单独跑 cleanLatex。
+  function inline(s: string): ReactNode[] {
+    const out: ReactNode[] = []
+    let cursor = 0
+    let key = 0
+    const renderPlain = (plain: string) => {
+      if (!plain) return
+      const cleaned = cleanLatex(plain)
+      cleaned.split(/(\*\*[^*]+\*\*)/g).forEach((p) => {
+        if (!p) return
+        if (p.startsWith('**') && p.endsWith('**') && p.length > 4) {
+          out.push(<span key={key} className="hl">{p.slice(2, -2)}</span>)
+        } else {
+          out.push(<span key={key}>{p}</span>)
+        }
+        key += 1
+      })
+    }
+    while (cursor < s.length) {
+      const at = s.indexOf('\\frac', cursor)
+      if (at < 0) { renderPlain(s.slice(cursor)); break }
+      renderPlain(s.slice(cursor, at))
+      const f = readFraction(s, at)
+      if (f) {
+        // 分子/分母递归走同一套 inline：嵌套分数、分子里的 \sqrt、上下标都生效。
+        out.push(
+          <span className="frac" key={key}>
+            <span className="frac-num">{inline(f.numerator)}</span>
+            <span className="frac-den">{inline(f.denominator)}</span>
+          </span>,
+        )
+        key += 1
+        cursor = f.end
+        continue
+      }
+      // 解析失败回退，绝不抛异常：能拆出分子/分母就拼成 a/b 纯文本；
+      // 只拆出分子就拼成分子/；连分子都没有就原样保留 \frac，继续往后扫。
+      const num = readFractionGroup(s, at + 5)
+      if (num) {
+        const den = readFractionGroup(s, num.end)
+        if (den) { renderPlain(`${num.content}/${den.content}`); cursor = den.end }
+        else { renderPlain(`${num.content}/`); cursor = num.end }
+      } else {
+        renderPlain('\\frac')
+        cursor = at + 5
+      }
+    }
+    return out
   }
   lines.forEach((raw, i) => {
     const line = raw.trim()
@@ -101,9 +169,13 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
   const SUBJECTS = ['数学', '物理', '化学', '英语', '生物', '历史', '地理', '政治']
   const fav = profileId ? isFav(profileId, question, text) : false
   void favTick
-  // 兜底：把 AI 可能输出的 LaTeX 转成能直接看的 plain text（公共函数，OCR 也用它）
-  const cleanText = cleanLatex(text)
-  const { body, know } = splitKnowledge(cleanText)
+  // 注意：这里不能先跑 cleanLatex——它会把 \frac{a}{b} 压成 a/b，
+  // renderRich 就再也认不出分数了。分数由 renderRich 的 inline 先配对解析，
+  // 普通文本段在 inline 里再单独跑 cleanLatex；cleanLatex 本身不动（OCR 也在用）。
+  // 知识点名仍单独过一遍 cleanLatex，保持以前的显示（如下标 x_1 → x₁）。
+  const cleanText = text
+  const { body, know: knowRaw } = splitKnowledge(cleanText)
+  const know = knowRaw.map((k) => cleanLatex(k))
 
   const copy = async () => {
     try {
@@ -700,13 +772,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
       </div>
 
       {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}
-      {mathOpen && (
-        <div style={{ padding: '0 14px 8px' }}>
-          <MathKeyboard
-            onInsert={(s, c) => insertIntoTextarea(inputRef.current, input, setInput, s, c)}
-            onClose={() => setMathOpen(false)} />
-        </div>
-      )}
+      <div style={{ display: mathOpen ? 'block' : 'none', padding: '0 14px 8px' }}>
+        <MathKeyboard
+          onInsert={(s, c) => insertIntoTextarea(inputRef.current, input, setInput, s, c)}
+          onBackspace={() => deleteBackward(inputRef.current, input, setInput)}
+          onClose={() => setMathOpen(false)} />
+      </div>
       <div className="composer">
         <input ref={fileRef} type="file" accept="image/*"
           style={{ display: 'none' }} onChange={(e) => onPickImage(e.target.files?.[0])} />

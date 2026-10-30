@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
-import MathKeyboard, { insertIntoTextarea } from '../MathKeyboard'
+import MathKeyboard, { insertIntoTextarea, deleteBackward } from '../MathKeyboard'
 import Cropper from '../Cropper'
 import { cleanLatex } from '../latex'
 import {
@@ -399,19 +399,24 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
                 onClick={() => setMathOpen(!mathOpen)} aria-pressed={mathOpen}>
                 ∑ 数学符号盘
               </button>
-              {mathOpen && (
-                <div style={{ marginTop: 8 }}>
-                  <MathKeyboard
-                    onInsert={(s, c) => {
-                      const refs = { q: qRef, a: aRef, r: rRef }
-                      const vals = { q: ed.questionText, a: ed.answerText || '', r: ed.reason || '' }
-                      const keys = { q: 'questionText', a: 'answerText', r: 'reason' } as const
-                      insertIntoTextarea(refs[mathField].current, vals[mathField],
-                        (v) => setEditing({ ...ed, [keys[mathField]]: v }), s, c)
-                    }}
-                    onClose={() => setMathOpen(false)} />
-                </div>
-              )}
+              <div style={{ display: mathOpen ? 'block' : 'none', marginTop: 8 }}>
+                <MathKeyboard
+                  onInsert={(s, c) => {
+                    const refs = { q: qRef, a: aRef, r: rRef }
+                    const vals = { q: ed.questionText, a: ed.answerText || '', r: ed.reason || '' }
+                    const keys = { q: 'questionText', a: 'answerText', r: 'reason' } as const
+                    insertIntoTextarea(refs[mathField].current, vals[mathField],
+                      (v) => setEditing({ ...ed, [keys[mathField]]: v }), s, c)
+                  }}
+                  onBackspace={() => {
+                    const refs = { q: qRef, a: aRef, r: rRef }
+                    const vals = { q: ed.questionText, a: ed.answerText || '', r: ed.reason || '' }
+                    const keys = { q: 'questionText', a: 'answerText', r: 'reason' } as const
+                    deleteBackward(refs[mathField].current, vals[mathField],
+                      (v) => setEditing({ ...ed, [keys[mathField]]: v }))
+                  }}
+                  onClose={() => setMathOpen(false)} />
+              </div>
             </div>
             <div className="field">
               <div className="field-label">题目（可选）</div>

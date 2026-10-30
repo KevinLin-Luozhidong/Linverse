@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, Sheet, useToast} from '../components'
-import MathKeyboard, { insertIntoTextarea } from '../MathKeyboard'
+import MathKeyboard, { insertIntoTextarea, deleteBackward } from '../MathKeyboard'
 import Cropper from '../Cropper'
 import {
   listNotes, createNote, updateNote, deleteNote,
@@ -332,14 +332,14 @@ export default function Notes({ profileId }: { profileId: string | null }) {
                 onClick={() => setMathOpen(!mathOpen)} aria-pressed={mathOpen}>
                 ∑ 数学符号盘
               </button>
-              {mathOpen && (
-                <div style={{ marginBottom: 8 }}>
-                  <MathKeyboard
-                    onInsert={(s, c) => insertIntoTextarea(contentRef.current, ed.content,
-                      (v) => setEditing({ ...ed, content: v }), s, c)}
-                    onClose={() => setMathOpen(false)} />
-                </div>
-              )}
+              <div style={{ display: mathOpen ? 'block' : 'none', marginBottom: 8 }}>
+                <MathKeyboard
+                  onInsert={(s, c) => insertIntoTextarea(contentRef.current, ed.content,
+                    (v) => setEditing({ ...ed, content: v }), s, c)}
+                  onBackspace={() => deleteBackward(contentRef.current, ed.content,
+                    (v) => setEditing({ ...ed, content: v }))}
+                  onClose={() => setMathOpen(false)} />
+              </div>
               <textarea ref={contentRef} className="textarea" style={{ minHeight: 140 }} value={ed.content}
                 placeholder="写下知识点…"
                 onChange={(e) => setEditing({ ...ed, content: e.target.value })} />

@@ -457,7 +457,7 @@ body {
   background: var(--card); padding: 10px 10px 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
-.math-tabs { display: flex; gap: 4px; margin-bottom: 8px; align-items: center; }
+.math-tabs { display: flex; gap: 4px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
 .math-tabs button {
   border: 0; background: transparent; color: var(--ink3); cursor: pointer;
   font-size: calc(13px * var(--fss)); padding: 6px 10px; border-radius: 999px;
@@ -472,6 +472,30 @@ body {
   transition: transform 0.12s var(--ease), background 0.2s var(--ease);
 }
 .math-key:active { transform: scale(0.92); background: var(--blue-soft); }
+/* 聊天框叠排分数：分子在上、分母在下，中间一根线；嵌套分数自动缩小 */
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 1.05;
+}
+.frac-num {
+  display: block;
+  padding: 0 0.12em;
+  line-height: 1.05;
+}
+.frac-den {
+  display: block;
+  min-width: 100%;
+  padding: 0.08em 0.12em 0;
+  border-top: 1.5px solid var(--ink);
+  line-height: 1.05;
+}
+.frac .frac {
+  font-size: 0.82em;
+}
 .photo-preview {
   position: relative; width: 52px; height: 52px; border-radius: 14px;
   overflow: hidden; flex-shrink: 0; border: 1px solid var(--line);
