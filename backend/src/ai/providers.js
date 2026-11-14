@@ -13,7 +13,7 @@
 
 // 构造 OpenAI 兼容格式的请求体（DeepSeek / OpenAI / custom 的 /chat/completions 都用它）
 // 有 imageUrl 时按各家的多模态（vision）格式把图塞进 messages
-function openAICompatibleBody({ modelName, question, imageUrl}) {
+function openAICompatibleBody({ modelName, question, imageUrl, thinking}) {
 let userContent;
 if (imageUrl) {
 // OpenAI vision 格式：content 是数组，文字 + 图片混排
@@ -30,6 +30,8 @@ messages: [
 { role: 'system', content: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解，语言通俗易懂。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。'},
 { role: 'user', content: userContent},
 ],
+// thinking：DeepSeek/智谱的思考开关（enabled/disabled）；不传就不加这个字段
+...(thinking ? { thinking: { type: thinking } } : {}),
 };
 }
 
@@ -46,12 +48,15 @@ async function providerErrorText(res, name) {
   return detail ? `${name}请求失败：${res.status}（${detail}）` : `${name}请求失败：${res.status}`
 }
 
-async function askDeepSeek({ question, imageUrl, aiKey, modelName}) {
+async function askDeepSeek({ question, imageUrl, aiKey, modelName, deepThink}) {
+// DeepSeek 现在只有 deepseek-flash / deepseek-v4-pro 两个模型（deepseek-chat 已退役）；
+// flash 能看图，是默认选择。深度思考是请求参数：开就 enabled，关就 disabled
+//（不填时服务端默认开着，开关关了就必须显式关掉，否则开关等于没用）。
 const res = await fetch('https://api.deepseek.com/chat/completions', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiKey}`},
 body: JSON.stringify(
-openAICompatibleBody({ modelName: modelName || 'deepseek-chat', question, imageUrl})
+openAICompatibleBody({ modelName: modelName || 'deepseek-flash', question, imageUrl, thinking: deepThink ? 'enabled' : 'disabled'})
 ),
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
@@ -197,7 +202,7 @@ return { url: e, format: 'openai'}; // 完整端点原样用，按 OpenAI 格式
 
 // Custom：用户自己填的接口（兼容 Ollama 本地模型）
 // 中文注释：Ollama 的 /api/chat 和 OpenAI 的 /chat/completions 请求/响应格式不同，这里分别处理
-async function askCustom({ question, imageUrl, aiKey, endpoint, modelName}) {
+async function askCustom({ question, imageUrl, aiKey, endpoint, modelName, deepThink}) {
 const { url, format} = await resolveCustomEndpoint(endpoint);
 const headers = { 'Content-Type': 'application/json'};
 if (aiKey) headers.Authorization = `Bearer ${aiKey}`; // Ollama 本地一般不需要 Key，有就带上
@@ -215,10 +220,14 @@ const data = await res.json();
 return data.message?.content || '';
 }
 // OpenAI 兼容格式
+// 深度思考 + 智谱线路：加 thinking 开关（glm-4v-flash 实测接受，会多给分步推理过程）；
+// 其他自定义接口不加——不是每家都认这个字段
+const openAiBody = openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl});
+if (deepThink && String(endpoint || '').includes('bigmodel.cn')) openAiBody.thinking = { type: 'enabled' };
 res = await fetch(url, {
 method: 'POST',
 headers,
-body: JSON.stringify(openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl})),
+body: JSON.stringify(openAiBody),
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
 if (!res.ok) throw new Error(await providerErrorText(res, '自定义接口'));
@@ -264,6 +273,17 @@ return '【联网搜索结果（仅供参考，时效性信息请以来源为准
 + '\n\n【用户问题】\n';
 }
 
+// 深度思考：开时切推理模型（用户明确要的），关时走默认模型。
+// 规则：只在用户没指定模型名时切（设置里自己填了模型名就尊重他的选择）。
+// DeepSeek 不走这里：它现在没有独立的推理模型名，改在请求里加 thinking 参数（见 askDeepSeek）；
+// 智谱自定义也不走这里（模型名不动，改在 askCustom 里加 thinking 开关）。
+function resolveThinkingModel(model, modelName, deepThink) {
+  if (!deepThink || modelName) return modelName;
+  if (model === 'openai') return 'o3';
+  if (model === 'gemini') return 'gemini-2.5-flash';
+  return modelName;
+}
+
 // ---------- 统一入口 ----------
 
 async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch}) {
@@ -292,20 +312,21 @@ console.error('[web_search] 搜索失败，降级为普通问答：', err.messag
 }
 }
 
-// 有 Key：按供应商分发
+// 有 Key：按供应商分发（深度思考开时先算好推理模型名，再分发）
+const effModelName = resolveThinkingModel(model, modelName, deepThink);
 let answer;
 switch (model) {
 case 'deepseek':
-answer = await askDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName});
+answer = await askDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, deepThink: !!deepThink});
 break;
 case 'gemini':
-answer = await askGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName});
+answer = await askGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName});
 break;
 case 'openai':
-answer = await askOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName});
+answer = await askOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName});
 break;
 case 'custom':
-answer = await askCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName});
+answer = await askCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName, deepThink: !!deepThink});
 break;
 default:
 throw new Error(`不支持的模型类型：${model}`);
@@ -380,10 +401,10 @@ async function streamOpenAICompatible({ url, body, headers, name, onToken }) {
   await pumpSseStream(res, extractOpenAIDelta, onToken);
 }
 
-async function streamDeepSeek({ question, imageUrl, aiKey, modelName, onToken }) {
+async function streamDeepSeek({ question, imageUrl, aiKey, modelName, deepThink, onToken }) {
   await streamOpenAICompatible({
     url: 'https://api.deepseek.com/chat/completions',
-    body: openAICompatibleBody({ modelName: modelName || 'deepseek-chat', question, imageUrl }),
+    body: openAICompatibleBody({ modelName: modelName || 'deepseek-flash', question, imageUrl, thinking: deepThink ? 'enabled' : 'disabled' }),
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiKey}` },
     name: 'DeepSeek',
     onToken,
@@ -429,7 +450,7 @@ async function streamGemini({ question, imageUrl, aiKey, modelName, onToken }) {
   await pumpSseStream(res, extractGeminiText, onToken);
 }
 
-async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, onToken }) {
+async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, deepThink, onToken }) {
   const { url, format } = await resolveCustomEndpoint(endpoint);
   const headers = { 'Content-Type': 'application/json' };
   if (aiKey) headers.Authorization = `Bearer ${aiKey}`;
@@ -447,9 +468,12 @@ async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, on
     await pumpSseStream(res, extractOllamaText, onToken);
     return;
   }
+  // 深度思考 + 智谱线路：加 thinking 开关（与 askCustom 同款）
+  const openAiBody = openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl });
+  if (deepThink && String(endpoint || '').includes('bigmodel.cn')) openAiBody.thinking = { type: 'enabled' };
   await streamOpenAICompatible({
     url,
-    body: openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl }),
+    body: openAiBody,
     headers,
     name: '自定义接口',
     onToken,
@@ -483,18 +507,20 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
     }
   }
 
+  // 深度思考开时先算好推理模型名，再分发
+  const effModelName = resolveThinkingModel(model, modelName, deepThink);
   switch (model) {
     case 'deepseek':
-      await streamDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
+      await streamDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, deepThink: !!deepThink, onToken: emit });
       break;
     case 'gemini':
-      await streamGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
+      await streamGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, onToken: emit });
       break;
     case 'openai':
-      await streamOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
+      await streamOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, onToken: emit });
       break;
     case 'custom':
-      await streamCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName, onToken: emit });
+      await streamCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName, deepThink: !!deepThink, onToken: emit });
       break;
     default:
       throw new Error(`不支持的模型类型：${model}`);
@@ -504,4 +530,4 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
 module.exports = { ask, askStream };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, resolveThinkingModel, openAICompatibleBody };

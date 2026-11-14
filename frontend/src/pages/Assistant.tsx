@@ -299,6 +299,13 @@ function TypeMsg(props: Omit<Parameters<typeof AnswerCard>[0], 'typing' | 'onSki
   return <AnswerCard {...rest} text={text.slice(0, n)} typing={!done} thinkText="" onSkip={() => { setN(text.length); onSkipDone() }} />
 }
 
+// 回答下方的耗时标注：深度思考开着才写"已深度思考"，没开只写"用时"——
+// 以前不管开没开都写深度思考，是错的
+function thinkLabel(m: ChatMsg): string {
+  if (!m.thinkSeconds) return ''
+  return m.deepThink ? `已深度思考 · ${m.thinkSeconds} 秒` : `用时 ${m.thinkSeconds} 秒`
+}
+
 export default function Assistant({ profileId }: { profileId: string | null }) {
   const [convs, setConvs] = useState<ConversationMeta[]>([])
   // 每日早报 / 汕头看板共用一条入口横幅：挂载时各拉最新一期，哪个拉到就显示哪个，
@@ -612,7 +619,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           setMsgs((v) => v.map((m, i) => (i === aiIdx ? {
             ...m, content: r.answer,
             webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
-            thinkSeconds: r.thinkSeconds || 0,
+            thinkSeconds: r.thinkSeconds || 0, deepThink,
           } : m)))
         }
         reloadConvs()
@@ -629,7 +636,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
               const next: ChatMsg[] = [...v, {
                 role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
                 webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
-                thinkSeconds: r.thinkSeconds || 0,
+                thinkSeconds: r.thinkSeconds || 0, deepThink,
               }]
               setTypingFor(next.length - 1)
               return next
@@ -904,7 +911,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 thinkText={!typing ? [
                   (m as ChatMsg & { webSearched?: boolean }).webSearched ? '已联网搜索' : '',
                   (m as ChatMsg & { kbUsed?: boolean }).kbUsed ? '已查课本' : '',
-                  (m as ChatMsg & { thinkSeconds?: number }).thinkSeconds ? `已深度思考 · ${(m as ChatMsg & { thinkSeconds?: number }).thinkSeconds} 秒` : '',
+                  thinkLabel(m),
                 ].filter(Boolean).join(' · ') : ''}
                 typing={false}
                 onSkip={() => {}}

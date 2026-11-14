@@ -488,7 +488,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <div className="field">
   <div className="field-label">模型名（可改）</div>
   <input className="input" value={aiModel}
-  placeholder={provider === 'deepseek' ? '比如 deepseek-chat' : '比如 gpt-4o-mini'}
+  placeholder={provider === 'deepseek' ? '比如 deepseek-flash' : '比如 gpt-4o-mini'}
   onChange={(e) => setAiModel(e.target.value)} />
   </div>
   <div className="field">
