@@ -3,12 +3,14 @@
 // 用人话讲：这是网站大门的"密码锁"。主人（用户）在 App 设置页里定一个密码，
 // 之后任何人打开网址都要先输对密码才能用。后端只存密码的 SHA256（单向算出来的
 // 一串字符，反推不出原密码），就算有人看到数据库也拿不到密码原文。
-// token 就是这串哈希本身：前端验证通过后存下来，每次请求带在 x-site-token 头里，
-// 后端比对一致就放行。改密码后旧 token 自动失效，不用维护 token 表。
+// token 就是这串哈希本身：登录成功后服务端把它种成 httpOnly cookie，浏览器每次请求
+// 自动带上，页面 JS 读不到；老会话的 x-site-token 头仍认（迁移期兼容）。
+// 改密码后旧 token 自动失效，不用维护 token 表。
 const express = require('express');
 const crypto = require('crypto');
 const dao = require('../db/dao');
 const { ah, need } = require('./helpers');
+const { readSiteToken, setSiteCookie } = require('../siteAuth');
 
 const router = express.Router();
 const HASH_KEY = 'site_password_hash';
@@ -135,7 +137,7 @@ router.get('/status', ah(async (req, res) => {
 // 验证：输对密码拿 token（token 就是存的哈希本身，改密码后旧 token 自动失效）
 router.post('/verify', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
-  if (!h) return res.json({ ok: true, token: '' }); // 没设密码：直接放行
+  if (!h) return res.json({ ok: true }); // 没设密码：直接放行
   if (await verifyLocked(req, res)) return;
   const pw = (req.body.password || '').trim();
   if (need(res, pw, '请输入密码')) return;
@@ -148,9 +150,11 @@ router.post('/verify', ah(async (req, res) => {
   if (isLegacyHash(h)) {
     const nh = hashPw(pw);
     await dao.setSiteConfig(HASH_KEY, nh);
-    return res.json({ ok: true, token: nh });
+    setSiteCookie(res, nh);
+    return res.json({ ok: true });
   }
-  res.json({ ok: true, token: h });
+  setSiteCookie(res, h);
+  res.json({ ok: true });
 }));
 
 // 设置/修改：第一次直接设（库里没有）；之后必须带对旧密码
@@ -174,7 +178,9 @@ router.post('/password', ah(async (req, res) => {
   // 访问密码变化后，撤销已有所有者管理会话，要求重新验证。
   await dao.setSiteConfig(OWNER_SESSION_KEY, '');
   await dao.setSiteConfig(OWNER_SESSION_EXPIRES_KEY, '0');
-  res.json({ ok: true, token: h });
+  // 改完密码直接按新凭证种 cookie（用户刚证明过自己，不用重登）
+  setSiteCookie(res, h);
+  res.json({ ok: true });
 }));
 
 // 所有者密码：设置/修改。第一次直接设；之后必须带对旧的所有者密码。
@@ -182,7 +188,7 @@ router.post('/password', ah(async (req, res) => {
 router.post('/danger-password', ah(async (req, res) => {
   const siteHash = await dao.getSiteConfig(HASH_KEY);
   if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码，再设置所有者密码' });
-  if (!safeEqual(req.headers['x-site-token'], siteHash)) {
+  if (!safeEqual(readSiteToken(req), siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const pw = (req.body.password || '').trim();
@@ -216,7 +222,7 @@ router.get('/danger-status', ah(async (req, res) => {
 router.post('/owner-verify', ah(async (req, res) => {
   const siteHash = await dao.getSiteConfig(HASH_KEY);
   if (!siteHash) return res.status(403).json({ error: 'site_password_required', message: '请先设置访问密码' });
-  if (!safeEqual(req.headers['x-site-token'], siteHash)) {
+  if (!safeEqual(readSiteToken(req), siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const ip = clientIp(req);
@@ -252,7 +258,7 @@ router.post('/owner-verify', ah(async (req, res) => {
 router.post('/reset', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
   if (need(res, h, '还没设访问密码，不能清空')) return;
-  if (need(res, safeEqual(req.headers['x-site-token'], h), '访问密码不对')) return;
+  if (need(res, safeEqual(readSiteToken(req), h), '访问密码不对')) return;
   const dh = await dao.getSiteConfig(DANGER_KEY);
   if (need(res, dh, '还没设所有者密码，不能清空（去设置 → 访问密码里设置）')) return;
   if (await pwChangeLocked(req, res, 'reset')) return;

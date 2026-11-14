@@ -3,7 +3,7 @@
 const express = require('express');
 const multer = require('multer');
 const dao = require('../db/dao');
-const { ask } = require('../ai/providers');
+const { ask, askStream } = require('../ai/providers');
 const { ah, need } = require('./helpers');
 
 const router = express.Router();
@@ -86,9 +86,27 @@ function resolveImageForVision(imageUrl) {
   return imageUrl;
 }
 
+// 问答存档（JSON 与流式两路共用）：有 conversationId 就续写，没有就新建；
+// 失败不留空会话，所以先调 AI、成功后才建会话存档。返回会话 id，串号时返回 null。
+async function saveTurn(profileId, conversationId, question, answer) {
+  let cid = conversationId;
+  if (cid) {
+    // 防止串到别人的对话：必须同时匹配 profileId
+    const conv = await dao.getConversation(cid, profileId);
+    if (!conv) return null;
+  } else {
+    const title = question.trim().slice(0, 12) || '新的对话';
+    cid = (await dao.createConversation(profileId, title)).id;
+  }
+  await dao.addMessage(profileId, cid, 'user', question.trim());
+  await dao.addMessage(profileId, cid, 'assistant', answer);
+  return cid;
+}
+
 // ---------- AI 问答 ----------
 // POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey? }
 // 返回: { answer, thinkSeconds, conversationId, model }
+// 流式：body 里带 stream:true 就走 SSE（token 事件推词，done 事件收尾），首字不用等整段写完
 router.post('/ask', ah(async (req, res) => {
   const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb, historyMsgs } = req.body;
   if (need(res, profileId, 'profileId 必填')) return;
@@ -103,6 +121,22 @@ router.post('/ask', ah(async (req, res) => {
     modelName = s.aiModel;
   }
 
+  // 流式先开 SSE 通道：状态事件立刻发出去，RAG 检索那 1-3 秒界面也不黑屏
+  const isStream = !!req.body.stream;
+  let sendEvent = null;
+  if (isStream) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no', // 让 Vercel/代理别缓冲，词到了就往下推
+    });
+    sendEvent = (type, data) => {
+      try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
+    };
+    sendEvent('status', { text: useKb ? '正在查课本…' : '正在思考…' });
+  }
+
   // RAG 查课本：开了开关就先做向量检索，把最相关的教材块拼进问题里。
   // 知识库是空的 / 没配 ZHIPU_API_KEY / 检索失败 → 静默降级为普通问答，不炸。
   let kbRefs = [];
@@ -111,7 +145,7 @@ router.post('/ask', ah(async (req, res) => {
   if (useKb) {
     try {
       const { searchKbContext } = require('./kb');
-      const { context, refs, faq } = await searchKbContext(question.trim(), 5);
+      const { context, refs, faq } = await searchKbContext(question.trim(), 5, profileId);
       if (faq || context) {
         kbUsed = true;
         kbRefs = refs;
@@ -132,6 +166,35 @@ router.post('/ask', ah(async (req, res) => {
     }
   }
 
+  // 流式分支：RAG 已完，推词并存档
+  if (isStream) {
+    sendEvent('status', { text: kbUsed ? '已查课本，正在回答…' : '正在回答…' });
+    try {
+      const { answer, thinkSeconds, webSearched } = await askStream({
+        model: model || 'demo',
+        question: finalQuestion,
+        imageUrl: resolveImageForVision(imageUrl),
+        deepThink: !!deepThink,
+        aiKey,
+        endpoint,
+        modelName,
+        webSearch: !!webSearch,
+        historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
+        onToken: (t) => sendEvent('token', { text: t }),
+      });
+      const cid = await saveTurn(profileId, conversationId, question, answer);
+      if (!cid) {
+        sendEvent('error', { message: '对话不存在' });
+        return res.end();
+      }
+      sendEvent('done', { answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched, kbUsed, kbRefs });
+      return res.end();
+    } catch (e) {
+      sendEvent('error', { message: e instanceof Error ? e.message : '流式回答失败' });
+      return res.end();
+    }
+  }
+
   // 先调 AI，成功后再建会话存档（失败不留空会话）
   // webSearch：前端"联网搜索"开关；只在智谱线路生效，其他线路后端自动忽略
   const { answer, thinkSeconds, webSearched } = await ask({
@@ -147,18 +210,9 @@ router.post('/ask', ah(async (req, res) => {
     historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
   });
 
-  // 问答自动存档：有 conversationId 就续写，没有就新建（标题取问题前 12 个字）
-  let cid = conversationId;
-  if (cid) {
-    // 防止串到别人的对话：必须同时匹配 profileId
-    const conv = await dao.getConversation(cid, profileId);
-    if (!conv) return res.status(404).json({ error: '对话不存在' });
-  } else {
-    const title = question.trim().slice(0, 12) || '新的对话';
-    cid = (await dao.createConversation(profileId, title)).id;
-  }
-  await dao.addMessage(profileId, cid, 'user', question.trim());
-  await dao.addMessage(profileId, cid, 'assistant', answer);
+  // 问答自动存档（与流式分支同一份逻辑）
+  const cid = await saveTurn(profileId, conversationId, question, answer);
+  if (!cid) return res.status(404).json({ error: '对话不存在' });
 
   res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched, kbUsed, kbRefs });
 }));

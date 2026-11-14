@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   page_end INTEGER NOT NULL DEFAULT 0,
   text TEXT NOT NULL DEFAULT '',
   embedding vector(2048),
+  profile_id INTEGER NOT NULL DEFAULT 0, -- 0=全站共享，否则为自建库的 profileId（迁移 008）
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -191,6 +192,7 @@ CREATE TABLE IF NOT EXISTS kb_faq (
   page_start INTEGER NOT NULL DEFAULT 0,
   page_end INTEGER NOT NULL DEFAULT 0,
   embedding vector(2048),
+  profile_id INTEGER NOT NULL DEFAULT 0, -- 0=全站共享，否则为自建库的 profileId（迁移 008）
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

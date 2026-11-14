@@ -36,17 +36,24 @@ app.use(express.json({ limit: '10mb' }));
 // 路由挂载（URL 和字段名按 API 契约，原样不动）
 app.use('/api/site', require('./routes/site')); // 访问密码：status/verify/password 不设防
 
-// 访问密码门：除了 site 相关和健康检查，其他 /api/* 都要校验 x-site-token。
-// 没设密码 = 公开状态，直接放行；设了之后 token 对不上就 401，前端弹密码页。
+// 访问密码门：除了 site 相关和健康检查，其他 /api/* 都要校验站点凭证。
+// 没设密码 = 公开状态，直接放行；设了之后凭证对不上就 401，前端弹密码页。
+// 凭证来源：httpOnly cookie 优先（新登录），x-site-token 头兼容（老会话迁移期）。
 // 注意：挂在各业务路由之前，顺序不能乱。
 const dao = require('./db/dao');
+const { readSiteToken, setSiteCookie } = require('./siteAuth');
 app.use('/api', async (req, res, next) => {
   if (req.path.startsWith('/site/') || req.path === '/health') return next();
   try {
     const hash = await dao.getSiteConfig('site_password_hash');
     if (!hash) return next();
-    const token = req.headers['x-site-token'];
-    if (token && safeEqual(token, hash)) return next();
+    const token = readSiteToken(req);
+    if (token && safeEqual(token, hash)) {
+      // 鉴权成功就把 cookie 种下/刷新：老会话第一次走这个分支就完成迁移，
+      // 之后前端清掉 localStorage 里的旧 token，只靠 cookie
+      setSiteCookie(res, token);
+      return next();
+    }
     return res.status(401).json({ error: 'need_site_password', message: '请输入访问密码' });
   } catch (e) {
     next(e);

@@ -228,6 +228,8 @@ export default function App() {
     setMeView('profile')
   }
 
+  // 底部导航激活态用填充版图标（未选中用描边版），颜色加形状双保险
+  const filledIcon = { chat: 'chatFilled', grid: 'gridFilled', user: 'userFilled' } as const
   const tabs: { id: Tab; label: string; icon: 'chat' | 'grid' | 'user' }[] = [
     { id: 'assistant', label: 'AI助手', icon: 'chat' },
     { id: 'tools', label: '学习工具', icon: 'grid' },
@@ -365,7 +367,7 @@ export default function App() {
           <button key={t.id}
             className={'tab' + (tab === t.id ? ' active' : '')}
             onClick={() => goTab(t.id)}>
-            <I n={t.icon} size={24} />
+            <I n={tab === t.id ? filledIcon[t.icon] : t.icon} size={24} />
             <span>{t.label}</span>
           </button>
         ))}

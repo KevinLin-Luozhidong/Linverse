@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { siteVerify, setSiteToken } from '@api'
+import { siteVerify } from '@api'
 
 // 访问密码门：全屏密码输入页。
 // 主人先在"设置 → 访问密码"里定好密码，再把密码告诉朋友；朋友打开网址先过这道门。
@@ -14,8 +14,7 @@ export default function SiteGate({ onPass }: { onPass: () => void }) {
     setBusy(true)
     setErr('')
     try {
-      const r = await siteVerify(p)
-      setSiteToken(r.token) // token 存本地，后续请求自动带上
+      await siteVerify(p) // 成功后服务端把凭证种成 httpOnly cookie，后续请求浏览器自动带上
       onPass()
     } catch (e) {
       setErr(e instanceof Error ? e.message : '密码不对，再试一次')

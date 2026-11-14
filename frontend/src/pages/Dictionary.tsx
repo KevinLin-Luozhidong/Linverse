@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
   lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab, deleteVocab,
@@ -86,6 +86,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [word, setWord] = useState('')
   const [result, setResult] = useState<DictResult | null>(null)
   const [searching, setSearching] = useState(false)
+  // 输入防抖自动查词：停 500ms 没再打字就自动查，不用每次点"查词"；Enter/点按钮照常立即查
+  const searchTimer = useRef<number>(0)
+  const lastSearched = useRef('')
+  // 组件卸载时清掉待触发的定时器，避免切页后还发请求
+  useEffect(() => () => window.clearTimeout(searchTimer.current), [])
   // 查词失败的行内提示：只靠 2 秒 toast 时，用户一晃神就只剩空白结果区，以为“静默失败”；
   // 失败原因常驻在结果区，直到下次查词成功或重查。
   const [dictError, setDictError] = useState('')
@@ -127,6 +132,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const search = async (w?: string, src?: DictSource) => {
     const target = (w ?? word).trim().toLowerCase()
     if (!target) return
+    lastSearched.current = target
     const source = src || dictSource
     setSearching(true)
     setDictError('')
@@ -388,10 +394,19 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             <div className="search-box">
               <I n="search" size={18} />
               <input className="input" value={word} placeholder="输入英文单词"
-                onChange={(e) => setWord(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') search() }} />
+                onChange={(e) => {
+                  const v = e.target.value
+                  setWord(v)
+                  window.clearTimeout(searchTimer.current)
+                  const t = v.trim().toLowerCase()
+                  if (!t || t === lastSearched.current) return
+                  // 离线档没下载包时不自动查，避免反复弹"先下载"提示；在线档随时可查
+                  if (dictSource === 'offline' && !dictPkg) return
+                  searchTimer.current = window.setTimeout(() => { search(v) }, 500)
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { window.clearTimeout(searchTimer.current); search() } }} />
             </div>
-            <button className="btn" onClick={() => search()} disabled={searching}>查词</button>
+            <button className="btn" onClick={() => { window.clearTimeout(searchTimer.current); search() }} disabled={searching}>查词</button>
           </div>
           {/* 词典二选一：在线词典（默认）/ 离线词典（断网备胎）——AI 详解已移除 */}
           <div className="seg" style={{ marginTop: 10 }}>

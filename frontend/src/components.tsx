@@ -7,6 +7,11 @@ const PATHS: Record<string, ReactNode> = {
   chat: <><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" /><path d="M8.5 12h.01M12 12h.01M15.5 12h.01" /></>,
   grid: <><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" /></>,
+  // 填充版：底部导航激活态用（光靠颜色区分不够，形状也要变，和未选中拉开辨识度）；
+  // 气泡填充后三个小点看不见就不要了，24px 下实心气泡加下面文字已经够认
+  chatFilled: <><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" fill="currentColor" stroke="none" /></>,
+  gridFilled: <><rect x="4" y="4" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" /><rect x="13" y="4" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" /><rect x="4" y="13" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" /><rect x="13" y="13" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" /></>,
+  userFilled: <><circle cx="12" cy="8" r="4" fill="currentColor" stroke="none" /><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" fill="currentColor" stroke="none" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   camera: <><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.2" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,

@@ -679,20 +679,22 @@ async function kbReplaceBatch(chunks) {
   const vals = [];
   const params = [];
   chunks.forEach((c, i) => {
-    const b = i * 7;
-    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector)`);
+    const b = i * 8;
+    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector,$${b + 8})`);
     params.push(
       c.book || '', c.chapter || '', c.section || '',
       c.page_start || 0, c.page_end || 0, c.text || '',
-      '[' + (c.embedding || []).join(',') + ']'
+      '[' + (c.embedding || []).join(',') + ']',
+      c.profile_id || 0
     );
   });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM kb_chunks');
+    // 只清共享库（profile_id=0）：整库替换不许误删以后某人自建的私有块
+    await client.query('DELETE FROM kb_chunks WHERE profile_id = 0');
     const r = await client.query(
-      `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding)
+      `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding, profile_id)
        VALUES ${vals.join(',')}`,
       params
     );
@@ -771,16 +773,17 @@ async function kbInsertBatch(chunks) {
   const vals = [];
   const params = [];
   chunks.forEach((c, i) => {
-    const b = i * 7;
-    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector)`);
+    const b = i * 8;
+    vals.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7}::vector,$${b + 8})`);
     params.push(
       c.book || '', c.chapter || '', c.section || '',
       c.page_start || 0, c.page_end || 0, c.text || '',
-      '[' + (c.embedding || []).join(',') + ']'
+      '[' + (c.embedding || []).join(',') + ']',
+      c.profile_id || 0
     );
   });
   const r = await query(
-    `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding)
+    `INSERT INTO kb_chunks (book, chapter, section, page_start, page_end, text, embedding, profile_id)
      VALUES ${vals.join(',')}`,
     params
   );
@@ -789,30 +792,37 @@ async function kbInsertBatch(chunks) {
 
 // 向量检索：embedding 是 2048 维数组，按余弦距离（<=>）取最相关的 topK 块。
 // 数据量小（几百块）直接全表扫，毫秒级，不建索引。
-async function kbSearch(embedding, topK = 5) {
+// 向量检索：embedding 是 2048 维数组，按余弦距离（<=>）取最相关的 topK 块。
+// 数据量小（几百块）直接全表扫，毫秒级，不建索引。
+// profileId 可选：传了就只返回共享（profile_id=0）加自己的块；不传不过滤（老行为）。
+async function kbSearch(embedding, topK = 5, profileId) {
   const vec = '[' + embedding.join(',') + ']';
+  const pid = profileId === undefined || profileId === null || Number.isNaN(Number(profileId)) ? null : Number(profileId);
   const r = await query(
     `SELECT book, chapter, section, page_start, page_end, text,
             (embedding <=> $1::vector) AS distance
      FROM kb_chunks
+     ${pid === null ? '' : 'WHERE profile_id IN (0, $3)'}
      ORDER BY distance ASC
      LIMIT $2`,
-    [vec, topK]
+    pid === null ? [vec, topK] : [vec, topK, pid]
   );
   return r.rows;
 }
 
 // 高频问答检索：把问题转成向量，在 kb_faq 里找最像的一道标准问答，
 // 返回余弦距离最小的一条（调用方按阈值决定是否采用）。
-async function kbFaqSearch(embedding) {
+async function kbFaqSearch(embedding, profileId) {
   const vec = '[' + embedding.join(',') + ']';
+  const pid = profileId === undefined || profileId === null || Number.isNaN(Number(profileId)) ? null : Number(profileId);
   const r = await query(
     `SELECT book, chapter, question, answer, page_start, page_end,
             (embedding <=> $1::vector) AS distance
      FROM kb_faq
+     ${pid === null ? '' : 'WHERE profile_id IN (0, $2)'}
      ORDER BY distance ASC
      LIMIT 1`,
-    [vec]
+    pid === null ? [vec] : [vec, pid]
   );
   return r.rows;
 }
@@ -842,7 +852,7 @@ async function kbFaqInsertBatch(items) {
 // 关键词检索：和向量检索互补。向量懂同义（如"定义"≈"含义"），关键词保精确
 // （如数学符号 card(A)、"韦恩图"这种生僻术语向量容易搜偏）。
 // 中文不分词，直接拆 2-gram 做 ILIKE 模糊匹配，按命中不同 gram 数排序。
-async function kbKeywordSearch(question, limit = 9) {
+async function kbKeywordSearch(question, limit = 9, profileId) {
   const t = String(question || '').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
   const grams = [];
   const seen = new Set();
@@ -856,11 +866,15 @@ async function kbKeywordSearch(question, limit = 9) {
   const score = grams.map((_, i) => `(CASE WHEN text ILIKE $${n + i + 1} THEN 1 ELSE 0 END)`).join(' + ');
   const params = grams.map((g) => `%${g}%`);
   const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 20) : 9;
+  const pid = profileId === undefined || profileId === null || Number.isNaN(Number(profileId)) ? null : Number(profileId);
+  const profileFilter = pid === null ? '' : `profile_id IN (0, $${2 * n + 1}) AND `;
+  const allParams = params.concat(params);
+  if (pid !== null) allParams.push(pid);
   const r = await query(
     `SELECT book, chapter, section, page_start, page_end, text, (${score}) AS hits
-     FROM kb_chunks WHERE ${where}
+     FROM kb_chunks WHERE ${profileFilter}(${where})
      ORDER BY hits DESC, id ASC LIMIT ${safeLimit}`,
-    params.concat(params)
+    allParams
   );
   return r.rows;
 }

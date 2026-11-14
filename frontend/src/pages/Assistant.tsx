@@ -6,9 +6,9 @@ import Shantou from './Shantou'
 import { cleanLatex } from '../latex'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
-  ask, listConversations, createConversation, getConversation, deleteConversation,
+  ask, askStream, listConversations, createConversation, getConversation, deleteConversation,
   toggleConversationFavorite, batchDeleteConversations,
-  getSettings, getAiKey, uploadImage, imgSrc, createMistake,
+  getSettings, getAiKey, uploadImage, imgSrc, createMistake, getStats, listMistakes,
   getLatestBriefing, getLatestShantouBoard,
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
@@ -361,6 +361,9 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [uploading, setUploading] = useState(false)
   // typingFor：正在打字的消息下标（-1 = 无），合并了 typing + typingIdx 两个状态，避免不同步
   const [typingFor, setTypingFor] = useState(-1)
+  // streamingFor：正在流式输出的消息下标（-1 = 无）；streamStatus：流式进行中的状态文案
+  const [streamingFor, setStreamingFor] = useState(-1)
+  const [streamStatus, setStreamStatus] = useState('')
   const typing = typingFor >= 0
   const [deletingId, setDeletingId] = useState('') // 二次确认删除的会话
   // 会话管理模式：勾选 + 全选 + 批量删除 + 星标收藏（关抽屉自动退出）
@@ -530,9 +533,20 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     setCropSrc('')
   }
 
-  // 发送问题
-  const send = async () => {
-    const q = input.trim()
+  // 未掌握错题复习提醒：空会话时显示，有多少未掌握就提醒多少
+  const [unmasteredCount, setUnmasteredCount] = useState(0)
+  const [quizBusy, setQuizBusy] = useState(false)
+  // 聊天区空了就刷新一次未掌握数（新会话、切会话后都会回到空态）
+  useEffect(() => {
+    if (!profileId || msgs.length !== 0) return
+    getStats(profileId)
+      .then((st) => setUnmasteredCount(Math.max(0, (st.mistakeCount || 0) - (st.masteredMistakeCount || 0))))
+      .catch(() => {})
+  }, [msgs.length, profileId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 发送问题（presetQ：复习提醒等程序发起的提问直接传问题，不读输入框）
+  const send = async (presetQ?: string) => {
+    const q = (presetQ ?? input).trim()
     if ((!q && !imgUrl) || sending || !profileId) return
     const question = q || '请讲讲这张图里的题目'
     const userMsg: ChatMsg = {
@@ -548,11 +562,13 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     sendReqIdRef.current = reqId // 唯一请求ID，防止多次请求串台
     const savedImgUrl = userMsg.imageUrl // 失败时恢复图片用
     setImgUrl('')
+    // 流式占位消息下标：用户消息在 msgs.length，AI 占位在 msgs.length + 1
+    const aiIdx = msgs.length + 1
     try {
       localStorage.setItem('linverse.model', model)
       // 构造历史消息（不含刚追加的用户消息，最多取最近 8 条）
       const historyMsgs = msgs.slice(-8).map((m) => ({ role: m.role, content: m.content }))
-      const r = await ask({
+      const params = {
         profileId,
         conversationId: convId || undefined,
         question,
@@ -563,21 +579,69 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
         useKb, // 查课本：RAG 检索知识库
         historyMsgs,
-      })
-      // 只有还在同一个会话里，才把回答追加到当前消息列表（防止切会话后串台）
-      if (sendReqIdRef.current === reqId) {
-        setConvId(r.conversationId)
-        setMsgs((v) => {
-          const next: ChatMsg[] = [...v, {
-            role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
+      }
+      // 流式优先：先占一条空 AI 消息，词来了就往里面追加（120ms 刷一次界面，别每词都重排版）
+      let full = ''
+      let flushTimer: number | null = null
+      const updatePlaceholder = () => {
+        if (sendReqIdRef.current !== reqId) return
+        setMsgs((v) => v.map((m, i) => (i === aiIdx ? { ...m, content: full } : m)))
+      }
+      const stopFlush = () => {
+        if (flushTimer !== null) { window.clearInterval(flushTimer); flushTimer = null }
+      }
+      try {
+        setMsgs((v) => [...v, {
+          role: 'assistant' as const, content: '', createdAt: new Date().toISOString(),
+        }])
+        setStreamingFor(aiIdx)
+        setStreamStatus('正在思考…')
+        flushTimer = window.setInterval(updatePlaceholder, 120)
+        const r = await askStream(params,
+          (t) => { full += t },
+          (text) => { if (sendReqIdRef.current === reqId) setStreamStatus(text) },
+        )
+        stopFlush()
+        updatePlaceholder()
+        // 只有还在同一个会话里，才落库信息（防止切会话后串台）
+        if (sendReqIdRef.current === reqId) {
+          setConvId(r.conversationId)
+          setMsgs((v) => v.map((m, i) => (i === aiIdx ? {
+            ...m, content: r.answer,
             webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
             thinkSeconds: r.thinkSeconds || 0,
-          }]
-          setTypingFor(next.length - 1)
-          return next
-        })
+          } : m)))
+        }
+        reloadConvs()
+      } catch (streamErr) {
+        stopFlush()
+        // 还没收到词：删掉占位消息，回落到整段返回的老路（演示兜底也在里面）
+        if (full === '' && sendReqIdRef.current === reqId) {
+          setMsgs((v) => v.filter((_, i) => i !== aiIdx))
+          setStreamingFor(-1)
+          const r = await ask(params)
+          if (sendReqIdRef.current === reqId) {
+            setConvId(r.conversationId)
+            setMsgs((v) => {
+              const next: ChatMsg[] = [...v, {
+                role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
+                webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
+                thinkSeconds: r.thinkSeconds || 0,
+              }]
+              setTypingFor(next.length - 1)
+              return next
+            })
+          }
+          reloadConvs()
+        } else if (sendReqIdRef.current === reqId) {
+          // 已收到一部分：留着已收到的词，告诉用户中断了（不再重问，避免重复扣费）
+          updatePlaceholder()
+          setToast('回答中断了，只收到一部分，再问一次试试')
+        }
+      } finally {
+        stopFlush()
+        setStreamingFor(-1)
       }
-      reloadConvs()
     } catch (e) {
       // 出错时：如果还在同一会话，移除用户消息并恢复图片、弹失败提示；已切走就不动也不弹（别在新会话里报旧会话的错）
       if (sendReqIdRef.current === reqId) {
@@ -590,6 +654,21 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     } finally {
       setSending(false)
     }
+  }
+
+  // 复习提醒点按：取最多 5 道未掌握错题，让 AI 一次出一道考你
+  const startQuiz = async () => {
+    if (!profileId || quizBusy || sending) return
+    setQuizBusy(true)
+    try {
+      const all = await listMistakes(profileId)
+      const un = all.filter((m) => !m.mastered).slice(0, 5)
+      if (!un.length) { setUnmasteredCount(0); setToast('没有未掌握的错题了'); return }
+      const lines = un.map((m, i) => `${i + 1}. 【${m.subject}】${(m.questionText || '').trim().slice(0, 60) || '图片题，见错题本'}`)
+      await send(`请根据下面这几道我还没掌握的错题出题考我，一次出一道，等我答完再讲对错：\n${lines.join('\n')}`)
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '取错题失败')
+    } finally { setQuizBusy(false) }
   }
 
   // 模型名显示：选了"自定义"且填了模型名，就显示真实名字（比如 glm-4v-flash），一眼知道接的是谁
@@ -628,6 +707,23 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                     {m.v === model && <I n="check" size={15} />}{m.v === 'custom' && customModelName ? customModelName : m.label}
                   </button>
                 ))}
+                {/* 低频开关收到模型菜单里，顶栏只留模型和深度思考，单手点得准 */}
+                <div style={{ height: 1, background: 'var(--bd)', margin: '6px 8px' }} />
+                <button className={webSearch && webSearchAvailable ? 'on' : ''}
+                  disabled={!webSearchAvailable}
+                  title={!webSearchAvailable ? '联网搜索仅支持智谱线路' : undefined}
+                  style={!webSearchAvailable ? { opacity: 0.45 } : undefined}
+                  onClick={() => {
+                    const v = !webSearch; setWebSearch(v); localStorage.setItem('linverse.webSearch', v ? '1' : '0')
+                  }}>
+                  {webSearch && webSearchAvailable && <I n="check" size={15} />}联网搜索
+                </button>
+                <button className={useKb ? 'on' : ''}
+                  onClick={() => {
+                    const v = !useKb; setUseKb(v); localStorage.setItem('linverse.useKb', v ? '1' : '0')
+                  }}>
+                  {useKb && <I n="check" size={15} />}查课本
+                </button>
               </div>
             </>
           )}
@@ -637,22 +733,6 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           onClick={() => { const v = !deepThink; setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }}
           aria-label="深度思考开关" aria-pressed={deepThink}>
           <I n="sparkle" size={14} />深度思考
-        </button>
-        {/* 联网搜索：手动开关，默认关；非智谱线路置灰，点按提示原因 */}
-        <button className={'think-pill' + (webSearch && webSearchAvailable ? ' on' : '') + (!webSearchAvailable ? ' disabled' : '')}
-          disabled={!webSearchAvailable}
-          title={!webSearchAvailable ? '联网搜索仅支持智谱线路' : undefined}
-          onClick={() => {
-            const v = !webSearch; setWebSearch(v); localStorage.setItem('linverse.webSearch', v ? '1' : '0')
-          }}
-          aria-label="联网搜索开关" aria-pressed={webSearch && webSearchAvailable}>
-          <I n="search" size={14} />联网搜索
-        </button>
-        {/* 查课本：RAG 检索知识库，默认开；知识库为空时后端自动降级 */}
-        <button className={'think-pill' + (useKb ? ' on' : '')}
-          onClick={() => { const v = !useKb; setUseKb(v); localStorage.setItem('linverse.useKb', v ? '1' : '0') }}
-          aria-label="查课本开关" aria-pressed={useKb}>
-          <I n="book" size={14} />查课本
         </button>
         <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
       </div>
@@ -771,6 +851,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
           <div className="chat-welcome">
             <div className="w-title">随时问问题</div>
             <div className="w-sub">打字问或拍照问，我会按考试的规矩一步步讲</div>
+            {unmasteredCount > 0 && (
+              <button className="quiz-nudge" onClick={startQuiz} disabled={quizBusy || sending}>
+                <I n="target" size={16} />你有 {unmasteredCount} 道未掌握错题，要让 AI 出题考你吗？
+              </button>
+            )}
           </div>
         )}
         {msgs.map((m, i) => (
@@ -790,6 +875,20 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                 onSkipDone={() => setTypingFor(-1)}
                 onToast={setToast}
               />
+            ) : i === streamingFor && streamingFor >= 0 ? (
+              // 流式输出中：边收词边显示，末尾一个闪烁光标，状态文案放 thinkText 的位置
+              <>
+                <AnswerCard
+                  text={m.content}
+                  question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
+                  profileId={profileId}
+                  thinkText={streamStatus}
+                  typing={false}
+                  onSkip={() => {}}
+                  onToast={setToast}
+                />
+                <span className="stream-cursor" aria-hidden>▍</span>
+              </>
             ) : (
               <AnswerCard
                 text={m.content}
@@ -840,7 +939,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
             style={sending ? { opacity: 0.6 } : undefined}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
-          <button className="send-btn" onClick={send}
+          <button className="send-btn" onClick={() => send()}
             disabled={sending || (!input.trim() && !imgUrl)} aria-label="发送">
             <I n="send" size={18} />
           </button>

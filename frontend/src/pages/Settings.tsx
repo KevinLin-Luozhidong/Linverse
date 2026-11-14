@@ -3,7 +3,7 @@ import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
   getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
-  siteStatus, siteSetPassword, setSiteToken, siteReset,
+  siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
   verifyOwnerPassword, clearOwnerToken,
@@ -307,8 +307,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     setSavingSitePw(true)
     try {
       // 没设过：直接设；已设：必须带对旧密码才能改
-      const r = await siteSetPassword(p, pwSet ? oldPw.trim() : undefined)
-      setSiteToken(r.token)
+      await siteSetPassword(p, pwSet ? oldPw.trim() : undefined) // 成功后服务端按新密码种 cookie，不用本地存 token
       setPwSet(true)
       try { localStorage.setItem('linverse.sitePwSet', '1') } catch {}
       setOldPw(''); setNewPw('')

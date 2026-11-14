@@ -510,6 +510,10 @@ body {
 .chat-welcome { margin: auto 0; text-align: center; padding: 0 32px; }
 .chat-welcome .w-title { font-size: calc(21px * var(--fss)); font-weight: 800; margin-bottom: 8px; }
 .chat-welcome .w-sub { font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.7; }
+.quiz-nudge { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 18px; padding: 12px 14px; text-align: left; font-size: calc(14px * var(--fss)); line-height: 1.6; color: var(--blue); background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: var(--radius); }
+.quiz-nudge:disabled { opacity: 0.6; }
+.stream-cursor { color: var(--blue); animation: stream-blink 1s step-end infinite; }
+@keyframes stream-blink { 50% { opacity: 0; } }
 
 /* ============ 学习工具页 ============ */
 .tools-home { padding: 20px 0 0; height: 100%; display: flex; flex-direction: column; }

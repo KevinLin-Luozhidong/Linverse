@@ -3,6 +3,7 @@ const express = require('express');
 const crypto = require('crypto');
 const dao = require('../db/dao');
 const { ah, need } = require('./helpers');
+const { readSiteToken } = require('../siteAuth');
 
 // 定长比较防时序攻击
 function safeEqualSiteToken(a, b) {
@@ -39,7 +40,7 @@ router.post('/:id/claim', ah(async (req, res) => {
   if (!siteHash) {
     return res.status(403).json({ error: 'legacy_claim_requires_site_password', message: '迁移旧账号前，请先设置访问密码，再重新打开应用' });
   }
-  if (!safeEqualSiteToken(req.headers['x-site-token'], siteHash)) {
+  if (!safeEqualSiteToken(readSiteToken(req), siteHash)) {
     return res.status(401).json({ error: 'need_site_password', message: '请先验证访问密码' });
   }
   const id = req.params.id;

@@ -8,7 +8,8 @@ import { DEFAULT_REGION_ID } from './regions'
 const BASE = import.meta.env.VITE_API_URL || ''
 
 // 通用请求：自动拼 JSON 头并解析返回，失败时抛出中文错误信息
-// 访问密码 token 存在 localStorage，每次请求自动带在 x-site-token 头里
+// 访问密码凭证是 httpOnly cookie（浏览器自动带，JS 读不到）；
+// localStorage 里只剩老会话的旧 token，请求时顺带发在 x-site-token 头里做兼容
 async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authProfileId?: string): Promise<T> {
   let res: Response
   const token = getSiteToken()
@@ -55,6 +56,10 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authP
     err.code = code
     throw err
   }
+  // 凭证迁移：服务端在每次鉴权成功的响应里都会种下 httpOnly cookie，
+  // 本地 localStorage 里的旧 token 用完这次就可以清掉（以后只靠 cookie）。
+  // 只在非 /site 路由清：/site/* 不走鉴权中间件，不会种 cookie。
+  if (!path.startsWith('/site/') && getSiteToken()) clearSiteToken()
   // 204 无内容直接返回空对象
   if (res.status === 204) return {} as T
   return (await res.json()) as T
@@ -196,6 +201,98 @@ export async function ask(p: AskParams): Promise<AskResult> {
     }
     throw e
   }
+}
+
+// ---- AI 问答（流式） ----
+// 流式：POST /api/ask 带 stream:true，后端按 SSE 推词；
+// onToken 每来一个词调一次，onStatus 收状态事件（正在查课本/正在回答）；
+// 结束时 done 事件里带完整结果（conversationId、thinkSeconds 等）。
+// 失败时抛错的方式与 req() 一致（401 密码失效同样弹密码门）。
+export async function askStream(
+  p: AskParams,
+  onToken: (t: string) => void,
+  onStatus?: (text: string) => void,
+): Promise<AskResult> {
+  const token = getSiteToken()
+  const requestProfileId = getPid()
+  const profileToken = getProfileToken(requestProfileId)
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/api/ask`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'x-site-token': token } : {}),
+        ...(requestProfileId && profileToken ? { 'x-profile-id': requestProfileId, 'x-profile-token': profileToken } : {}),
+        ...(getOwnerToken() ? { 'x-owner-token': getOwnerToken() } : {}),
+      },
+      body: JSON.stringify({ ...p, stream: true }),
+      signal: AbortSignal.timeout(120000),
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('请求超时了，网络有点慢，重试一次试试')
+    }
+    throw new Error('连不上后端服务，确认后端已启动')
+  }
+  if (!res.ok) {
+    let msg = '请求失败'
+    let code = ''
+    try {
+      const body = await res.json()
+      if (body && typeof body.error === 'string') {
+        msg = typeof body.message === 'string' ? body.message : body.error
+        code = body.error
+      }
+    } catch {}
+    if (res.status === 401 && code === 'need_site_password') {
+      throw needSitePasswordError()
+    }
+    const err = new Error(msg) as Error & { code?: string }
+    err.code = code
+    throw err
+  }
+  if (!res.body) throw new Error('流式回答失败，后端没返回数据流')
+  // 读 SSE：事件按 `event: X\ndata: {...}\n\n` 分隔，data 行可能跨包，用 buf 拼
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let result: AskResult | null = null
+  const handleEvent = (event: string, data: string) => {
+    let d: { text?: string; message?: string } & Partial<AskResult>
+    try { d = JSON.parse(data) } catch { return }
+    if (event === 'token' && typeof d.text === 'string') onToken(d.text)
+    else if (event === 'status' && typeof d.text === 'string') onStatus?.(d.text)
+    else if (event === 'done') result = d as AskResult
+    else if (event === 'error') throw new Error(typeof d.message === 'string' ? d.message : '流式回答失败')
+  }
+  const parseBlock = (block: string) => {
+    let event = 'message'
+    let data = ''
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim()
+      else if (line.startsWith('data:')) data += line.slice(5).trim()
+    }
+    if (data) handleEvent(event, data)
+  }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let sep: number
+      while ((sep = buf.indexOf('\n\n')) >= 0) {
+        parseBlock(buf.slice(0, sep))
+        buf = buf.slice(sep + 2)
+      }
+    }
+    const tail = (buf + decoder.decode()).trim()
+    if (tail) parseBlock(tail)
+  } finally {
+    try { reader.releaseLock() } catch {}
+  }
+  if (!result) throw new Error('流式回答中断了，没收到完整结果')
+  return result
 }
 
 // 演示模型本地回答：纯前端假数据，仅用于无后端时体验流程
@@ -436,17 +533,15 @@ export const clearProfileAuth = () => {
 // ---- 全站访问密码 ----
 // token 就是密码哈希本身：验证通过后存本地，每次请求自动带上；改密码后旧 token 自动失效
 const SITE_TOKEN = 'linverse.siteToken'
+// getSiteToken/clearSiteToken 只服务老会话迁移：新登录不再往 localStorage 写 token，
+// 凭证唯一来源是服务端种的 httpOnly cookie（浏览器自动带，JS 读不到）
 export const getSiteToken = () => localStorage.getItem(SITE_TOKEN) || ''
-export const setSiteToken = (t: string) => {
-  if (t) localStorage.setItem(SITE_TOKEN, t)
-  else localStorage.removeItem(SITE_TOKEN)
-}
 export const clearSiteToken = () => localStorage.removeItem(SITE_TOKEN)
 export const siteStatus = () => get<{ passwordSet: boolean }>('/site/status')
 export const siteVerify = (password: string) =>
-  post<{ ok: boolean; token: string }>('/site/verify', { password })
+  post<{ ok: boolean }>('/site/verify', { password })
 export const siteSetPassword = (password: string, oldPassword?: string) =>
-  post<{ ok: boolean; token: string }>('/site/password', { password, oldPassword })
+  post<{ ok: boolean }>('/site/password', { password, oldPassword })
 // 清空所有数据：后端要求 token + 二次确认，成功后账号 ID 从 1 重来
 export const siteReset = (danger: string) => post<{ ok: boolean }>('/site/reset', { confirm: 'RESET', danger })
 // 所有者密码：只属于本人的密码，清空数据时必须输对

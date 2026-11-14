@@ -366,6 +366,202 @@ throw new Error(`不支持的模型类型：${model}`);
 return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched};
 }
 
-module.exports = { ask };
+// ---------- 流式输出（SSE） ----------
+// 人话：普通问答是等 AI 把整段写完、一次返回，前几秒界面一片黑、像卡住了。
+// 流式是 AI 写一个词就推一个词，前端边收边显示，首字几百毫秒就出来。
+// 协议：后端把上游的流原样透传成 SSE 事件（token 事件推词，done 事件收尾）。
+// 各家流的格式不一样，但都是"一行一个 JSON"：
+//   - OpenAI 兼容（DeepSeek/OpenAI/custom）：data: {"choices":[{"delta":{"content":"词"}}]}，结尾 data: [DONE]
+//   - Gemini：data: {"candidates":[{"content":{"parts":[{"text":"词"}]}}]}
+//   - Ollama：每行一个裸 JSON {"message":{"content":"词"},"done":false}，done:true 结束
+
+// 从上游 JSON 里抠出本行新出的词（纯函数，可单测）
+function extractOpenAIDelta(d) { return d?.choices?.[0]?.delta?.content || ''; }
+function extractGeminiText(d) {
+  const parts = d?.candidates?.[0]?.content?.parts || [];
+  return parts.map((x) => x.text || '').join('');
+}
+function extractOllamaText(d) { return d?.message?.content || ''; }
+
+// 把上游响应体一行行读出来，每行解析后把新词交给 onToken。
+// 中途断行（一个 JSON 被拆到两个 TCP 包）用 buf 拼起来再解析，不丢词。
+async function pumpSseStream(res, extract, onToken) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line || line.startsWith(':')) continue; // 空行 / 心跳注释
+        const payload = line.startsWith('data:') ? line.slice(5).trim() : line;
+        if (payload === '[DONE]') return;
+        let d;
+        try { d = JSON.parse(payload); } catch { continue; } // 半行 JSON 等下一包拼全
+        const text = extract(d);
+        if (text) onToken(text);
+      }
+    }
+    // 尾巴上没换行符的最后一行（Ollama 偶尔这样）也别丢
+    const tail = (buf + decoder.decode()).trim();
+    if (tail && !tail.startsWith(':')) {
+      const payload = tail.startsWith('data:') ? tail.slice(5).trim() : tail;
+      if (payload && payload !== '[DONE]') {
+        try { const text = extract(JSON.parse(payload)); if (text) onToken(text); } catch {}
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+}
+
+// OpenAI 兼容接口的流式调用：body 里加 stream:true，上游就按行推词
+async function streamOpenAICompatible({ url, body, headers, name, onToken }) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...body, stream: true }),
+    // 流式回答整体可能超过 60 秒（长回答边写边推），按前端同款 120 秒兜底
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error(await providerErrorText(res, name));
+  await pumpSseStream(res, extractOpenAIDelta, onToken);
+}
+
+async function streamDeepSeek({ question, imageUrl, aiKey, modelName, onToken }) {
+  await streamOpenAICompatible({
+    url: 'https://api.deepseek.com/chat/completions',
+    body: openAICompatibleBody({ modelName: modelName || 'deepseek-chat', question, imageUrl }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiKey}` },
+    name: 'DeepSeek',
+    onToken,
+  });
+}
+
+async function streamOpenAI({ question, imageUrl, aiKey, modelName, onToken }) {
+  await streamOpenAICompatible({
+    url: 'https://api.openai.com/v1/chat/completions',
+    body: openAICompatibleBody({ modelName: modelName || 'gpt-4o-mini', question, imageUrl }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aiKey}` },
+    name: 'OpenAI',
+    onToken,
+  });
+}
+
+async function streamGemini({ question, imageUrl, aiKey, modelName, onToken }) {
+  const model = modelName || 'gemini-2.0-flash';
+  const parts = [{ text: question }];
+  if (imageUrl) {
+    if (/^https?:\/\//.test(imageUrl)) {
+      parts.push({ fileData: { mimeType: 'image/jpeg', fileUri: imageUrl } });
+    } else if (/^data:image\/(\w+);base64,/.test(imageUrl)) {
+      const m = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+      parts.push({ inlineData: { mimeType: `image/${m[1]}`, data: m[2] } });
+    } else {
+      parts.push({ text: `（附带图片：${imageUrl}，请结合图片回答）` });
+    }
+  }
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${aiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。' }] },
+        contents: [{ parts }],
+      }),
+      signal: AbortSignal.timeout(120000),
+    }
+  );
+  if (!res.ok) throw new Error(await providerErrorText(res, 'Gemini'));
+  await pumpSseStream(res, extractGeminiText, onToken);
+}
+
+async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, onToken }) {
+  const { url, format } = await resolveCustomEndpoint(endpoint);
+  const headers = { 'Content-Type': 'application/json' };
+  if (aiKey) headers.Authorization = `Bearer ${aiKey}`;
+  if (format === 'ollama') {
+    // Ollama：stream:true 后按行推裸 JSON，不带 data: 前缀，done:true 结束
+    let content = question;
+    if (imageUrl) content = `${question}\n（附带图片：${imageUrl}，请结合图片回答）`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: modelName || 'llama3', messages: [{ role: 'user', content }], stream: true }),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) throw new Error(await providerErrorText(res, '自定义接口'));
+    await pumpSseStream(res, extractOllamaText, onToken);
+    return;
+  }
+  await streamOpenAICompatible({
+    url,
+    body: openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl }),
+    headers,
+    name: '自定义接口',
+    onToken,
+  });
+}
+
+// 流式统一入口：与 ask() 同款分发，只是把回答一个词一个词推给 onToken；
+// 返回 { answer, thinkSeconds, webSearched }（answer 是全量文本，路由拿它存档）。
+async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, onToken }) {
+  const key = aiKey || process.env.AI_API_KEY || '';
+  const started = Date.now();
+  let answer = '';
+  const emit = (t) => { answer += t; onToken(t); };
+
+  // 没 Key 或明确选 demo → 演示模式：把示例回答切成小段、隔 15ms 推一段，
+  // 让演示也能走通整条流式链路（路由、前端都不用为 demo 单独分支）
+  if (!key || model === 'demo') {
+    if (deepThink) await sleep(1000 + Math.random() * 2000);
+    const text = imageUrl ? demoVisionAnswer(question) : demoTextAnswer(question);
+    for (let i = 0; i < text.length; i += 12) {
+      emit(text.slice(i, i + 12));
+      await sleep(15);
+    }
+    return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched: false };
+  }
+
+  let finalQuestion = question;
+  let webSearched = false;
+  if (webSearch && model === 'custom' && String(endpoint || '').includes('bigmodel.cn')) {
+    try {
+      const results = await zhipuWebSearch(question, key);
+      if (results.length) {
+        finalQuestion = buildSearchBlock(results) + question;
+        webSearched = true;
+      }
+    } catch (err) {
+      console.error('[web_search] 搜索失败，降级为普通问答：', err.message);
+    }
+  }
+
+  switch (model) {
+    case 'deepseek':
+      await streamDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
+      break;
+    case 'gemini':
+      await streamGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
+      break;
+    case 'openai':
+      await streamOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
+      break;
+    case 'custom':
+      await streamCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName, onToken: emit });
+      break;
+    default:
+      throw new Error(`不支持的模型类型：${model}`);
+  }
+  return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched };
+}
+
+module.exports = { ask, askStream };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream };

@@ -59,12 +59,12 @@ return [...map.values()].sort((a, b) => b.score - a.score).map((e) => e.row);
 // 余弦距离阈值：低于此值视为高置信度命中，直接采用标准答案。
 // 可通过环境变量 FAQ_THRESHOLD 调整（默认 0.3；值越小要求越严格）。
 const FAQ_DISTANCE_THRESHOLD = parseFloat(process.env.FAQ_THRESHOLD) || 0.3;
-async function searchKbContext(question, topK = 5) {
+async function searchKbContext(question, topK = 5, profileId) {
 // 向量链和关键词链互不依赖，并行跑（以前是串行等三段）；标准问答复用向量，拿到向量后再跑
 const vecChain = (async () => {
 try {
 const vec = await embedQuery(question);
-const vecRows = await dao.kbSearch(vec, topK + 4);
+const vecRows = await dao.kbSearch(vec, topK + 4, profileId);
 return { vec, vecRows };
 } catch (e) {
 console.warn('[rag] 向量检索失败，降级为纯关键词检索：', e.message);
@@ -73,7 +73,7 @@ return { vec: null, vecRows: [] };
 })();
 const kwChain = (async () => {
 try {
-return await dao.kbKeywordSearch(question, topK + 4);
+return await dao.kbKeywordSearch(question, topK + 4, profileId);
 } catch (e) {
 console.warn('[rag] 关键词检索失败：', e.message);
 return [];
@@ -84,7 +84,7 @@ const [{ vec, vecRows }, kwRows] = await Promise.all([vecChain, kwChain]);
 let faq = null;
 if (vec) {
 try {
-const frows = await dao.kbFaqSearch(vec);
+const frows = await dao.kbFaqSearch(vec, profileId);
 if (frows.length && frows[0].distance < FAQ_DISTANCE_THRESHOLD) faq = frows[0];
 } catch (e) {
 console.warn('[rag] 问答库检索失败：', e.message);
@@ -193,10 +193,10 @@ res.json({ inserted: n });
 }));
 
 router.post('/search', ah(async (req, res) => {
-const { question, topK} = req.body;
+const { question, topK, profileId} = req.body;
 if (need(res, question && question.trim(), 'question 不能为空')) return;
 const vec = await embedQuery(question.trim());
-const rows = await dao.kbSearch(vec, Math.min(topK || 5, 10));
+const rows = await dao.kbSearch(vec, Math.min(topK || 5, 10), profileId);
 res.json({
 chunks: rows.map((r) => ({
 book: r.book,
