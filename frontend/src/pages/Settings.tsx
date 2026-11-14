@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -78,15 +78,20 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 右滑退出二级菜单（iOS 手势习惯：从左边缘向右滑）
   const swipe = useSwipeBack(goBack, view !== 'menu')
 
-  // 账号
-  const [profiles, setProfiles] = useState<P[]>([])
+  // 账号：列表先从本地缓存顶上（上次同步后存在手机里），一打开就是对的，后端回来再刷新
+  const [profiles, setProfiles] = useState<P[]>(() =>
+    getCachedProfiles().map((p) => ({ ...p, id: String(p.id) })))
   const [newName, setNewName] = useState('')
   const [findId, setFindId] = useState('') // 输入账号 ID 找回
   const [findToken, setFindToken] = useState('') // 账号恢复密钥
   const [editingId, setEditingId] = useState('')
   const [editingName, setEditingName] = useState('')
   const [delId, setDelId] = useState('')
-  const [displayName, setDisplayName] = useState('学习者')
+  // 名字也先从本地缓存顶上：缓存里有当前账号就直接显示，缓存没有时才短暂显示默认名
+  const [displayName, setDisplayName] = useState(() => {
+    const me = getCachedProfiles().find((p) => String(p.id) === String(profileId))
+    return me ? me.name : '学习者'
+  })
 
   // 外观
   const [fontSize, setFontSize] = useState('medium')

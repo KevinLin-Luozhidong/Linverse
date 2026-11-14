@@ -422,6 +422,9 @@ function readProfileIndex(): Profile[] {
       .map((p) => ({ id: String(p.id), name: p.name, avatar_url: p.avatar_url })) : []
   } catch { return [] }
 }
+// 本地已缓存的账号列表（上次从后端同步后存在 localStorage）：同步读，不发请求，
+// 给设置页这类"一打开就要显示名字"的地方先顶上，后端回来再刷新
+export const getCachedProfiles = () => readProfileIndex()
 function rememberProfiles(profiles: Profile[]) {
   const known = new Map(readProfileIndex().map((p) => [String(p.id), p]))
   profiles.forEach((p) => known.set(String(p.id), {
