@@ -290,6 +290,11 @@ body {
 }
 .model-menu button:active { background: var(--blue-soft); transform: scale(0.98); }
 .model-menu button.on { color: var(--blue-deep); font-weight: 700; }
+/* 模型菜单的组标题（"模型"/"功能"）：小灰字，只起分区作用，不可点 */
+.model-menu-label {
+  font-size: calc(12px * var(--fss)); font-weight: 700; color: var(--ink3);
+  padding: 8px 12px 4px;
+}
 .status-cap {
   margin-left: auto;
   font-size: calc(12px * var(--fss)); font-weight: 700;

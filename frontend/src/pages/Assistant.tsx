@@ -16,7 +16,7 @@ import { toggleFav, isFav } from '../favs'
 import MathKeyboard, { insertIntoTextarea, deleteBackward } from '../MathKeyboard'
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉
-// 视觉对齐演示版：顶部汉堡 + 模型胶囊 + 状态胶囊，回答无边框、重点蓝高亮
+// 顶栏：汉堡 + 模型胶囊（模型菜单分"模型"/"功能"两组），状态胶囊只在演示或未填 Key 时出现
 
 const MODELS = [
   { v: 'demo', label: '演示' },
@@ -675,11 +675,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const modelLabel = model === 'custom' && customModelName
     ? customModelName
     : (MODELS.find((m) => m.v === model)?.label || '演示')
-  // 右上状态胶囊：演示模式 / 已填 Key 接入 / 非演示但没填 Key
+  // 右上状态胶囊只在有事要提醒时出现：演示版（回答是假示例）/ 未填 Key（要去设置里填 Key）。
+  // Key 已填好时不显示"已接入"——模型胶囊已经写了用的是谁，那个字不提供任何信息。
   const statusCap = model === 'demo'
     ? { t: '演示版', cls: 'demo' }
     : getAiKey()
-      ? { t: '已接入', cls: 'live' }
+      ? null
       : { t: '未填 Key', cls: 'demo' }
 
   return (
@@ -697,6 +698,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
             <>
               <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setMenuOpen(false)} />
               <div className="model-menu" style={{ zIndex: 50 }}>
+                {/* 菜单分两组：上面"模型"是"用谁回答"，下面"功能"是"回答时加什么"，各带小标题，不再混成一长串 */}
+                <div className="model-menu-label">模型</div>
                 {MODELS.map((m) => (
                   <button key={m.v} className={m.v === model ? 'on' : ''}
                     onClick={() => {
@@ -707,8 +710,14 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                     {m.v === model && <I n="check" size={15} />}{m.v === 'custom' && customModelName ? customModelName : m.label}
                   </button>
                 ))}
-                {/* 低频开关收到模型菜单里，顶栏只留模型和深度思考，单手点得准 */}
                 <div style={{ height: 1, background: 'var(--bd)', margin: '6px 8px' }} />
+                <div className="model-menu-label">功能</div>
+                <button className={deepThink ? 'on' : ''}
+                  onClick={() => { const v = !deepThink; setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }}
+                  aria-label="深度思考开关" aria-pressed={deepThink}>
+                  <I n="sparkle" size={15} />深度思考
+                  <span style={{ marginLeft: 'auto', display: 'flex' }}>{deepThink && <I n="check" size={15} />}</span>
+                </button>
                 <button className={webSearch && webSearchAvailable ? 'on' : ''}
                   disabled={!webSearchAvailable}
                   title={!webSearchAvailable ? '联网搜索仅支持智谱线路' : undefined}
@@ -716,25 +725,22 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                   onClick={() => {
                     const v = !webSearch; setWebSearch(v); localStorage.setItem('linverse.webSearch', v ? '1' : '0')
                   }}>
-                  {webSearch && webSearchAvailable && <I n="check" size={15} />}联网搜索
+                  <I n="search" size={15} />联网搜索
+                  <span style={{ marginLeft: 'auto', display: 'flex' }}>{webSearch && webSearchAvailable && <I n="check" size={15} />}</span>
                 </button>
                 <button className={useKb ? 'on' : ''}
                   onClick={() => {
                     const v = !useKb; setUseKb(v); localStorage.setItem('linverse.useKb', v ? '1' : '0')
                   }}>
-                  {useKb && <I n="check" size={15} />}查课本
+                  <I n="book" size={15} />查课本
+                  <span style={{ marginLeft: 'auto', display: 'flex' }}>{useKb && <I n="check" size={15} />}</span>
                 </button>
               </div>
             </>
           )}
         </div>
-        {/* 深度思考：按需求文档放在左上角、和模型选择一起（原来在输入框上方） */}
-        <button className={'think-pill' + (deepThink ? ' on' : '')}
-          onClick={() => { const v = !deepThink; setDeepThink(v); localStorage.setItem('linverse.deepThink', v ? '1' : '0') }}
-          aria-label="深度思考开关" aria-pressed={deepThink}>
-          <I n="sparkle" size={14} />深度思考
-        </button>
-        <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>
+        {/* 深度思考也收进模型菜单的功能组了，顶栏只留汉堡和模型胶囊 */}
+        {statusCap && <span className={'status-cap ' + statusCap.cls}>{statusCap.t}</span>}
       </div>
 
       {/* 左侧抽屉：新建会话 + 会话/收藏双标签，默认关闭不闪现 */}
