@@ -3,7 +3,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { askStream, _test } = require('../src/ai/providers.js');
+const { ask, askStream, _test } = require('../src/ai/providers.js');
 const { extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream } = _test;
 
 // 模拟上游响应体：按给定字节块逐个返回
@@ -76,13 +76,29 @@ describe('pumpSseStream（行解析）', () => {
   });
 });
 
-describe('askStream 演示模式', () => {
-  it('示例回答被切成多段推出，拼起来等于整段', async () => {
-    const got = [];
-    const r = await askStream({ model: 'demo', question: '解方程 2x+5=13', onToken: (t) => got.push(t) });
-    assert.ok(got.length > 1, '应该推多段');
-    assert.equal(got.join(''), r.answer);
-    assert.match(r.answer, /演示模式/);
-    assert.equal(r.webSearched, false);
+// 演示模式已删：没 Key 就报错，不推假词、不给假答案
+describe('没 Key 直接报错', () => {
+  it('askStream 没 Key：不推一个词，直接抛错', async () => {
+    const saved = process.env.AI_API_KEY;
+    delete process.env.AI_API_KEY;
+    try {
+      const got = [];
+      await assert.rejects(
+        askStream({ model: 'deepseek', question: '解方程 2x+5=13', onToken: (t) => got.push(t) }),
+        /AI Key/
+      );
+      assert.deepEqual(got, []);
+    } finally {
+      if (saved !== undefined) process.env.AI_API_KEY = saved;
+    }
+  });
+  it('ask 没 Key：直接抛错', async () => {
+    const saved = process.env.AI_API_KEY;
+    delete process.env.AI_API_KEY;
+    try {
+      await assert.rejects(ask({ model: 'deepseek', question: '你好' }), /AI Key/);
+    } finally {
+      if (saved !== undefined) process.env.AI_API_KEY = saved;
+    }
   });
 });

@@ -6,7 +6,7 @@ import Settings from './pages/Settings'
 import Report from './pages/Report'
 import SiteGate from './SiteGate'
 import { I, Toast, Spin } from './components'
-import { listProfiles, createProfile, claimProfile, getSettings, siteStatus, getSiteToken, getPid, setPid, getProfileToken, setProfileToken, clearPid } from '@api'
+import { listProfiles, createProfile, claimProfile, getSettings, siteStatus, getPid, setPid, getProfileToken, setProfileToken, clearPid } from '@api'
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
@@ -39,18 +39,18 @@ export default function App() {
   // 个人中心二级页同理：首次进入挂载，之后常驻
   const [visitedMe, setVisitedMe] = useState<MeView[]>([initView])
 
-  // 访问密码门：启动时先问后端有没有设密码。
+  // 访问密码门：启动时先问后端有没有设密码、以及本次请求带没带有效凭证。
   // loading=查状态中，open=要输密码，pass=通过（没设密码也算通过）
   // 密码是主人自己在"设置 → 访问密码"里定的；token 过期被后端 401 时也会弹回门
   const [gate, setGate] = useState<'loading' | 'open' | 'pass'>('loading')
   useEffect(() => {
     let alive = true
-    // 开屏加速：本地记得"没设密码"（linverse.sitePwSet=0）或有旧 token，直接放行不等后端；
-    // 后台再找后端确认，万一其实设了密码但本地没 token，再弹密码门。
+    // 开屏加速：本地记得"没设密码"（linverse.sitePwSet=0），直接放行不等后端；
+    // 后台再找后端确认。是否"已登录"不再读 localStorage（凭证改成 httpOnly cookie，
+    // JS 读不到），只认后端 /site/status 回的 authed——cookie 在，authed 就是真。
     // （Vercel 无服务器冷启动要几秒，开屏不能干等它）
     const cachedNoPw = localStorage.getItem('linverse.sitePwSet') === '0'
-    const hasToken = !!getSiteToken()
-    if (cachedNoPw || hasToken) setGate('pass')
+    if (cachedNoPw) setGate('pass')
     // 开屏兜底：2.5 秒后端还没回话，先放行进 App（后台继续等，确认要密码再弹门）
     // 避免国内网络 hang 住时卡在 Linverse 启动屏"等得崩溃"
     let gateDone = false
@@ -63,13 +63,13 @@ export default function App() {
         clearTimeout(gateTimer)
         try { localStorage.setItem('linverse.sitePwSet', s.passwordSet ? '1' : '0') } catch {}
         if (!alive) return
-        if (s.passwordSet && !getSiteToken()) setGate('open')
+        if (s.passwordSet && !s.authed) setGate('open')
         else setGate('pass')
       })
       .catch(() => {
         gateDone = true
         clearTimeout(gateTimer)
-        if (alive && !cachedNoPw && !hasToken) setGate('pass')
+        if (alive && !cachedNoPw) setGate('pass')
       }) // 后端连不上：先放行，页面内再提示
     const onLock = () => setGate('open')
     window.addEventListener('linverse:site-locked', onLock)

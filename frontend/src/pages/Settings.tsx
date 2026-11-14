@@ -20,7 +20,6 @@ const TITLES: Record<View, string> = {
 }
 
 const PROVIDERS = [
-  { v: 'demo', label: '演示' },
   { v: 'deepseek', label: 'DeepSeek' },
   { v: 'gemini', label: 'Gemini' },
   { v: 'openai', label: 'OpenAI' },
@@ -97,8 +96,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [fontSize, setFontSize] = useState('medium')
   const [theme, setTheme] = useState('system')
 
-  // AI 接口
-  const [provider, setProvider] = useState('demo')
+  // AI 接口（演示已删，默认 DeepSeek）
+  const [provider, setProvider] = useState('deepseek')
   const [aiModel, setAiModel] = useState('')
   const [endpoint, setEndpoint] = useState('')
   const [key, setKey] = useState('')
@@ -119,7 +118,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     getSettings(profileId).then((s) => {
       setFontSize(s.fontSize || 'medium')
       setTheme(s.theme || 'system')
-      setProvider(s.aiProvider || 'demo')
+      setProvider(s.aiProvider && s.aiProvider !== 'demo' ? s.aiProvider : 'deepseek')
       setAiModel(s.aiModel || '')
       setEndpoint(s.aiEndpoint || '')
       applyAppearance(s.fontSize || 'medium', s.theme || 'system')
@@ -386,7 +385,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     } finally { setSavingDangerPw(false) }
   }
 
-  const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || '演示'
+  const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || 'DeepSeek'
   const themeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色'
   const fontLabel = fontSize === 'small' ? '小' : fontSize === 'large' ? '大' : '标准'
 

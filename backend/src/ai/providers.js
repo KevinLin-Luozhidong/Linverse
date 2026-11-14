@@ -3,59 +3,11 @@
 // 上层路由不用管是 DeepSeek、Gemini 还是本地 Ollama，参数格式永远一样。
 //
 // ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName})
-// model: 'demo' | 'deepseek' | 'gemini' | 'openai' | 'custom'
-// aiKey: 优先用请求体里的 aiKey，其次用环境变量 AI_API_KEY，都没有就走演示模式
+// model: 'deepseek' | 'gemini' | 'openai' | 'custom'
+// aiKey: 优先用请求体里的 aiKey，其次用环境变量 AI_API_KEY，都没有就报错（演示的假答案已删）
 // endpoint: 只有 model=custom 时用（从 settings 表的 aiEndpoint 取）
 // 返回：{ answer, thinkSeconds}
 // ============================================================================
-
-// 让程序睡 n 毫秒（演示模式模拟"思考中"用）
-function sleep(ms) {
-return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// 对外 AI 请求的超时兜底（2026-10-22 优化）：上游卡住时最多等 60 秒就放弃，
-// 不再无限期挂住请求；联网搜索只是配角，15 秒就降级
-const FETCH_TIMEOUT_MS = 60000;
-const SEARCH_TIMEOUT_MS = 15000;
-
-// ---------- 演示模式：没配 Key 时返回像样的示例回答（诚实标注，不伪装成真 AI） ----------
-
-// 纯文字问题的示例回答：一道数学题的分步讲解
-function demoTextAnswer(question) {
-return `【演示模式】你还没有配置 AI Key，所以这是内置的示例回答。去「设置」页填上 Key 即可换成真实 AI。
-
-针对你的问题「${question}」，真实 AI 会这样回答——以一道典型数学题为例：
-
-**题目**：解方程 2x + 5 = 13
-
-**解题步骤**：
-1. **移项**：把常数项 5 移到等号右边，变号得 2x = 13 − 5
-2. **合并**：右边计算得 2x = 8
-3. **系数化为 1**：两边同时除以 2，得 x = 4
-4. **检验**：把 x = 4 代入原方程，左边 = 2×4 + 5 = 13 = 右边 ✓
-
-**易错点**：移项时别忘了变号；最后一定要把答案代回去验算一遍。
-
-配置好 Key 后，把题目原样再问一遍，就能得到针对你这道题的真实讲解啦。`;
-}
-
-// 带图的示例回答：模拟"看图讲题"
-function demoVisionAnswer(question) {
-return `【演示模式】你还没有配置 AI Key，所以这是内置的示例回答。去「设置」页填上 Key 即可换成真实 AI 看图。
-
-针对你的问题「${question || '（图片题目）'}」，真实 AI 看到图片后会这样讲题：
-
-**读图**：我看到这是一道几何题，图中有一个三角形，已知两条边的长度和一个角的度数。
-
-**思路**：
-1. 先把图中所有已知条件标注出来，确认"已知什么、求什么"
-2. 判断用哪个定理：有两边一夹角 → 想到余弦定理
-3. 列式计算，注意单位和符号
-4. 回头检查：答案是否符合常识（比如边长不能是负数）
-
-配置好 Key 后再拍一次，就能得到针对这张图的真实讲解啦。`;
-}
 
 // ---------- 真实供应商 ----------
 
@@ -315,18 +267,13 @@ return '【联网搜索结果（仅供参考，时效性信息请以来源为准
 // ---------- 统一入口 ----------
 
 async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch}) {
-// Key 优先级：请求体 aiKey > 环境变量 AI_API_KEY > 无（演示模式）
+// Key 优先级：请求体 aiKey > 环境变量 AI_API_KEY > 无（没 Key 就报错）
 const key = aiKey || process.env.AI_API_KEY || '';
 const started = Date.now();
 
-// 没 Key 或明确选 demo → 演示模式
-if (!key || model === 'demo') {
-if (deepThink) {
-// 模拟"深度思考"：随机等 1~3 秒
-await sleep(1000 + Math.random() * 2000);
-}
-const answer = imageUrl? demoVisionAnswer(question): demoTextAnswer(question);
-return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched: false};
+// 没 Key 就直说：演示的假答案已删，没 Key 问不了，别给假回答糊弄人
+if (!key) {
+  throw new Error('还没填 AI Key：去设置 → AI 接口填好 Key 再提问');
 }
 
 let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写入参 question
@@ -517,16 +464,9 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   let answer = '';
   const emit = (t) => { answer += t; onToken(t); };
 
-  // 没 Key 或明确选 demo → 演示模式：把示例回答切成小段、隔 15ms 推一段，
-  // 让演示也能走通整条流式链路（路由、前端都不用为 demo 单独分支）
-  if (!key || model === 'demo') {
-    if (deepThink) await sleep(1000 + Math.random() * 2000);
-    const text = imageUrl ? demoVisionAnswer(question) : demoTextAnswer(question);
-    for (let i = 0; i < text.length; i += 12) {
-      emit(text.slice(i, i + 12));
-      await sleep(15);
-    }
-    return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched: false };
+  // 没 Key 就直说，不推假词
+  if (!key) {
+    throw new Error('还没填 AI Key：去设置 → AI 接口填好 Key 再提问');
   }
 
   let finalQuestion = question;

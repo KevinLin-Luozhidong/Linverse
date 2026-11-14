@@ -171,7 +171,7 @@ router.post('/ask', ah(async (req, res) => {
     sendEvent('status', { text: kbUsed ? '已查课本，正在回答…' : '正在回答…' });
     try {
       const { answer, thinkSeconds, webSearched } = await askStream({
-        model: model || 'demo',
+        model: model || 'deepseek',
         question: finalQuestion,
         imageUrl: resolveImageForVision(imageUrl),
         deepThink: !!deepThink,
@@ -187,7 +187,7 @@ router.post('/ask', ah(async (req, res) => {
         sendEvent('error', { message: '对话不存在' });
         return res.end();
       }
-      sendEvent('done', { answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched, kbUsed, kbRefs });
+      sendEvent('done', { answer, thinkSeconds, conversationId: cid, model: model || 'deepseek', webSearched: !!webSearched, kbUsed, kbRefs });
       return res.end();
     } catch (e) {
       sendEvent('error', { message: e instanceof Error ? e.message : '流式回答失败' });
@@ -198,7 +198,7 @@ router.post('/ask', ah(async (req, res) => {
   // 先调 AI，成功后再建会话存档（失败不留空会话）
   // webSearch：前端"联网搜索"开关；只在智谱线路生效，其他线路后端自动忽略
   const { answer, thinkSeconds, webSearched } = await ask({
-    model: model || 'demo',
+    model: model || 'deepseek',
     question: finalQuestion,
     imageUrl: resolveImageForVision(imageUrl),
     deepThink: !!deepThink,
@@ -214,7 +214,7 @@ router.post('/ask', ah(async (req, res) => {
   const cid = await saveTurn(profileId, conversationId, question, answer);
   if (!cid) return res.status(404).json({ error: '对话不存在' });
 
-  res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'demo', webSearched: !!webSearched, kbUsed, kbRefs });
+  res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'deepseek', webSearched: !!webSearched, kbUsed, kbRefs });
 }));
 
 // ---------- OCR：识别图片中的文字 ----------

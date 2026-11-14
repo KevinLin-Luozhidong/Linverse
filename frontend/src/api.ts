@@ -184,23 +184,9 @@ export interface AskParams {
 export interface KbRef { book: string; chapter: string; section: string; page_start: number; page_end: number }
 
 export async function ask(p: AskParams): Promise<AskResult> {
-  try {
-    // AI 回答（尤其深度思考+看图）经常超过 20 秒，单独给 120 秒超时，别误杀
-    return await post<AskResult>('/ask', p, 120000)
-  } catch (e) {
-    // 演示模型在后端连不上时用本地假数据，保证界面可体验
-    if (p.model === 'demo' && e instanceof Error && e.message.includes('连不上后端')) {
-      await new Promise((r) => setTimeout(r, 600))
-      return {
-        answer: demoAnswer(p.question),
-        thinkSeconds: p.deepThink ? 2 : 0,
-        conversationId: p.conversationId || 'demo',
-        model: 'demo',
-        webSearched: false,
-      }
-    }
-    throw e
-  }
+  // AI 回答（尤其深度思考+看图）经常超过 20 秒，单独给 120 秒超时，别误杀
+  // 演示模式已删：后端连不上就直接报连不上，不再给本地假答案
+  return await post<AskResult>('/ask', p, 120000)
 }
 
 // ---- AI 问答（流式） ----
@@ -295,19 +281,6 @@ export async function askStream(
   return result
 }
 
-// 演示模型本地回答：纯前端假数据，仅用于无后端时体验流程
-function demoAnswer(q: string): string {
-  const short = q.length > 24 ? q.slice(0, 24) + '…' : q
-  return (
-    `收到你的问题「${short}」\n\n` +
-    `这是演示模式的示例回答：连接真实 AI 后，这里会返回分步骤的讲解\n` +
-    `1 先理解题意，圈出关键词\n` +
-    `2 回忆相关知识点\n` +
-    `3 按步骤作答并检查\n\n` +
-    `去设置页填写 AI Key 即可切换到真实模型`
-  )
-}
-
 // ---- 会话 ----
 export const listConversations = (profileId: string) =>
   get<ConversationMeta[]>(`/conversations?profileId=${encodeURIComponent(profileId)}`)
@@ -341,7 +314,7 @@ export const ocr = (imageUrl: string, profileId?: string) => {
   const model = localStorage.getItem('linverse.model') || 'deepseek'
   return post<{ text: string; error?: string }>('/ocr', {
     imageUrl,
-    model: model === 'demo' ? 'deepseek' : model, // 演示模式没有真 Key，默认走 deepseek
+    model,
     aiKey: getAiKey() || undefined,
     profileId: profileId || undefined, // custom 模型时后端用它取 endpoint
   })
@@ -540,7 +513,7 @@ const SITE_TOKEN = 'linverse.siteToken'
 // 凭证唯一来源是服务端种的 httpOnly cookie（浏览器自动带，JS 读不到）
 export const getSiteToken = () => localStorage.getItem(SITE_TOKEN) || ''
 export const clearSiteToken = () => localStorage.removeItem(SITE_TOKEN)
-export const siteStatus = () => get<{ passwordSet: boolean }>('/site/status')
+export const siteStatus = () => get<{ passwordSet: boolean; authed: boolean }>('/site/status')
 export const siteVerify = (password: string) =>
   post<{ ok: boolean }>('/site/verify', { password })
 export const siteSetPassword = (password: string, oldPassword?: string) =>

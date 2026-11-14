@@ -22,8 +22,7 @@
   "scripts": {
     "build": "tsc && vite build",
     "dev": "vite",
-    "preview": "vite preview",
-    "build:preview": "vite build --config vite.preview.config.ts"
+    "preview": "vite preview"
   },
   "type": "module",
   "version": "0.3.3"

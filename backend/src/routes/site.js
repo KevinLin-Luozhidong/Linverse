@@ -128,10 +128,13 @@ async function pwChangeClear(req, scope) {
   await dao.setSiteConfig(`pwchange_lock_${scope}_${ip}`, '0');
 }
 
-// 状态：有没有设密码（公开接口，密码门页面靠它决定展不展示输入框）
+// 状态：有没有设密码 + 本次请求带没带有效凭证（公开接口，密码门靠它决定展不展示输入框；
+// authed 让 App 在 cookie 时代也能判断"已经登录"，不再靠读 localStorage——
+// cookie 是 httpOnly，JS 读不到，只能问后端）
 router.get('/status', ah(async (req, res) => {
   const h = await dao.getSiteConfig(HASH_KEY);
-  res.json({ passwordSet: !!h });
+  const authed = !!h && safeEqual(readSiteToken(req), h);
+  res.json({ passwordSet: !!h, authed });
 }));
 
 // 验证：输对密码拿 token（token 就是存的哈希本身，改密码后旧 token 自动失效）

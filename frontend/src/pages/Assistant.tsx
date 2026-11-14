@@ -16,10 +16,9 @@ import { toggleFav, isFav } from '../favs'
 import MathKeyboard, { insertIntoTextarea, deleteBackward } from '../MathKeyboard'
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉
-// 顶栏：汉堡 + 模型胶囊（模型菜单分"模型"/"功能"两组），状态胶囊只在演示或未填 Key 时出现
+// 顶栏：汉堡 + 模型胶囊（模型菜单分"模型"/"功能"两组），状态胶囊只在未填 Key 时出现
 
 const MODELS = [
-  { v: 'demo', label: '演示' },
   { v: 'deepseek', label: 'DeepSeek' },
   { v: 'gemini', label: 'Gemini' },
   { v: 'openai', label: 'OpenAI' },
@@ -330,7 +329,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [sending, setSending] = useState(false)
   const sendReqIdRef = useRef<string>('') // 发送请求时的唯一ID，防止切会话后消息串台
   const openSeqRef = useRef(0) // 打开会话的序号，只让最后一次点击的响应写状态，防止后发先至
-  const [model, setModel] = useState(() => localStorage.getItem('linverse.model') || 'demo')
+  // 演示模式已删：默认 DeepSeek；手机里还存着旧的 'demo' 也自动迁过来
+  const [model, setModel] = useState(() => {
+    const saved = localStorage.getItem('linverse.model')
+    return saved && saved !== 'demo' ? saved : 'deepseek'
+  })
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
   // 联网搜索开关：默认关，用户手动打开；只在智谱线路可用（isZhipu）
   const [webSearch, setWebSearch] = useState(() => localStorage.getItem('linverse.webSearch') === '1')
@@ -615,7 +618,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         reloadConvs()
       } catch (streamErr) {
         stopFlush()
-        // 还没收到词：删掉占位消息，回落到整段返回的老路（演示兜底也在里面）
+        // 还没收到词：删掉占位消息，回落到整段返回的老路
         if (full === '' && sendReqIdRef.current === reqId) {
           setMsgs((v) => v.filter((_, i) => i !== aiIdx))
           setStreamingFor(-1)
@@ -674,14 +677,12 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   // 模型名显示：选了"自定义"且填了模型名，就显示真实名字（比如 glm-4v-flash），一眼知道接的是谁
   const modelLabel = model === 'custom' && customModelName
     ? customModelName
-    : (MODELS.find((m) => m.v === model)?.label || '演示')
-  // 右上状态胶囊只在有事要提醒时出现：演示版（回答是假示例）/ 未填 Key（要去设置里填 Key）。
-  // Key 已填好时不显示"已接入"——模型胶囊已经写了用的是谁，那个字不提供任何信息。
-  const statusCap = model === 'demo'
-    ? { t: '演示版', cls: 'demo' }
-    : getAiKey()
-      ? null
-      : { t: '未填 Key', cls: 'demo' }
+    : (MODELS.find((m) => m.v === model)?.label || 'DeepSeek')
+  // 右上状态胶囊只在有事要提醒时出现：未填 Key（要去设置里填 Key）。
+  // Key 已填好时不显示"已接入"；演示版已删，不再有"演示版"这一态。
+  const statusCap = getAiKey()
+    ? null
+    : { t: '未填 Key', cls: 'demo' }
 
   return (
     <div className="chat-wrap">

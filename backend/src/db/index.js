@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS settings (
   "displayName" TEXT NOT NULL DEFAULT '',
   "fontSize" TEXT NOT NULL DEFAULT 'medium',
   theme TEXT NOT NULL DEFAULT 'system', -- 默认跟随系统深浅色，用户可在设置页手动覆盖
-  "aiProvider" TEXT NOT NULL DEFAULT 'demo',
+  "aiProvider" TEXT NOT NULL DEFAULT 'deepseek',
   "aiModel" TEXT NOT NULL DEFAULT '',
   "aiEndpoint" TEXT NOT NULL DEFAULT '',
   FOREIGN KEY ("profileId") REFERENCES profiles(id) ON DELETE CASCADE
