@@ -264,7 +264,7 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
             title={`科目：${mistakeSubject}`}>
             <I n="notebook" size={14} />{savingMistake ? '存入中…' : '存入错题本'}
           </button>
-          <select value={mistakeSubject} onChange={(e) => setMistakeSubject(e.target.value)}
+          <select value={mistakeSubject} disabled={savingMistake} onChange={(e) => setMistakeSubject(e.target.value)}
             style={{ fontSize: `calc(12px * var(--fss))`, border: '1px solid var(--bd)', borderRadius: 6, padding: '2px 4px', background: 'var(--bg)', color: 'var(--ink)' }}>
             {SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>

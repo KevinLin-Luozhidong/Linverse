@@ -45,6 +45,12 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
   const qRef = useRef<HTMLTextAreaElement>(null)
   const aRef = useRef<HTMLTextAreaElement>(null)
   const rRef = useRef<HTMLTextAreaElement>(null)
+  // 符号盘展开时把当前文本框滚进可视区，避免保存按钮被盘挡住
+  useEffect(() => {
+    if (!mathOpen) return
+    const refs = { q: qRef, a: aRef, r: rRef }
+    refs[mathField].current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [mathOpen])
   const [masteredBusy, setMasteredBusy] = useState<string | null>(null) // 正在提交掌握态的错题 id：防连点
   const [selectMode, setSelectMode] = useState(false) // 批量选择模式
   const [selected, setSelected] = useState<Set<string>>(new Set())

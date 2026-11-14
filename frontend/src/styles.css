@@ -258,7 +258,6 @@ body {
 .chat-topbar {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px;
-  background: var(--bg);
   position: sticky; top: 0; z-index: 20;
 }
 .model-wrap { position: relative; }

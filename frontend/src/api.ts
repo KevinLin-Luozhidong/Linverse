@@ -48,11 +48,7 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = 20000, authP
     }
     // 访问密码不对/过期：清掉本地 token，通知 App 弹密码门
     if (res.status === 401 && code === 'need_site_password') {
-      clearSiteToken()
-      window.dispatchEvent(new Event('linverse:site-locked'))
-      const e = new Error('请输入访问密码') as Error & { needSitePassword: boolean }
-      e.needSitePassword = true
-      throw e
+      throw needSitePasswordError()
     }
     // 把后端给的错误 code 一起带上，调用方能按 code 分流（如看板的 unknown_region）
     const err = new Error(msg) as Error & { code?: string }
@@ -130,6 +126,15 @@ export function imgSrc(url?: string): string {
   return url
 }
 
+// 访问密码失效时的统一错误：清本地 token、通知 App 弹密码门，调用方凭 needSitePassword 识别
+function needSitePasswordError(): Error & { needSitePassword: boolean } {
+  clearSiteToken()
+  window.dispatchEvent(new Event('linverse:site-locked'))
+  const e = new Error('请输入访问密码') as Error & { needSitePassword: boolean }
+  e.needSitePassword = true
+  return e
+}
+
 // ---- 文件上传 ----
 export async function uploadImage(file: File): Promise<string> {
   const fd = new FormData()
@@ -153,9 +158,7 @@ export async function uploadImage(file: File): Promise<string> {
     let body: { error?: string; message?: string } = {}
     try { body = await res.json() } catch {}
     if (body.error === 'need_site_password') {
-      clearSiteToken()
-      window.dispatchEvent(new Event('linverse:site-locked'))
-      throw new Error('请输入访问密码')
+      throw needSitePasswordError()
     }
     throw new Error(body.message || '账号验证失败，请检查账号恢复密钥')
   }

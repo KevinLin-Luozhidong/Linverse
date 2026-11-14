@@ -30,12 +30,17 @@ export default function Notes({ profileId }: { profileId: string | null }) {
   // 数学符号盘：笔记本正文框用
   const [mathOpen, setMathOpen] = useState(false)
   const contentRef = useRef<HTMLTextAreaElement>(null)
+  // 符号盘展开时把正文框滚进可视区，避免保存按钮被盘挡住
+  useEffect(() => {
+    if (mathOpen) contentRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [mathOpen])
   const [saving, setSaving] = useState(false) // 保存中：防连点重复提交
   const [delId, setDelId] = useState('') // 二次确认删除
   // 批量选择模式
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchDeleting, setBatchDeleting] = useState(false)
+  const [batchConfirm, setBatchConfirm] = useState(false) // 批量删除二次确认
   const [batchArchiving, setBatchArchiving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<number>(0)
@@ -137,9 +142,15 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     } finally { setDeleting(false) }
   }
 
-  // 批量删除选中：逐个删，成功的从选中集合剔除，失败的留下可重试
+  // 批量删除选中：点第一次进确认态，第二次才真正删除（与错题本一致）
   const batchRemove = async () => {
     if (selected.size === 0 || batchDeleting) return
+    if (!batchConfirm) {
+      setBatchConfirm(true)
+      setToast(`再点一次确认删除 ${selected.size} 条`)
+      return
+    }
+    setBatchConfirm(false)
     setBatchDeleting(true)
     const ids = [...selected]
     const failed: string[] = []
@@ -191,23 +202,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
     })
   }
 
-  const togglePin = async (n: Note) => {
-    try {
-      await updateNote(n.id, { pinned: !n.pinned }, profileId || undefined)
-      reload()
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : '更新失败')
-    }
-  }
 
-  const toggleArchive = async (n: Note) => {
-    try {
-      await updateNote(n.id, { archived: !n.archived }, profileId || undefined)
-      reload()
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : '更新失败')
-    }
-  }
 
   // 置顶排前面
   const shown = [...notes].sort((a, b) => Number(b.pinned) - Number(a.pinned))
@@ -234,7 +229,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
           <I n="archive" size={15} />归档
         </button>
         <button className={'mini-chip' + (selectMode ? ' active' : '')}
-          onClick={() => { setSelectMode(!selectMode); setSelected(new Set()) }}>
+          onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); setBatchConfirm(false) }}>
           {selectMode ? '取消选择' : '批量选择'}
         </button>
       </div>
@@ -306,7 +301,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
           </button>
           <button className="mini-btn" style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
             onClick={batchRemove} disabled={selected.size === 0 || batchDeleting || batchArchiving}>
-            {batchDeleting ? '删除中…' : `删除(${selected.size})`}
+            {batchDeleting ? '删除中…' : batchConfirm ? `确认删除(${selected.size})` : `删除(${selected.size})`}
           </button>
         </div>
       )}
@@ -383,11 +378,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
             {ed.id && (
               <div className="btn-row" style={{ marginBottom: 10 }}>
                 <button className="btn btn-ghost" style={{ flex: 1 }}
-                  onClick={() => { togglePin({ ...ed, id: ed.id! } as Note); setEditing(null); setDelId('') }}>
-                  {ed.pinned ? '取消置顶' : '置顶'}
-                </button>
-                <button className="btn btn-ghost" style={{ flex: 1 }}
-                  onClick={() => { toggleArchive({ ...ed, id: ed.id! } as Note); setEditing(null); setDelId('') }}>
+                  onClick={() => setEditing({ ...ed, archived: !ed.archived })}>
                   {ed.archived ? '移出归档' : '归档'}
                 </button>
                 {delId === ed.id

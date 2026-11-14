@@ -548,8 +548,6 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             </div>
             {[
               { n: '英汉词典', d: '英语 → 简体中文' },
-              { n: '日汉词典', d: '日语 → 简体中文' },
-              { n: '西汉词典', d: '西班牙语 → 简体中文' },
             ].map((p) => (
               <div key={p.n} className="dict-pack-row">
                 <div>

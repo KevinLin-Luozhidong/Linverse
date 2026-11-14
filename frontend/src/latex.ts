@@ -15,10 +15,16 @@ const SYMS: Record<string, string> = {
 }
 
 export function cleanLatex(text: string): string {
-  return text
+  let out = text
     .replace(/\\\(/g, '').replace(/\\\)/g, '')
     .replace(/\\\[/g, '').replace(/\\\]/g, '')
-    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+  // 分数替换循环跑：单遍正则只能换最内层，嵌套分数第一遍只换内层、再跑才换干净；上限 10 次防死循环
+  for (let i = 0; i < 10; i++) {
+    const next = out.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
+    if (next === out) break
+    out = next
+  }
+  return out
     .replace(/\\text\{([^{}]*)\}/g, '$1')
     .replace(/\\(quad|qquad)\b/g, ' ')
     .replace(/\\([a-zA-Z]+)/g, (_m, w) => SYMS[w] || w)

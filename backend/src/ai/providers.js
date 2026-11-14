@@ -83,6 +83,17 @@ messages: [
 
 // DeepSeek：OpenAI 兼容接口
 // 中文注释：DeepSeek 的 API 完全兼容 OpenAI 格式，直接调 /chat/completions
+// 把供应商返回的错误体解析成一句人话：优先取后端 error.message，没有就只报状态码
+async function providerErrorText(res, name) {
+  let detail = ''
+  try {
+    const body = await res.json()
+    detail = body?.error?.message || body?.message || body?.error || ''
+    if (typeof detail !== 'string') detail = ''
+  } catch {}
+  return detail ? `${name}请求失败：${res.status}（${detail}）` : `${name}请求失败：${res.status}`
+}
+
 async function askDeepSeek({ question, imageUrl, aiKey, modelName}) {
 const res = await fetch('https://api.deepseek.com/chat/completions', {
 method: 'POST',
@@ -92,7 +103,7 @@ openAICompatibleBody({ modelName: modelName || 'deepseek-chat', question, imageU
 ),
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
-if (!res.ok) throw new Error(`DeepSeek 请求失败：${res.status}`);
+if (!res.ok) throw new Error(await providerErrorText(res, 'DeepSeek'));
 const data = await res.json();
 return data.choices?.[0]?.message?.content || '';
 }
@@ -108,7 +119,7 @@ openAICompatibleBody({ modelName: modelName || 'gpt-4o-mini', question, imageUrl
 ),
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
-if (!res.ok) throw new Error(`OpenAI 请求失败：${res.status}`);
+if (!res.ok) throw new Error(await providerErrorText(res, 'OpenAI'));
 const data = await res.json();
 return data.choices?.[0]?.message?.content || '';
 }
@@ -141,7 +152,7 @@ contents: [{ parts}],
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 }
 );
-if (!res.ok) throw new Error(`Gemini 请求失败：${res.status}`);
+if (!res.ok) throw new Error(await providerErrorText(res, 'Gemini'));
 const data = await res.json();
 return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
 }
@@ -247,7 +258,7 @@ let content = question;
 if (imageUrl) content = `${question}\n（附带图片：${imageUrl}，请结合图片回答）`;
 body = { model: modelName || 'llama3', messages: [{ role: 'user', content}], stream: false};
 res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
-if (!res.ok) throw new Error(`自定义接口请求失败：${res.status}`);
+if (!res.ok) throw new Error(await providerErrorText(res, '自定义接口'));
 const data = await res.json();
 return data.message?.content || '';
 }
@@ -258,7 +269,7 @@ headers,
 body: JSON.stringify(openAICompatibleBody({ modelName: modelName || 'custom', question, imageUrl})),
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 });
-if (!res.ok) throw new Error(`自定义接口请求失败：${res.status}`);
+if (!res.ok) throw new Error(await providerErrorText(res, '自定义接口'));
 const data = await res.json();
 return data.choices?.[0]?.message?.content || '';
 }
@@ -278,7 +289,7 @@ search_recency_filter: 'noLimit',
 }),
 signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
 });
-if (!res.ok) throw new Error(`联网搜索失败：${res.status}`);
+if (!res.ok) throw new Error(await providerErrorText(res, '联网搜索'));
 const data = await res.json();
 const items = data.search_result || [];
 return items.slice(0, 5).map((it) => ({
@@ -318,13 +329,14 @@ const answer = imageUrl? demoVisionAnswer(question): demoTextAnswer(question);
 return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched: false};
 }
 
+let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写入参 question
 // 联网搜索（用户手动开关）：只支持智谱线路；失败自动降级，不影响正常问答
 let webSearched = false;
 if (webSearch && model === 'custom' && String(endpoint || '').includes('bigmodel.cn')) {
 try {
 const results = await zhipuWebSearch(question, key);
 if (results.length) {
-question = buildSearchBlock(results) + question;
+finalQuestion = buildSearchBlock(results) + question;
 webSearched = true;
 }
 } catch (err) {
@@ -337,16 +349,16 @@ console.error('[web_search] 搜索失败，降级为普通问答：', err.messag
 let answer;
 switch (model) {
 case 'deepseek':
-answer = await askDeepSeek({ question, imageUrl, aiKey: key, modelName});
+answer = await askDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName});
 break;
 case 'gemini':
-answer = await askGemini({ question, imageUrl, aiKey: key, modelName});
+answer = await askGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName});
 break;
 case 'openai':
-answer = await askOpenAI({ question, imageUrl, aiKey: key, modelName});
+answer = await askOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName});
 break;
 case 'custom':
-answer = await askCustom({ question, imageUrl, aiKey: key, endpoint, modelName});
+answer = await askCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName});
 break;
 default:
 throw new Error(`不支持的模型类型：${model}`);
