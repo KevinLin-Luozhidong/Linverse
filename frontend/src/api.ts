@@ -175,7 +175,7 @@ export async function uploadImage(file: File): Promise<string> {
 // ---- AI 问答 ----
 export interface AskParams {
   profileId: string; conversationId?: string; question: string;
-  imageUrl?: string; model: string; deepThink: boolean; aiKey?: string;
+  imageUrl?: string; model: string; deepThink: boolean; aiKey?: string; modelName?: string;
   webSearch?: boolean; // 联网搜索开关：只在智谱线路生效，其他线路后端自动忽略
   useKb?: boolean; // 查课本开关：RAG 检索知识库，把教材内容喂给 AI
   historyMsgs?: { role: string; content: string }[]; // 多轮对话：最近 N 条历史消息
@@ -315,6 +315,7 @@ export const ocr = (imageUrl: string, profileId?: string) => {
   return post<{ text: string; error?: string }>('/ocr', {
     imageUrl,
     model,
+    modelName: effectiveModelName(model, false) || undefined,
     aiKey: getAiKey(model) || undefined,
     profileId: profileId || undefined, // custom 模型时后端用它取 endpoint
   })
@@ -473,6 +474,49 @@ export const getAiKey = (model?: string) => {
 }
 // 读整张 Key 表（副本）：设置页用它显示"哪些供应商已保存 Key"、纠正旧 Key 归位
 export const getAiKeyMap = (): Record<string, string> => ({ ...migrateLegacyKey() })
+
+// 各供应商的模型名：用户自己选、各存各的（linverse.aiModels），
+// 不写死——设置页里每个供应商都能改，聊天页顶栏和模型菜单显示的就是这里存的名字。
+const AI_MODELS = 'linverse.aiModels'
+// 初次使用的建议值（用户改了就按他的来，这只是第一次打开时填好的起点）
+const AI_MODEL_PREFILLS: Record<string, string> = {
+  deepseek: 'deepseek-flash',
+  gemini: 'gemini-2.0-flash',
+  openai: 'gpt-4o-mini',
+  custom: '',
+}
+function readAiModels(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(AI_MODELS) || '{}')
+    return v && typeof v === 'object' ? v : {}
+  } catch { return {} }
+}
+export const getAiModelMap = (): Record<string, string> => ({ ...readAiModels() })
+// 取模型名：传供应商就取他的；不传取当前选中供应商的；没存过就返回建议值
+export const getAiModel = (model?: string) => {
+  const m = model || localStorage.getItem('linverse.model') || 'deepseek'
+  const map = readAiModels()
+  if (map[m]) return map[m]
+  return AI_MODEL_PREFILLS[m] || ''
+}
+export const setAiModel = (name: string, model?: string) => {
+  const m = model || localStorage.getItem('linverse.model') || 'deepseek'
+  const map = readAiModels()
+  if (name) map[m] = name
+  else delete map[m]
+  localStorage.setItem(AI_MODELS, JSON.stringify(map))
+}
+// 有效模型名：真正拿去问的名字，顶栏显示和发请求都用它，保证显示的和实际用的一致。
+// 深度思考开时，OpenAI 切 o3、Gemini 切 gemini-2.5-flash（推理模型）；
+// 用户填的已经是推理模型（o1/o3/o4、gemini-2.5/3 系）就不切，尊重他的选择；
+// DeepSeek/智谱不用换名（思考是请求参数，名字不变）。
+export const effectiveModelName = (model: string, deepThink?: boolean) => {
+  const base = getAiModel(model)
+  if (!deepThink || !base) return base
+  if (model === 'openai' && !/^(o1|o3|o4)(-|$)/.test(base)) return 'o3'
+  if (model === 'gemini' && !/gemini-(2\.5|3)/.test(base)) return 'gemini-2.5-flash'
+  return base
+}
 export const setAiKey = (k: string, model?: string) => {
   const map = migrateLegacyKey()
   const m = model || localStorage.getItem('linverse.model') || 'deepseek'

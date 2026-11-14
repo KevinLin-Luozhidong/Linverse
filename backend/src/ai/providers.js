@@ -273,17 +273,6 @@ return '【联网搜索结果（仅供参考，时效性信息请以来源为准
 + '\n\n【用户问题】\n';
 }
 
-// 深度思考：开时切推理模型（用户明确要的），关时走默认模型。
-// 规则：只在用户没指定模型名时切（设置里自己填了模型名就尊重他的选择）。
-// DeepSeek 不走这里：它现在没有独立的推理模型名，改在请求里加 thinking 参数（见 askDeepSeek）；
-// 智谱自定义也不走这里（模型名不动，改在 askCustom 里加 thinking 开关）。
-function resolveThinkingModel(model, modelName, deepThink) {
-  if (!deepThink || modelName) return modelName;
-  if (model === 'openai') return 'o3';
-  if (model === 'gemini') return 'gemini-2.5-flash';
-  return modelName;
-}
-
 // ---------- 统一入口 ----------
 
 async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch}) {
@@ -312,18 +301,17 @@ console.error('[web_search] 搜索失败，降级为普通问答：', err.messag
 }
 }
 
-// 有 Key：按供应商分发（深度思考开时先算好推理模型名，再分发）
-const effModelName = resolveThinkingModel(model, modelName, deepThink);
+// 有 Key：按供应商分发（模型名是前端传来的有效名：用户选的，深度思考换推理模型也在前端算好）
 let answer;
 switch (model) {
 case 'deepseek':
-answer = await askDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, deepThink: !!deepThink});
+answer = await askDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName, deepThink: !!deepThink});
 break;
 case 'gemini':
-answer = await askGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName});
+answer = await askGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName});
 break;
 case 'openai':
-answer = await askOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName});
+answer = await askOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName});
 break;
 case 'custom':
 answer = await askCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName, deepThink: !!deepThink});
@@ -507,17 +495,16 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
     }
   }
 
-  // 深度思考开时先算好推理模型名，再分发
-  const effModelName = resolveThinkingModel(model, modelName, deepThink);
+  // 模型名是前端传来的有效名，直接分发
   switch (model) {
     case 'deepseek':
-      await streamDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, deepThink: !!deepThink, onToken: emit });
+      await streamDeepSeek({ question: finalQuestion, imageUrl, aiKey: key, modelName, deepThink: !!deepThink, onToken: emit });
       break;
     case 'gemini':
-      await streamGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, onToken: emit });
+      await streamGemini({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
       break;
     case 'openai':
-      await streamOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName: effModelName, onToken: emit });
+      await streamOpenAI({ question: finalQuestion, imageUrl, aiKey: key, modelName, onToken: emit });
       break;
     case 'custom':
       await streamCustom({ question: finalQuestion, imageUrl, aiKey: key, endpoint, modelName, deepThink: !!deepThink, onToken: emit });
@@ -530,4 +517,4 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
 module.exports = { ask, askStream };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, resolveThinkingModel, openAICompatibleBody };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody };

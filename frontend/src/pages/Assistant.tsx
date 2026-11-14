@@ -8,7 +8,7 @@ import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, askStream, listConversations, createConversation, getConversation, deleteConversation,
   toggleConversationFavorite, batchDeleteConversations,
-  getSettings, getAiKey, uploadImage, imgSrc, createMistake, getStats, listMistakes,
+  getSettings, getAiKey, effectiveModelName, uploadImage, imgSrc, createMistake, getStats, listMistakes,
   getLatestBriefing, getLatestShantouBoard,
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
@@ -22,7 +22,7 @@ const MODELS = [
   { v: 'deepseek', label: 'DeepSeek' },
   { v: 'gemini', label: 'Gemini' },
   { v: 'openai', label: 'OpenAI' },
-  { v: 'custom', label: '自定义' },
+  { v: 'custom', label: '智谱' },
 ]
 
 // 'YYYY-MM-DD' → 「10月22日」：纯字符串拆拼，不用 Date，避免时区差一天（早报入口横条用）
@@ -348,8 +348,6 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const webSearchAvailable = model === 'custom' && isZhipu
   // 查课本开关：RAG 检索知识库，默认开；后端知识库为空时自动降级，不影响问答
   const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
-  // 自定义模型的真实名字（比如 glm-4v-flash），显示在模型选择器上，替代干巴巴的"自定义"
-  const [customModelName, setCustomModelName] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
   // 抽屉标签：会话列表 / 我的收藏（原来在个人中心"更多"里，现挪到这里和历史会话放一起）
@@ -387,12 +385,11 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [mathOpen, setMathOpen] = useState(false) // 数学符号盘开关
 
-  // 读设置里的默认模型 + 自定义模型名
+  // 读设置里的默认模型（第一次打开没选过模型时，用设置里存的供应商）
   useEffect(() => {
     if (!profileId) return
     getSettings(profileId).then((s) => {
       if (s.aiProvider && !localStorage.getItem('linverse.model')) setModel(s.aiProvider)
-      if (s.aiModel) setCustomModelName(s.aiModel)
     }).catch(() => {})
   }, [profileId])
 
@@ -585,6 +582,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         imageUrl: userMsg.imageUrl,
         model,
         deepThink,
+        modelName: effectiveModelName(model, deepThink) || undefined, // 模型名：用户在设置里每个供应商自己选的，顶栏显示的和实际用的都是这个
     aiKey: getAiKey(model) || undefined, // Key 只从本地读，按当前模型取对应的 Key 随请求带给后端
         webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
         useKb, // 查课本：RAG 检索知识库
@@ -681,10 +679,10 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     } finally { setQuizBusy(false) }
   }
 
-  // 模型名显示：选了"自定义"且填了模型名，就显示真实名字（比如 glm-4v-flash），一眼知道接的是谁
-  const modelLabel = model === 'custom' && customModelName
-    ? customModelName
-    : (MODELS.find((m) => m.v === model)?.label || 'DeepSeek')
+  // 顶栏模型胶囊：显示真正要用的模型名（用户在设置里选的；深度思考开时 OpenAI 显示 o3、Gemini 显示 gemini-2.5-flash）
+  // 没填过模型名时回落到供应商名字
+  const modelLabel = effectiveModelName(model, deepThink)
+    || (MODELS.find((m) => m.v === model)?.label || 'DeepSeek')
   // 右上状态胶囊只在有事要提醒时出现：未填 Key（要去设置里填 Key）。
   // 按当前模型查：DeepSeek 没填 Key 就提醒，智谱填了就不提醒，各算各的。
   const statusCap = getAiKey(model)
@@ -715,7 +713,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
                       localStorage.setItem('linverse.model', m.v)
                       setMenuOpen(false)
                     }}>
-                    {m.v === model && <I n="check" size={15} />}{m.v === 'custom' && customModelName ? customModelName : m.label}
+                    {m.v === model && <I n="check" size={15} />}{effectiveModelName(m.v, deepThink) || m.label}
+                    <span style={{ marginLeft: 'auto', opacity: 0.55, fontSize: 12 }}>{m.label}</span>
                   </button>
                 ))}
                 <div style={{ height: 1, background: 'var(--bd)', margin: '6px 8px' }} />

@@ -104,21 +104,22 @@ async function saveTurn(profileId, conversationId, question, answer) {
 }
 
 // ---------- AI 问答 ----------
-// POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey? }
+// POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey?, modelName? }
 // 返回: { answer, thinkSeconds, conversationId, model }
 // 流式：body 里带 stream:true 就走 SSE（token 事件推词，done 事件收尾），首字不用等整段写完
 router.post('/ask', ah(async (req, res) => {
-  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb, historyMsgs } = req.body;
+  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb, historyMsgs, modelName: reqModelName } = req.body;
   if (need(res, profileId, 'profileId 必填')) return;
   if (need(res, question && question.trim(), 'question 不能为空')) return;
 
-  // 自定义供应商的地址和模型名从 settings 表里取（用户在设置页填的）
+  // 模型名：前端请求里带的为准（用户在设置里每个供应商自己选的，深度思考换推理模型也在前端算好）；
+  // 自定义没带时才读设置表里的旧值（老版本兼容）；接口地址仍从设置表里取
   let endpoint = '';
-  let modelName = '';
+  let modelName = reqModelName || '';
   if (model === 'custom') {
     const s = await dao.getSettings(profileId);
     endpoint = s.aiEndpoint;
-    modelName = s.aiModel;
+    if (!modelName) modelName = s.aiModel;
   }
 
   // 流式先开 SSE 通道：状态事件立刻发出去，RAG 检索那 1-3 秒界面也不黑屏

@@ -4,7 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { ask, askStream, _test } = require('../src/ai/providers.js');
-const { extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, resolveThinkingModel, openAICompatibleBody } = _test;
+const { extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody } = _test;
 
 // 模拟上游响应体：按给定字节块逐个返回
 function mockRes(chunks) {
@@ -73,26 +73,6 @@ describe('pumpSseStream（行解析）', () => {
     const got = [];
     await pumpSseStream(res, extractOpenAIDelta, (t) => got.push(t));
     assert.deepEqual(got, ['好']);
-  });
-});
-
-// 深度思考切推理模型（resolveThinkingModel）：纯函数，不调外部接口
-// DeepSeek 不走这里：它现在没有独立的推理模型名，改在请求里加 thinking 参数
-describe('深度思考切推理模型', () => {
-  it('关时原样返回（没指定模型名就返回 undefined，走默认）', () => {
-    assert.equal(resolveThinkingModel('deepseek', undefined, false), undefined);
-  });
-  it('DeepSeek 开：不切模型名（thinking 走请求参数）', () => {
-    assert.equal(resolveThinkingModel('deepseek', undefined, true), undefined);
-  });
-  it('OpenAI 开：切 o3', () => {
-    assert.equal(resolveThinkingModel('openai', undefined, true), 'o3');
-  });
-  it('Gemini 开：切 gemini-2.5-flash', () => {
-    assert.equal(resolveThinkingModel('gemini', undefined, true), 'gemini-2.5-flash');
-  });
-  it('用户自己填了模型名：不切，尊重他的选择', () => {
-    assert.equal(resolveThinkingModel('openai', 'gpt-4o-mini', true), 'gpt-4o-mini');
   });
 });
 

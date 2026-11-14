@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getCachedProfiles, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getAiModelMap, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -23,15 +23,15 @@ const PROVIDERS = [
   { v: 'deepseek', label: 'DeepSeek' },
   { v: 'gemini', label: 'Gemini' },
   { v: 'openai', label: 'OpenAI' },
-  { v: 'custom', label: '自定义' },
+  { v: 'custom', label: '智谱' },
 ]
 
-// 各供应商的默认模型：只有"自定义"需要手动填模型名和接口地址，
-// 其他供应商用默认模型、不用填（填了也没用，后端只认自定义那栏的值）
-const DEFAULT_MODEL_HINT: Record<string, string> = {
-  deepseek: 'DeepSeek 默认用 deepseek-flash（能看图），不用填模型名和接口地址',
-  gemini: 'Gemini 默认用 gemini-2.0-flash，不用填模型名和接口地址',
-  openai: 'OpenAI 默认用 gpt-4o-mini，不用填模型名和接口地址',
+// 各供应商的模型名占位提示（只是提示，真正的名字存在各供应商自己的表里，用户随便改）
+const MODEL_PLACEHOLDER: Record<string, string> = {
+  deepseek: '比如 deepseek-flash',
+  gemini: '比如 gemini-2.0-flash',
+  openai: '比如 gpt-4o-mini',
+  custom: '比如 glm-4v-flash',
 }
 
 export default function Settings({ profileId, onBack, onProfileChange }: {
@@ -122,6 +122,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       if (me) setDisplayName(me.name)
     }).catch(() => {})
     setKey(getAiKey()) // Key 只从本地读
+    setAiModel(getAiModel()) // 模型名也只从本地读
     if (!profileId) return
     getSettings(profileId).then((s) => {
       setFontSize(s.fontSize || 'medium')
@@ -138,7 +139,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
         setAiKey('', saved[0])
       }
       setKey(getAiKey(pv)) // Key 跟着供应商走：读到哪个供应商，就显示哪个的 Key
-      setAiModel(s.aiModel || '')
+      // 智谱的模型名以前存在后端设置里：新表里没有智谱那行时，用后端存的那个值播种
+      if (!getAiModelMap().custom && s.aiModel) saveAiModel(s.aiModel, 'custom')
+      setAiModel(getAiModel(pv)) // 模型名也跟着供应商走
       setEndpoint(s.aiEndpoint || '')
       applyAppearance(s.fontSize || 'medium', s.theme || 'system')
     }).catch(() => {})
@@ -257,8 +260,11 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     if (!profileId || savingAi) return
     setSavingAi(true)
     setAiKey(key.trim(), provider) // Key 按供应商分开存：这个 Key 只归当前这个供应商
+    saveAiModel(aiModel.trim(), provider) // 模型名也按供应商分开存
     try {
-      await saveSettings({ profileId, aiProvider: provider, aiModel: aiModel.trim(), aiEndpoint: endpoint.trim() })
+      // 后端设置里的 aiModel 只存智谱的模型名（老版本兼容兜底）：其他供应商的模型名只存在本地表里，不往后端写，
+      // 否则下次播种会把别的供应商的模型名错当成智谱的
+      await saveSettings({ profileId, aiProvider: provider, aiModel: provider === 'custom' ? aiModel.trim() : undefined, aiEndpoint: provider === 'custom' ? endpoint.trim() : undefined })
       localStorage.setItem('linverse.model', provider)
       setToast('已保存')
     } catch (e) { setToast(e instanceof Error ? e.message : '保存失败') }
@@ -496,27 +502,28 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   onClick={() => {
     if (p.v === provider) return
     setAiKey(key.trim(), provider) // 先把当前框里的 Key 存回旧供应商，别丢了
+    saveAiModel(aiModel.trim(), provider) // 模型名也一样，先存回旧供应商
     setProvider(p.v)
     setKey(getAiKey(p.v)) // 再换成新供应商已存的 Key（没有就空着等填）
+    setAiModel(getAiModel(p.v)) // 再换成新供应商的模型名（没存过就显示建议值）
   }}>{p.label}</button>
   ))}
   </div>
   </div>
-  {provider === 'custom' ? (<>
   <div className="field">
   <div className="field-label">模型名（可改）</div>
   <input className="input" value={aiModel}
-  placeholder="比如 glm-4v-flash"
+  placeholder={MODEL_PLACEHOLDER[provider] || '比如 deepseek-flash'}
   onChange={(e) => setAiModel(e.target.value)} />
+  <div className="safe-note">每个供应商的模型名分开保存，聊天页切换模型时显示的就是这里填的名字</div>
   </div>
+  {provider === 'custom' && (
   <div className="field">
-  <div className="field-label">接口地址（自定义供应商填写）</div>
+  <div className="field-label">接口地址</div>
   <input className="input" value={endpoint}
   placeholder="https://…/v1/chat/completions"
   onChange={(e) => setEndpoint(e.target.value)} />
   </div>
-  </>) : (
-  <div className="safe-note" style={{ marginBottom: 12 }}>{DEFAULT_MODEL_HINT[provider] || ''}</div>
   )}
   <div className="field">
   <div className="field-label">Key</div>
