@@ -8,7 +8,7 @@ import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, askStream, listConversations, createConversation, getConversation, deleteConversation,
   toggleConversationFavorite, batchDeleteConversations,
-  getSettings, getAiKey, effectiveModelName, uploadImage, imgSrc, createMistake, getStats, listMistakes,
+  getSettings, getAiKey, effectiveModelName, getCustomName, uploadImage, imgSrc, createMistake, getStats, listMistakes,
   getLatestBriefing, getLatestShantouBoard,
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
@@ -306,7 +306,7 @@ function thinkLabel(m: ChatMsg): string {
   return m.deepThink ? `已深度思考 · ${m.thinkSeconds} 秒` : `用时 ${m.thinkSeconds} 秒`
 }
 
-export default function Assistant({ profileId }: { profileId: string | null }) {
+export default function Assistant({ profileId, active = true }: { profileId: string | null; active?: boolean }) {
   const [convs, setConvs] = useState<ConversationMeta[]>([])
   // 每日早报 / 汕头看板共用一条入口横幅：挂载时各拉最新一期，哪个拉到就显示哪个，
   // 失败/暂无数据都静默（不弹错、不挡聊天）。覆盖层首次打开后常驻挂载，display 显隐
@@ -386,12 +386,16 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
   const [mathOpen, setMathOpen] = useState(false) // 数学符号盘开关
 
   // 读设置里的默认模型（第一次打开没选过模型时，用设置里存的供应商）
+  // + "自定义"那栏的接口地址（用来推断那栏的名字：现在是智谱，换了供应商就跟着换）
+  // 切回聊天页时重读一次（设置页里改了地址/名字后，回来就显示新的）
+  const [customEndpoint, setCustomEndpoint] = useState('')
   useEffect(() => {
-    if (!profileId) return
+    if (!profileId || !active) return
     getSettings(profileId).then((s) => {
       if (s.aiProvider && !localStorage.getItem('linverse.model')) setModel(s.aiProvider)
+      setCustomEndpoint(s.aiEndpoint || '')
     }).catch(() => {})
-  }, [profileId])
+  }, [profileId, active])
 
   // 联网搜索只支持智谱：custom 且 endpoint 含 bigmodel.cn 时开关才可用
   // （设置页改了地址后切回来会自动重查，不用刷新页面）
@@ -400,7 +404,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     getSettings(profileId).then((s) => {
       setIsZhipu(!!s.aiEndpoint && s.aiEndpoint.includes('bigmodel.cn'))
     }).catch(() => setIsZhipu(false))
-  }, [model, profileId])
+  }, [model, profileId, active])
 
   // 拉会话列表
   const reloadConvs = () => {
@@ -679,10 +683,13 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     } finally { setQuizBusy(false) }
   }
 
+  // "自定义"那栏的名字：用户在设置里定的，没定过就按接口地址推断（现在是智谱）
+  // 每次渲染都重读本地存的名字，设置页改完回来立刻生效
+  const models = MODELS.map((m) => (m.v === 'custom' ? { ...m, label: getCustomName(customEndpoint) } : m))
   // 顶栏模型胶囊：显示真正要用的模型名（用户在设置里选的；深度思考开时 OpenAI 显示 o3、Gemini 显示 gemini-2.5-flash）
   // 没填过模型名时回落到供应商名字
   const modelLabel = effectiveModelName(model, deepThink)
-    || (MODELS.find((m) => m.v === model)?.label || 'DeepSeek')
+    || (models.find((m) => m.v === model)?.label || 'DeepSeek')
   // 右上状态胶囊只在有事要提醒时出现：未填 Key（要去设置里填 Key）。
   // 按当前模型查：DeepSeek 没填 Key 就提醒，智谱填了就不提醒，各算各的。
   const statusCap = getAiKey(model)
@@ -706,7 +713,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
               <div className="model-menu" style={{ zIndex: 50 }}>
                 {/* 菜单分两组：上面"模型"是"用谁回答"，下面"功能"是"回答时加什么"，各带小标题，不再混成一长串 */}
                 <div className="model-menu-label">模型</div>
-                {MODELS.map((m) => (
+                {models.map((m) => (
                   <button key={m.v} className={m.v === model ? 'on' : ''}
                     onClick={() => {
                       setModel(m.v)

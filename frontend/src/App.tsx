@@ -330,7 +330,7 @@ export default function App() {
         {visitedTabs.includes('assistant') && (
           <div className="tabview" key={'a' + profileId}
             style={{ display: tab === 'assistant' ? 'block' : 'none' }}>
-            <Assistant profileId={profileId} />
+            <Assistant profileId={profileId} active={tab === 'assistant'} />
           </div>
         )}
         {visitedTabs.includes('tools') && (

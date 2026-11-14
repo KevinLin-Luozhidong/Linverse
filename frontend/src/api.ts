@@ -475,6 +475,29 @@ export const getAiKey = (model?: string) => {
 // 读整张 Key 表（副本）：设置页用它显示"哪些供应商已保存 Key"、纠正旧 Key 归位
 export const getAiKeyMap = (): Record<string, string> => ({ ...migrateLegacyKey() })
 
+// ---- "自定义"那栏的名字：用户自己定，存在本地；没定过就按接口地址猜 ----
+// 不能全写死叫"智谱"：这栏换成别的供应商时，名字得跟着换（用户 2026-11-14 纠正）
+// 接口地址含 bigmodel.cn → 智谱；本地地址 → 本地；其他常见地址照名字认；都认不出 → "自定义"
+const CUSTOM_NAME_KEY = 'linverse.customName'
+// 纯按接口地址推断名字（不读本地存的）：智谱的地址 → 智谱，本地地址 → 本地，其他常见地址照名字认，都认不出 → "自定义"
+export const deriveCustomName = (endpoint = '') => {
+  if (endpoint.includes('bigmodel.cn')) return '智谱'
+  if (/localhost|127\.0\.0\.1/.test(endpoint)) return '本地'
+  if (endpoint.includes('siliconflow')) return '硅基流动'
+  if (endpoint.includes('deepseek')) return 'DeepSeek'
+  if (endpoint.includes('openai')) return 'OpenAI'
+  if (endpoint.includes('googleapis')) return 'Gemini'
+  return '自定义'
+}
+export const getCustomName = (endpoint = '') => {
+  const stored = localStorage.getItem(CUSTOM_NAME_KEY) || ''
+  return stored || deriveCustomName(endpoint)
+}
+export const setCustomName = (name: string) => {
+  if (name.trim()) localStorage.setItem(CUSTOM_NAME_KEY, name.trim())
+  else localStorage.removeItem(CUSTOM_NAME_KEY) // 清空 = 恢复按接口地址推断
+}
+
 // 各供应商的模型名：用户自己选、各存各的（linverse.aiModels），
 // 不写死——设置页里每个供应商都能改，聊天页顶栏和模型菜单显示的就是这里存的名字。
 const AI_MODELS = 'linverse.aiModels'

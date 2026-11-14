@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getAiModelMap, getCachedProfiles, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getAiModelMap, getCustomName, setCustomName as saveCustomName, deriveCustomName, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -107,6 +107,10 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // AI 接口（演示已删，默认 DeepSeek）
   const [provider, setProvider] = useState('deepseek')
   const [aiModel, setAiModel] = useState('')
+  // "自定义"那栏的名字：用户自己定（默认按接口地址推断：现在是智谱，换供应商就改成对应的名字）
+  const [customName, setCustomName] = useState(() => getCustomName())
+  // 供应商列表里的"自定义"那行：显示用户定的名字，别的名字不动
+  const providers = PROVIDERS.map((p) => (p.v === 'custom' ? { ...p, label: customName } : p))
   const [endpoint, setEndpoint] = useState('')
   const [key, setKey] = useState('')
 
@@ -143,6 +147,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       if (!getAiModelMap().custom && s.aiModel) saveAiModel(s.aiModel, 'custom')
       setAiModel(getAiModel(pv)) // 模型名也跟着供应商走
       setEndpoint(s.aiEndpoint || '')
+      setCustomName(getCustomName(s.aiEndpoint || '')) // 名字跟着接口地址走：没改过名就按地址推断（智谱/本地/其他）
       applyAppearance(s.fontSize || 'medium', s.theme || 'system')
     }).catch(() => {})
   }, [profileId])
@@ -261,6 +266,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     setSavingAi(true)
     setAiKey(key.trim(), provider) // Key 按供应商分开存：这个 Key 只归当前这个供应商
     saveAiModel(aiModel.trim(), provider) // 模型名也按供应商分开存
+    // 这栏的名字：只有用户改过（跟按地址推断的不一样）才存起来；
+    // 没改过就把存过的名删掉，换地址时自动跟着改
+    if (provider === 'custom') saveCustomName(customName !== deriveCustomName(endpoint) ? customName : '')
     try {
       // 后端设置里的 aiModel 只存智谱的模型名（老版本兼容兜底）：其他供应商的模型名只存在本地表里，不往后端写，
       // 否则下次播种会把别的供应商的模型名错当成智谱的
@@ -410,7 +418,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     } finally { setSavingDangerPw(false) }
   }
 
-  const providerLabel = PROVIDERS.find((p) => p.v === provider)?.label || 'DeepSeek'
+  const providerLabel = providers.find((p) => p.v === provider)?.label || 'DeepSeek'
   const themeLabel = theme === 'system' ? '跟随系统' : theme === 'light' ? '浅色' : '深色'
   const fontLabel = fontSize === 'small' ? '小' : fontSize === 'large' ? '大' : '标准'
 
@@ -497,15 +505,17 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <div className="field">
   <div className="field-label">供应商</div>
   <div className="seg">
-  {PROVIDERS.map((p) => (
+  {providers.map((p) => (
   <button key={p.v} className={provider === p.v ? 'on' : ''}
   onClick={() => {
     if (p.v === provider) return
     setAiKey(key.trim(), provider) // 先把当前框里的 Key 存回旧供应商，别丢了
     saveAiModel(aiModel.trim(), provider) // 模型名也一样，先存回旧供应商
+    if (provider === 'custom') saveCustomName(customName !== deriveCustomName(endpoint) ? customName : '') // 离开"自定义"那栏时，名字也存回（只在用户改过时存）
     setProvider(p.v)
     setKey(getAiKey(p.v)) // 再换成新供应商已存的 Key（没有就空着等填）
     setAiModel(getAiModel(p.v)) // 再换成新供应商的模型名（没存过就显示建议值）
+    if (p.v === 'custom') setCustomName(getCustomName(endpoint)) // 切进"自定义"：名字按接口地址推断（没改过名时）
   }}>{p.label}</button>
   ))}
   </div>
@@ -517,21 +527,32 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   onChange={(e) => setAiModel(e.target.value)} />
   <div className="safe-note">每个供应商的模型名分开保存，聊天页切换模型时显示的就是这里填的名字</div>
   </div>
-  {provider === 'custom' && (
+  {provider === 'custom' && (<>
+  <div className="field">
+  <div className="field-label">名称</div>
+  <input className="input" value={customName}
+  placeholder="比如 智谱"
+  onChange={(e) => setCustomName(e.target.value)} />
+  <div className="safe-note">这栏的名字：换成别的供应商时改成对应的名字，聊天页切换模型时显示的就是它</div>
+  </div>
   <div className="field">
   <div className="field-label">接口地址</div>
   <input className="input" value={endpoint}
   placeholder="https://…/v1/chat/completions"
-  onChange={(e) => setEndpoint(e.target.value)} />
+  onChange={(e) => {
+    // 换地址时名字跟着换（前提是名字还是按旧地址推断的、用户没自己改过）
+    if (customName === deriveCustomName(endpoint)) setCustomName(deriveCustomName(e.target.value))
+    setEndpoint(e.target.value)
+  }} />
   </div>
-  )}
+  </>)}
   <div className="field">
   <div className="field-label">Key</div>
   <input className="input" type="password" value={key}
   placeholder="粘贴你的 API Key"
   onChange={(e) => setKey(e.target.value)} autoComplete="off" />
   <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写；每个供应商的 Key 分开保存，切换供应商时 Key 跟着换</div>
-  <div className="safe-note">已保存的 Key：{PROVIDERS.filter((p) => getAiKey(p.v)).map((p) => p.label).join('、') || '无'}</div>
+  <div className="safe-note">已保存的 Key：{providers.filter((p) => getAiKey(p.v)).map((p) => p.label).join('、') || '无'}</div>
   </div>
   <button className="btn" style={{ width: '100%' }} onClick={saveAi} disabled={savingAi}>{savingAi ? '保存中…' : '保存'}</button>
   </>),
