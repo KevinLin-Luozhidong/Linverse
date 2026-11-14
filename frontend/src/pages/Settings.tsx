@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, getCachedProfiles, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -128,6 +128,15 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setTheme(s.theme || 'system')
       const pv = s.aiProvider && s.aiProvider !== 'demo' ? s.aiProvider : 'deepseek'
       setProvider(pv)
+      // 旧单 Key 归位纠正：第一次读新表时旧 Key 按聊天里最后用的模型归位，
+      // 但设置里存的供应商更准（他上次在设置里保存的就是那个供应商）——
+      // 如果整表只有一个 Key、又不在设置存的供应商名下，就挪到设置存的供应商名下
+      const keyMap = getAiKeyMap()
+      const saved = Object.keys(keyMap)
+      if (saved.length === 1 && saved[0] !== pv && !keyMap[pv]) {
+        setAiKey(keyMap[saved[0]], pv)
+        setAiKey('', saved[0])
+      }
       setKey(getAiKey(pv)) // Key 跟着供应商走：读到哪个供应商，就显示哪个的 Key
       setAiModel(s.aiModel || '')
       setEndpoint(s.aiEndpoint || '')
@@ -515,6 +524,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   placeholder="粘贴你的 API Key"
   onChange={(e) => setKey(e.target.value)} autoComplete="off" />
   <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写；每个供应商的 Key 分开保存，切换供应商时 Key 跟着换</div>
+  <div className="safe-note">已保存的 Key：{PROVIDERS.filter((p) => getAiKey(p.v)).map((p) => p.label).join('、') || '无'}</div>
   </div>
   <button className="btn" style={{ width: '100%' }} onClick={saveAi} disabled={savingAi}>{savingAi ? '保存中…' : '保存'}</button>
   </>),

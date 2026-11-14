@@ -471,6 +471,8 @@ export const getAiKey = (model?: string) => {
   const current = localStorage.getItem('linverse.model') || 'deepseek'
   return map[current] || ''
 }
+// 读整张 Key 表（副本）：设置页用它显示"哪些供应商已保存 Key"、纠正旧 Key 归位
+export const getAiKeyMap = (): Record<string, string> => ({ ...migrateLegacyKey() })
 export const setAiKey = (k: string, model?: string) => {
   const map = migrateLegacyKey()
   const m = model || localStorage.getItem('linverse.model') || 'deepseek'
