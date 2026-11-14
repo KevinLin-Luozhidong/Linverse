@@ -401,14 +401,16 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     }).catch(() => {})
   }, [profileId, active])
 
-  // 联网搜索只支持智谱：custom 且 endpoint 含 bigmodel.cn 时开关才可用
+  // "自定义"那栏是不是智谱（看接口地址含不含 bigmodel.cn）：跟当前聊的是哪个模型没关系，
+  // 联网搜索用的是这栏的 Key，所以 DeepSeek 上也要能搜。
+  // 之前这里写了 model !== 'custom' 就直接判 false，导致 DeepSeek 上开关永远是灰的——已改掉。
   // （设置页改了地址后切回来会自动重查，不用刷新页面）
   useEffect(() => {
-    if (model !== 'custom' || !profileId) { setIsZhipu(false); return }
+    if (!profileId) { setIsZhipu(false); return }
     getSettings(profileId).then((s) => {
       setIsZhipu(!!s.aiEndpoint && s.aiEndpoint.includes('bigmodel.cn'))
     }).catch(() => setIsZhipu(false))
-  }, [model, profileId, active])
+  }, [profileId, active])
 
   // 拉会话列表
   const reloadConvs = () => {
