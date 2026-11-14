@@ -9,6 +9,11 @@
 // 返回：{ answer, thinkSeconds}
 // ============================================================================
 
+// 超时：AI 问答 60 秒、联网搜索 15 秒。注意：431171c 删演示时误删过这两行，
+// 导致之后所有 ask 都报 FETCH_TIMEOUT_MS 未定义、线上问答全挂——以后删代码别动这块。
+const FETCH_TIMEOUT_MS = 60000;
+const SEARCH_TIMEOUT_MS = 15000;
+
 // ---------- 真实供应商 ----------
 
 // 构造 OpenAI 兼容格式的请求体（DeepSeek / OpenAI / custom 的 /chat/completions 都用它）
@@ -273,9 +278,50 @@ return '【联网搜索结果（仅供参考，时效性信息请以来源为准
 + '\n\n【用户问题】\n';
 }
 
+// ---------- 模型列表：拉取供应商的 /models，设置页做成点选 ----------
+// 用户要"可选择"：模型名不能只靠手填。直接问供应商要列表（用他存的 Key），
+// 列表里没有的（比如智谱的 glm-4v-flash 不在 /models 返回里）仍可手填。
+// Gemini 的 Key 放 query 里（它不用 Bearer）；返回的 id 带 "models/" 前缀，要去掉。
+async function listModels({ model, aiKey, endpoint }) {
+  if (!aiKey) throw new Error('还没填 AI Key：去设置 → AI 接口填好 Key 再拉取模型列表');
+  let url, kind;
+  if (model === 'deepseek') {
+    url = 'https://api.deepseek.com/v1/models'; kind = 'openai';
+  } else if (model === 'openai') {
+    url = 'https://api.openai.com/v1/models'; kind = 'openai';
+  } else if (model === 'gemini') {
+    url = 'https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(aiKey); kind = 'gemini';
+  } else if (model === 'custom') {
+    // 自定义：从接口地址推 models 地址（聊天地址去尾 + /models；本地 Ollama 走 /api/tags）
+    const { url: chatUrl, format } = await resolveCustomEndpoint(endpoint);
+    if (format === 'ollama') { url = chatUrl.replace(/\/api\/chat$/, '/api/tags'); kind = 'ollama'; }
+    else { url = chatUrl.replace(/\/chat\/completions$/, '') + '/models'; kind = 'openai'; }
+  } else {
+    throw new Error(`不支持的模型类型：${model}`);
+  }
+  const headers = { 'Content-Type': 'application/json' };
+  if (kind !== 'gemini') headers.Authorization = `Bearer ${aiKey}`;
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(await providerErrorText(res, '模型列表'));
+  const data = await res.json();
+  return normalizeModelIds(kind, data);
+}
+
+// 把各家 /models 的返回统一成 id 数组（纯函数，可离线测）
+function normalizeModelIds(kind, data) {
+  if (kind === 'ollama') {
+    return [...new Set((data.models || []).map((m) => m.name).filter(Boolean))];
+  }
+  if (kind === 'gemini') {
+    // Gemini 的 id 是 "models/gemini-2.0-flash" 这种，聊天时只用后半段
+    return [...new Set((data.models || []).map((m) => String(m.name || '').replace(/^models\//, '')).filter(Boolean))];
+  }
+  return [...new Set((data.data || []).map((m) => m.id).filter(Boolean))];
+}
+
 // ---------- 统一入口 ----------
 
-async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch}) {
+async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey}) {
 // Key 优先级：请求体 aiKey > 环境变量 AI_API_KEY > 无（没 Key 就报错）
 const key = aiKey || process.env.AI_API_KEY || '';
 const started = Date.now();
@@ -286,11 +332,13 @@ if (!key) {
 }
 
 let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写入参 question
-// 联网搜索（用户手动开关）：只支持智谱线路；失败自动降级，不影响正常问答
+// 联网搜索（用户手动开关）：用"自定义"那栏的智谱 Key 去调智谱搜索，
+// 跟当前聊的是哪个模型没关系——在 DeepSeek 上也能联网搜，不再只限智谱线路。
+// searchKey 没传（自定义那栏不是智谱、或没填 Key）就不搜，直接普通问答
 let webSearched = false;
-if (webSearch && model === 'custom' && String(endpoint || '').includes('bigmodel.cn')) {
+if (webSearch && searchKey) {
 try {
-const results = await zhipuWebSearch(question, key);
+const results = await zhipuWebSearch(question, searchKey);
 if (results.length) {
 finalQuestion = buildSearchBlock(results) + question;
 webSearched = true;
@@ -470,7 +518,7 @@ async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, de
 
 // 流式统一入口：与 ask() 同款分发，只是把回答一个词一个词推给 onToken；
 // 返回 { answer, thinkSeconds, webSearched }（answer 是全量文本，路由拿它存档）。
-async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, onToken }) {
+async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, onToken }) {
   const key = aiKey || process.env.AI_API_KEY || '';
   const started = Date.now();
   let answer = '';
@@ -483,9 +531,10 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
   let finalQuestion = question;
   let webSearched = false;
-  if (webSearch && model === 'custom' && String(endpoint || '').includes('bigmodel.cn')) {
+  // 联网搜索：用"自定义"那栏的智谱 Key 搜，跟当前聊的模型没关系（见 ask 里的注释）
+  if (webSearch && searchKey) {
     try {
-      const results = await zhipuWebSearch(question, key);
+      const results = await zhipuWebSearch(question, searchKey);
       if (results.length) {
         finalQuestion = buildSearchBlock(results) + question;
         webSearched = true;
@@ -515,6 +564,6 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched };
 }
 
-module.exports = { ask, askStream };
+module.exports = { ask, askStream, listModels };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds };

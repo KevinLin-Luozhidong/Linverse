@@ -176,12 +176,19 @@ export async function uploadImage(file: File): Promise<string> {
 export interface AskParams {
   profileId: string; conversationId?: string; question: string;
   imageUrl?: string; model: string; deepThink: boolean; aiKey?: string; modelName?: string;
-  webSearch?: boolean; // 联网搜索开关：只在智谱线路生效，其他线路后端自动忽略
+  webSearch?: boolean; // 联网搜索开关：用"自定义"那栏的智谱 Key 去搜，跟当前聊的模型没关系
+  searchKey?: string; // 联网搜索用的智谱 Key（"自定义"那栏的 Key）
   useKb?: boolean; // 查课本开关：RAG 检索知识库，把教材内容喂给 AI
   historyMsgs?: { role: string; content: string }[]; // 多轮对话：最近 N 条历史消息
 }
 
 export interface KbRef { book: string; chapter: string; section: string; page_start: number; page_end: number }
+
+// 模型列表：问供应商的 /models 要实时列表（用该供应商存的 Key），设置页做成点选
+export const listModels = async (model: string, profileId?: string): Promise<string[]> => {
+  const data = await post<{ models: string[] }>('/models', { model, profileId, aiKey: getAiKey(model) || undefined });
+  return data.models || [];
+}
 
 export async function ask(p: AskParams): Promise<AskResult> {
   // AI 回答（尤其深度思考+看图）经常超过 20 秒，单独给 120 秒超时，别误杀

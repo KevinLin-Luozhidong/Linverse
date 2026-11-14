@@ -3,7 +3,7 @@
 const express = require('express');
 const multer = require('multer');
 const dao = require('../db/dao');
-const { ask, askStream } = require('../ai/providers');
+const { ask, askStream, listModels } = require('../ai/providers');
 const { ah, need } = require('./helpers');
 
 const router = express.Router();
@@ -108,7 +108,7 @@ async function saveTurn(profileId, conversationId, question, answer) {
 // 返回: { answer, thinkSeconds, conversationId, model }
 // 流式：body 里带 stream:true 就走 SSE（token 事件推词，done 事件收尾），首字不用等整段写完
 router.post('/ask', ah(async (req, res) => {
-  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, useKb, historyMsgs, modelName: reqModelName } = req.body;
+  const { profileId, conversationId, question, imageUrl, model, deepThink, aiKey, webSearch, searchKey, useKb, historyMsgs, modelName: reqModelName } = req.body;
   if (need(res, profileId, 'profileId 必填')) return;
   if (need(res, question && question.trim(), 'question 不能为空')) return;
 
@@ -180,6 +180,7 @@ router.post('/ask', ah(async (req, res) => {
         endpoint,
         modelName,
         webSearch: !!webSearch,
+        searchKey: searchKey || '', // 联网搜索用的智谱 Key（"自定义"那栏的），跟当前聊的模型没关系
         historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
         onToken: (t) => sendEvent('token', { text: t }),
       });
@@ -197,7 +198,7 @@ router.post('/ask', ah(async (req, res) => {
   }
 
   // 先调 AI，成功后再建会话存档（失败不留空会话）
-  // webSearch：前端"联网搜索"开关；只在智谱线路生效，其他线路后端自动忽略
+  // webSearch：前端"联网搜索"开关；用 searchKey（"自定义"那栏的智谱 Key）去搜，不限聊的模型
   const { answer, thinkSeconds, webSearched } = await ask({
     model: model || 'deepseek',
     question: finalQuestion,
@@ -207,6 +208,7 @@ router.post('/ask', ah(async (req, res) => {
     endpoint,
     modelName,
     webSearch: !!webSearch,
+    searchKey: searchKey || '',
     // 多轮对话：最近 N 条历史消息（前端已截取最多 8 条）
     historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
   });
@@ -216,6 +218,25 @@ router.post('/ask', ah(async (req, res) => {
   if (!cid) return res.status(404).json({ error: '对话不存在' });
 
   res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'deepseek', webSearched: !!webSearched, kbUsed, kbRefs });
+}));
+
+// ---------- 模型列表：设置页"选择模型" ----------
+// POST /api/models  body: { model, aiKey, profileId? }
+// 返回: { models: ['deepseek-flash', 'deepseek-v4-pro', ...] }
+// 直接问供应商的 /models 接口要列表（用用户存的 Key），不写死——
+// 新模型上线自动出现；列表里没有的（比如智谱的 glm-4v-flash）仍可在设置里手填。
+// 自定义供应商要读设置表里的接口地址，所以 profileId 必填（其他供应商不用）。
+router.post('/models', ah(async (req, res) => {
+  const { model, aiKey, profileId } = req.body;
+  if (need(res, model, 'model 必填')) return;
+  if (need(res, aiKey, '还没填 AI Key：去设置 → AI 接口填好 Key 再拉取模型列表')) return;
+  let endpoint = '';
+  if (model === 'custom') {
+    if (need(res, profileId, 'profileId 必填')) return;
+    endpoint = (await dao.getSettings(profileId)).aiEndpoint || '';
+  }
+  const models = await listModels({ model, aiKey, endpoint });
+  res.json({ models });
 }));
 
 // ---------- OCR：识别图片中的文字 ----------

@@ -8,7 +8,7 @@ import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, askStream, listConversations, createConversation, getConversation, deleteConversation,
   toggleConversationFavorite, batchDeleteConversations,
-  getSettings, getAiKey, effectiveModelName, getCustomName, uploadImage, imgSrc, createMistake, getStats, listMistakes,
+  getSettings, getAiKey, effectiveModelName, getCustomName, getAiModelMap, setAiModel as saveAiModel, uploadImage, imgSrc, createMistake, getStats, listMistakes,
   getLatestBriefing, getLatestShantouBoard,
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
@@ -342,10 +342,11 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     return saved && saved !== 'demo' ? saved : 'deepseek'
   })
   const [deepThink, setDeepThink] = useState(() => localStorage.getItem('linverse.deepThink') === '1')
-  // 联网搜索开关：默认关，用户手动打开；只在智谱线路可用（isZhipu）
+  // 联网搜索开关：默认关，用户手动打开；用"自定义"那栏的智谱 Key 去搜，
+  // 所以跟当前聊的是哪个模型没关系（DeepSeek 上也能搜）——只要那栏是智谱且填了 Key 就能用
   const [webSearch, setWebSearch] = useState(() => localStorage.getItem('linverse.webSearch') === '1')
   const [isZhipu, setIsZhipu] = useState(false)
-  const webSearchAvailable = model === 'custom' && isZhipu
+  const webSearchAvailable = isZhipu && !!getAiKey('custom')
   // 查课本开关：RAG 检索知识库，默认开；后端知识库为空时自动降级，不影响问答
   const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
@@ -393,6 +394,9 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     if (!profileId || !active) return
     getSettings(profileId).then((s) => {
       if (s.aiProvider && !localStorage.getItem('linverse.model')) setModel(s.aiProvider)
+      // 智谱的模型名以前存在后端设置里：新表里没有智谱那行时，用后端存的那个值播种
+      // （聊天页也要播：用户不打开设置页、直接进聊天页时，菜单里也得显示 glm-4v-flash）
+      if (!getAiModelMap().custom && s.aiModel) saveAiModel(s.aiModel, 'custom')
       setCustomEndpoint(s.aiEndpoint || '')
     }).catch(() => {})
   }, [profileId, active])
@@ -588,7 +592,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         deepThink,
         modelName: effectiveModelName(model, deepThink) || undefined, // 模型名：用户在设置里每个供应商自己选的，顶栏显示的和实际用的都是这个
     aiKey: getAiKey(model) || undefined, // Key 只从本地读，按当前模型取对应的 Key 随请求带给后端
-        webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
+        webSearch: webSearch && webSearchAvailable, // 开关开且有智谱 Key 才传 true
+        searchKey: webSearchAvailable ? getAiKey('custom') || undefined : undefined, // 联网搜索用的智谱 Key（"自定义"那栏的）
         useKb, // 查课本：RAG 检索知识库
         historyMsgs,
       }
@@ -623,6 +628,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
             webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
             thinkSeconds: r.thinkSeconds || 0, deepThink,
           } : m)))
+          // 开了联网搜索却没搜到（搜索挂了或没结果）：说一声，别让他以为开关是摆设
+          if (params.webSearch && !r.webSearched) setToast('联网搜索没搜到，这次按普通问答回的')
         }
         reloadConvs()
       } catch (streamErr) {
@@ -643,6 +650,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
               setTypingFor(next.length - 1)
               return next
             })
+            if (params.webSearch && !r.webSearched) setToast('联网搜索没搜到，这次按普通问答回的')
           }
           reloadConvs()
         } else if (sendReqIdRef.current === reqId) {
@@ -734,13 +742,13 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                 </button>
                 <button className={webSearch && webSearchAvailable ? 'on' : ''}
                   disabled={!webSearchAvailable}
-                  title={!webSearchAvailable ? '联网搜索仅支持智谱线路' : undefined}
+                  title={!webSearchAvailable ? '联网搜索要用智谱的 Key：去设置 → AI 接口，选自定义那栏填好 Key' : undefined}
                   style={!webSearchAvailable ? { opacity: 0.45 } : undefined}
                   onClick={() => {
                     const v = !webSearch; setWebSearch(v); localStorage.setItem('linverse.webSearch', v ? '1' : '0')
                   }}>
                   <I n="search" size={15} />联网搜索
-                  <span style={{ marginLeft: 'auto', display: 'flex' }}>{webSearch && webSearchAvailable && <I n="check" size={15} />}</span>
+                  <span style={{ marginLeft: 'auto', display: 'flex' }}>{webSearch && webSearchAvailable && <I n="check" size={15} />}{!webSearchAvailable && <span style={{ fontSize: 12, opacity: 0.7 }}>需智谱 Key</span>}</span>
                 </button>
                 <button className={useKb ? 'on' : ''}
                   onClick={() => {

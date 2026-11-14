@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getAiModelMap, getCustomName, setCustomName as saveCustomName, deriveCustomName, getCachedProfiles, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getAiModelMap, getCustomName, setCustomName as saveCustomName, deriveCustomName, listModels, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -109,6 +109,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [aiModel, setAiModel] = useState('')
   // "自定义"那栏的名字：用户自己定（默认按接口地址推断：现在是智谱，换供应商就改成对应的名字）
   const [customName, setCustomName] = useState(() => getCustomName())
+  // 模型列表：点"选择模型"时实时从供应商拉取（用存的 Key），点选；列表里没有的仍可手填
+  const [modelList, setModelList] = useState<string[] | null>(null)
+  const [loadingModels, setLoadingModels] = useState(false)
   // 供应商列表里的"自定义"那行：显示用户定的名字，别的名字不动
   const providers = PROVIDERS.map((p) => (p.v === 'custom' ? { ...p, label: customName } : p))
   const [endpoint, setEndpoint] = useState('')
@@ -515,6 +518,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     setProvider(p.v)
     setKey(getAiKey(p.v)) // 再换成新供应商已存的 Key（没有就空着等填）
     setAiModel(getAiModel(p.v)) // 再换成新供应商的模型名（没存过就显示建议值）
+    setModelList(null) // 换供应商：旧的模型列表作废
     if (p.v === 'custom') setCustomName(getCustomName(endpoint)) // 切进"自定义"：名字按接口地址推断（没改过名时）
   }}>{p.label}</button>
   ))}
@@ -526,6 +530,33 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   placeholder={MODEL_PLACEHOLDER[provider] || '比如 deepseek-flash'}
   onChange={(e) => setAiModel(e.target.value)} />
   <div className="safe-note">每个供应商的模型名分开保存，聊天页切换模型时显示的就是这里填的名字</div>
+  {((getAiKey(provider) || key.trim())) && (<>
+    <button className="btn" style={{ marginTop: 8 }} disabled={loadingModels}
+      onClick={async () => {
+        if (modelList) { setModelList(null); return }
+        if (key.trim()) setAiKey(key.trim(), provider) // 刚粘贴还没按保存的 Key：先存下来再拉列表
+        setLoadingModels(true)
+        try {
+          const list = await listModels(provider, profileId || undefined)
+          // 当前在用的模型名即使不在列表里（比如智谱的 glm-4v-flash），也放第一行，别把它选没了
+          const cur = getAiModel(provider)
+          setModelList(cur && !list.includes(cur) ? [cur, ...list] : list)
+          if (!list.length) setToast('没拉到模型列表，检查 Key 是否有效')
+        } catch (e) { setToast(e instanceof Error ? e.message : '拉取失败') }
+        finally { setLoadingModels(false) }
+      }}>{loadingModels ? '拉取中…' : (modelList ? '收起列表' : '选择模型')}</button>
+    {modelList && (<div style={{ marginTop: 8 }}>
+      <div className="safe-note">从供应商实时拉取的，能选的都在这（新模型上线自动出现）；列表里没有就直接在上面手填</div>
+      {modelList.map((m) => (
+        <button key={m} className="btn" style={{ width: '100%', marginTop: 6, textAlign: 'left', fontWeight: aiModel === m ? 700 : 400 }}
+          onClick={() => {
+            setAiModel(m)
+            saveAiModel(m, provider) // 点选立刻存：不用等按保存，聊天页马上就能用
+            setModelList(null)
+          }}>{m}{aiModel === m ? ' ✓' : ''}</button>
+      ))}
+    </div>)}
+  </>)}
   </div>
   {provider === 'custom' && (<>
   <div className="field">
