@@ -578,7 +578,7 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
         imageUrl: userMsg.imageUrl,
         model,
         deepThink,
-        aiKey: getAiKey() || undefined, // Key 只从本地读，随请求带给后端
+    aiKey: getAiKey(model) || undefined, // Key 只从本地读，按当前模型取对应的 Key 随请求带给后端
         webSearch: webSearch && webSearchAvailable, // 开关开且是智谱线路才传 true
         useKb, // 查课本：RAG 检索知识库
         historyMsgs,
@@ -679,8 +679,8 @@ export default function Assistant({ profileId }: { profileId: string | null }) {
     ? customModelName
     : (MODELS.find((m) => m.v === model)?.label || 'DeepSeek')
   // 右上状态胶囊只在有事要提醒时出现：未填 Key（要去设置里填 Key）。
-  // Key 已填好时不显示"已接入"；演示版已删，不再有"演示版"这一态。
-  const statusCap = getAiKey()
+  // 按当前模型查：DeepSeek 没填 Key 就提醒，智谱填了就不提醒，各算各的。
+  const statusCap = getAiKey(model)
     ? null
     : { t: '未填 Key', cls: 'demo' }
 

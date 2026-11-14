@@ -315,7 +315,7 @@ export const ocr = (imageUrl: string, profileId?: string) => {
   return post<{ text: string; error?: string }>('/ocr', {
     imageUrl,
     model,
-    aiKey: getAiKey() || undefined,
+    aiKey: getAiKey(model) || undefined,
     profileId: profileId || undefined, // custom 模型时后端用它取 endpoint
   })
 }
@@ -441,11 +441,42 @@ export const setAvatar = async (id: string, avatarUrl: string) => {
 }
 
 // AI Key 存取：只放 localStorage，不经过后端
-const AI_KEY = 'linverse.aiKey'
-export const getAiKey = () => localStorage.getItem(AI_KEY) || ''
-export const setAiKey = (k: string) => {
-  if (k) localStorage.setItem(AI_KEY, k)
-  else localStorage.removeItem(AI_KEY)
+// 多 Key：每个供应商各存各的 Key（linverse.aiKeys = { deepseek:'…', custom:'…' }），
+// 切换模型不用重填 Key，前端按当前模型取对应的 Key 随请求带给后端。
+const AI_KEYS = 'linverse.aiKeys'
+const AI_KEY = 'linverse.aiKey' // 旧版单 Key，第一次读新表时迁移后删除
+function readAiKeys(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(AI_KEYS) || '{}')
+    return v && typeof v === 'object' ? v : {}
+  } catch { return {} }
+}
+// 旧版迁移：以前只有一个 Key，第一次读新表时按当时选的模型归位
+//（比如一直在用智谱自定义，旧 Key 就归到 custom 名下），之后各供应商各存各的
+function migrateLegacyKey(): Record<string, string> {
+  const map = readAiKeys()
+  if (Object.keys(map).length > 0) return map
+  const legacy = localStorage.getItem(AI_KEY)
+  if (!legacy) return map
+  const model = localStorage.getItem('linverse.model') || 'custom'
+  map[model] = legacy
+  localStorage.setItem(AI_KEYS, JSON.stringify(map))
+  localStorage.removeItem(AI_KEY)
+  return map
+}
+// 取 Key：传模型就取该供应商的；不传取当前选中模型的（老调用方兼容）
+export const getAiKey = (model?: string) => {
+  const map = migrateLegacyKey()
+  if (model) return map[model] || ''
+  const current = localStorage.getItem('linverse.model') || 'deepseek'
+  return map[current] || ''
+}
+export const setAiKey = (k: string, model?: string) => {
+  const map = migrateLegacyKey()
+  const m = model || localStorage.getItem('linverse.model') || 'deepseek'
+  if (k) map[m] = k
+  else delete map[m]
+  localStorage.setItem(AI_KEYS, JSON.stringify(map))
 }
 
 // 账号 ID 双存储：localStorage 为主，cookie 为备。

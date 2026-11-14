@@ -118,7 +118,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     getSettings(profileId).then((s) => {
       setFontSize(s.fontSize || 'medium')
       setTheme(s.theme || 'system')
-      setProvider(s.aiProvider && s.aiProvider !== 'demo' ? s.aiProvider : 'deepseek')
+      const pv = s.aiProvider && s.aiProvider !== 'demo' ? s.aiProvider : 'deepseek'
+      setProvider(pv)
+      setKey(getAiKey(pv)) // Key 跟着供应商走：读到哪个供应商，就显示哪个的 Key
       setAiModel(s.aiModel || '')
       setEndpoint(s.aiEndpoint || '')
       applyAppearance(s.fontSize || 'medium', s.theme || 'system')
@@ -237,7 +239,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const saveAi = async () => {
     if (!profileId || savingAi) return
     setSavingAi(true)
-    setAiKey(key.trim())
+    setAiKey(key.trim(), provider) // Key 按供应商分开存：这个 Key 只归当前这个供应商
     try {
       await saveSettings({ profileId, aiProvider: provider, aiModel: aiModel.trim(), aiEndpoint: endpoint.trim() })
       localStorage.setItem('linverse.model', provider)
@@ -474,7 +476,12 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <div className="seg">
   {PROVIDERS.map((p) => (
   <button key={p.v} className={provider === p.v ? 'on' : ''}
-  onClick={() => setProvider(p.v)}>{p.label}</button>
+  onClick={() => {
+    if (p.v === provider) return
+    setAiKey(key.trim(), provider) // 先把当前框里的 Key 存回旧供应商，别丢了
+    setProvider(p.v)
+    setKey(getAiKey(p.v)) // 再换成新供应商已存的 Key（没有就空着等填）
+  }}>{p.label}</button>
   ))}
   </div>
   </div>
@@ -495,7 +502,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <input className="input" type="password" value={key}
   placeholder="粘贴你的 API Key"
   onChange={(e) => setKey(e.target.value)} autoComplete="off" />
-  <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写</div>
+  <div className="safe-note">Key 只保存在这台设备的浏览器里，不会上传到服务器，换设备需要重新填写；每个供应商的 Key 分开保存，切换供应商时 Key 跟着换</div>
   </div>
   <button className="btn" style={{ width: '100%' }} onClick={saveAi} disabled={savingAi}>{savingAi ? '保存中…' : '保存'}</button>
   </>),
