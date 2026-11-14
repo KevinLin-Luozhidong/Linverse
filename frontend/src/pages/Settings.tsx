@@ -26,6 +26,14 @@ const PROVIDERS = [
   { v: 'custom', label: '自定义' },
 ]
 
+// 各供应商的默认模型：只有"自定义"需要手动填模型名和接口地址，
+// 其他供应商用默认模型、不用填（填了也没用，后端只认自定义那栏的值）
+const DEFAULT_MODEL_HINT: Record<string, string> = {
+  deepseek: 'DeepSeek 默认用 deepseek-flash（能看图），不用填模型名和接口地址',
+  gemini: 'Gemini 默认用 gemini-2.0-flash，不用填模型名和接口地址',
+  openai: 'OpenAI 默认用 gpt-4o-mini，不用填模型名和接口地址',
+}
+
 export default function Settings({ profileId, onBack, onProfileChange }: {
   profileId: string | null; onBack: () => void; onProfileChange: (id: string) => void
 }) {
@@ -485,10 +493,11 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   ))}
   </div>
   </div>
+  {provider === 'custom' ? (<>
   <div className="field">
   <div className="field-label">模型名（可改）</div>
   <input className="input" value={aiModel}
-  placeholder={provider === 'deepseek' ? '比如 deepseek-flash' : '比如 gpt-4o-mini'}
+  placeholder="比如 glm-4v-flash"
   onChange={(e) => setAiModel(e.target.value)} />
   </div>
   <div className="field">
@@ -497,6 +506,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   placeholder="https://…/v1/chat/completions"
   onChange={(e) => setEndpoint(e.target.value)} />
   </div>
+  </>) : (
+  <div className="safe-note" style={{ marginBottom: 12 }}>{DEFAULT_MODEL_HINT[provider] || ''}</div>
+  )}
   <div className="field">
   <div className="field-label">Key</div>
   <input className="input" type="password" value={key}
