@@ -392,7 +392,16 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [customEndpoint, setCustomEndpoint] = useState('')
   useEffect(() => {
     if (!profileId || !active) return
+    // 设置页保存后回来：以本地存的供应商为准同步聊天状态（GPT 审查 M1）——
+    // 以前只在本地没存过模型时才从后端同步，设置里换了供应商回来聊天还走旧的，
+    // 发问题时还会把旧模型写回本地，越用越错。
+    setModel((cur) => {
+      const saved = localStorage.getItem('linverse.model')
+      return saved && saved !== 'demo' ? saved : cur
+    })
+    let cancelled = false // GPT 审查 M6：账号切换时旧设置回包作废，别把旧账号的播种盖到新账号上
     getSettings(profileId).then((s) => {
+      if (cancelled) return
       if (s.aiProvider && !localStorage.getItem('linverse.model')) setModel(s.aiProvider)
       // 智谱的模型名以前存在后端设置里：按"账号+接口地址"播种——换了账号或换了地址就按后端重播，
       // 别让上一个账号的模型名串过来（GPT 审查 M4）
@@ -400,6 +409,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       seedCustomModel(profileId, s.aiModel, s.aiEndpoint)
       setCustomEndpoint(s.aiEndpoint || '')
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [profileId, active])
 
   // "自定义"那栏是不是智谱（看接口地址含不含 bigmodel.cn）：跟当前聊的是哪个模型没关系，

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getCustomName, setCustomName as saveCustomName, deriveCustomName, seedCustomModel, setCustomModelOrigin, customModelOriginKey, listModels, getCachedProfiles, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, effectiveModelName, setAiModel as saveAiModel, getCustomName, setCustomName as saveCustomName, deriveCustomName, seedCustomModel, setCustomModelOrigin, customModelOriginKey, listModels, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -121,13 +121,21 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const providers = PROVIDERS.map((p) => (p.v === 'custom' ? { ...p, label: customName } : p))
   const [endpoint, setEndpoint] = useState('')
   const [key, setKey] = useState('')
+  // 深度思考开时聊天实际用的是推理模型名（o3 等），输入框里是基础模型名：
+  // 生效名字不一样时提示一句，别让人以为输入框的就是实际用的（GPT 审查 M4）
+  const effectiveModelHint = (() => {
+    const eff = effectiveModelName(provider, localStorage.getItem('linverse.deepThink') === '1')
+    return eff && eff !== aiModel.trim() ? eff : ''
+  })()
 
   // 读账号列表 + 设置
   // 统一把账号 ID 转成字符串：数据库返回的 id 可能是数字，localStorage 里是字符串，
   // 入口处归一一次，后面所有比较/改名/删除都不用再操心类型
   const normProfiles = (ps: P[]) => ps.map((p) => ({ ...p, id: String(p.id) }))
   useEffect(() => {
+    let cancelled = false // GPT 审查 M6：账号切换时旧回包作废，别把旧账号的设置盖到新账号上
     listProfiles().then((ps) => {
+      if (cancelled) return
       const list = normProfiles(ps)
       setProfiles(list)
       const me = list.find((p) => p.id === profileId)
@@ -137,6 +145,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     setAiModel(getAiModel()) // 模型名也只从本地读
     if (!profileId) return
     getSettings(profileId).then((s) => {
+      if (cancelled) return
       setFontSize(s.fontSize || 'medium')
       setTheme(s.theme || 'system')
       const pv = s.aiProvider && s.aiProvider !== 'demo' ? s.aiProvider : 'deepseek'
@@ -159,6 +168,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setCustomName(getCustomName(s.aiEndpoint || '')) // 名字跟着接口地址走：没改过名就按地址推断（智谱/本地/其他）
       applyAppearance(s.fontSize || 'medium', s.theme || 'system')
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [profileId])
 
   // 外观即时生效：写到 html 标签属性，CSS 变量自动切换
@@ -540,6 +550,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   placeholder={MODEL_PLACEHOLDER[provider] || '比如 deepseek-flash'}
   onChange={(e) => setAiModel(e.target.value)} />
   <div className="safe-note">每个供应商的模型名分开保存，聊天页切换模型时显示的就是这里填的名字</div>
+  {effectiveModelHint && (<div className="safe-note">深度思考已开，聊天时实际用的是 {effectiveModelHint}</div>)}
   {((getAiKey(provider) || key.trim())) && (<>
     <button className="btn" style={{ marginTop: 8 }} disabled={loadingModels}
       onClick={async () => {
@@ -561,7 +572,12 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
           const cur = getAiModel(p)
           setModelList(cur && !list.includes(cur) ? [cur, ...list] : list)
           if (!list.length) setToast('没拉到模型列表，检查 Key 是否有效')
-        } catch (e) { setToast(e instanceof Error ? e.message : '拉取失败') }
+        } catch (e) {
+          // 旧请求失败也别弹旧供应商的错：只在还是当前供应商/账号时提示（GPT 审查 M5）
+          if (p === providerRef.current && pid === profileIdRef.current) setToast(e instanceof Error ? e.message : '拉取失败')
+        }
+        // finally 不加过期校验：同一时间只有一个列表请求在途（按钮在加载时禁用），
+        // 所以 finally 一定属于最新请求，关掉加载状态是对的
         finally { setLoadingModels(false) }
       }}>{loadingModels ? '拉取中…' : (modelList ? '收起列表' : '选择模型')}</button>
     {modelList && (<div style={{ marginTop: 8 }}>

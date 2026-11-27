@@ -160,3 +160,146 @@ describe('listModels 不跟随重定向（GPT 审查 M1）', () => {
     } finally { delete global.fetch; }
   });
 });
+
+describe('历史消息进请求体（GPT 审查 M2）', () => {
+  const { sanitizeHistory, geminiContents, openAICompatibleBody } = _test;
+  test('sanitizeHistory：只要 user/assistant、内容是字符串，最多 8 条', () => {
+    const h = [
+      { role: 'user', content: 'a' },
+      { role: 'system', content: 'x' },
+      { role: 'assistant', content: 123 },
+      { role: 'assistant', content: 'b' },
+    ];
+    assert.deepEqual(sanitizeHistory(h), [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'b' },
+    ]);
+    const long = Array.from({ length: 12 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: String(i) }));
+    assert.equal(sanitizeHistory(long).length, 8);
+    assert.deepEqual(sanitizeHistory(null), []);
+  });
+  test('geminiContents：开头非 user 丢掉，user/model 交替', () => {
+    const c = geminiContents(
+      [{ role: 'assistant', content: 'old' }, { role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }],
+      [{ text: 'q2' }]
+    );
+    assert.deepEqual(c.map((x) => x.role), ['user', 'model', 'user']);
+    assert.equal(c[0].parts[0].text, 'q1');
+  });
+  test('ask() 把历史发给模型：messages 里系统消息、历史、本轮问题按顺序', async () => {
+    const { ask } = require('../src/ai/providers');
+    let capturedBody = null;
+    global.fetch = async (url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '海星' } }] }) };
+    };
+    try {
+      await ask({
+        model: 'deepseek', question: '我的暗号是什么？', aiKey: 'k', modelName: 'deepseek-flash', deepThink: false,
+        historyMsgs: [
+          { role: 'user', content: '我的暗号是海星。' },
+          { role: 'assistant', content: '记住了，海星。' },
+        ],
+      });
+      const msgs = capturedBody.messages;
+      assert.equal(msgs[0].role, 'system');
+      assert.equal(msgs[1].content, '我的暗号是海星。');
+      assert.equal(msgs[2].content, '记住了，海星。');
+      assert.equal(msgs[3].content, '我的暗号是什么？');
+    } finally { delete global.fetch; }
+  });
+});
+
+describe('Ollama 图片走 images 字段（GPT 审查 M3）', () => {
+  const { ollamaMessages } = _test;
+  test('data: 链接直接拆 base64 进 images', async () => {
+    const msgs = await ollamaMessages({ question: '这图是什么', imageUrl: 'data:image/png;base64,aGVsbG8=', historyMsgs: [] });
+    assert.deepEqual(msgs[0].images, ['aGVsbG8=']);
+    assert.equal(msgs[0].content, '这图是什么');
+  });
+  test('http 链接下载转码进 images；下载失败退回文字备注', async () => {
+    global.fetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from('imgbytes') });
+    try {
+      const msgs = await ollamaMessages({ question: '这图是什么', imageUrl: 'https://8.8.8.8/pic.jpg', historyMsgs: [] });
+      assert.equal(msgs[0].images[0], Buffer.from('imgbytes').toString('base64'));
+    } finally { delete global.fetch; }
+    global.fetch = async () => { throw new Error('boom'); };
+    try {
+      const msgs = await ollamaMessages({ question: '这图是什么', imageUrl: 'https://8.8.8.8/pic.jpg', historyMsgs: [] });
+      assert.equal(msgs[0].images, undefined);
+      assert.match(msgs[0].content, /附带图片/);
+    } finally { delete global.fetch; }
+  });
+});
+
+describe('安全重定向（GPT 审查 M7）', () => {
+  const { fetchWithSafeRedirects } = _test;
+  // 按脚本返回响应：每调一次 fetch 取下一条，记下每次的 url 和 opts
+  function scriptedFetch(script) {
+    const calls = [];
+    let i = 0;
+    const f = async (url, opts) => {
+      calls.push({ url, opts });
+      const step = script[Math.min(i++, script.length - 1)];
+      return {
+        ok: step.status >= 200 && step.status < 300,
+        status: step.status,
+        headers: { get: (n) => (String(n).toLowerCase() === 'location' ? (step.location || null) : null) },
+        json: async () => step.json || {},
+      };
+    };
+    return { fetch: f, calls };
+  }
+  test('302 到公网 IP：跟过去，POST 转 GET、丢请求体，同源保留 Authorization', async () => {
+    const s = scriptedFetch([
+      { status: 302, location: 'https://8.8.8.8/b' },
+      { status: 200, json: { ok: true } },
+    ]);
+    global.fetch = s.fetch;
+    try {
+      const res = await fetchWithSafeRedirects('https://8.8.8.8/a', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer k' },
+        body: JSON.stringify({ a: 1 }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(s.calls[1].url, 'https://8.8.8.8/b');
+      assert.equal(s.calls[1].opts.method, 'GET');
+      assert.equal(s.calls[1].opts.body, undefined);
+      assert.equal(s.calls[1].opts.headers.Authorization, 'Bearer k');
+    } finally { delete global.fetch; }
+  });
+  test('307 跨源：方法与请求体原样重发，但删 Authorization', async () => {
+    const s = scriptedFetch([
+      { status: 307, location: 'https://1.1.1.1/b' },
+      { status: 200, json: { ok: true } },
+    ]);
+    global.fetch = s.fetch;
+    try {
+      await fetchWithSafeRedirects('https://8.8.8.8/a', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer k' },
+        body: JSON.stringify({ a: 1 }),
+      });
+      assert.equal(s.calls[1].opts.method, 'POST');
+      assert.equal(s.calls[1].opts.body, JSON.stringify({ a: 1 }));
+      assert.equal(s.calls[1].opts.headers.Authorization, undefined);
+    } finally { delete global.fetch; }
+  });
+  test('302 到 169.254.169.254：直接拦，不发第二跳', async () => {
+    const s = scriptedFetch([{ status: 302, location: 'http://169.254.169.254/latest/meta-data/' }]);
+    global.fetch = s.fetch;
+    try {
+      await assert.rejects(fetchWithSafeRedirects('https://8.8.8.8/a', { method: 'GET' }), /不合法/);
+      assert.equal(s.calls.length, 1);
+    } finally { delete global.fetch; }
+  });
+  test('连续 6 次 302：超过 5 跳抛错', async () => {
+    const s = scriptedFetch([{ status: 302, location: 'https://8.8.8.8/x' }]);
+    global.fetch = s.fetch;
+    try {
+      await assert.rejects(fetchWithSafeRedirects('https://8.8.8.8/a', { method: 'GET' }), /重定向次数过多/);
+      assert.equal(s.calls.length, 6);
+    } finally { delete global.fetch; }
+  });
+});
