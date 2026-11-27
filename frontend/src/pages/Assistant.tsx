@@ -351,6 +351,16 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
+  const menuWrapRef = useRef<HTMLDivElement>(null)
+  // 点菜单外任意处关闭：窗口级 mousedown + ref 判定（全屏遮罩层实测两次没接住点击，顶栏 sticky 层叠上下文可疑，改走这条最稳的路）
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [menuOpen])
   // Esc 关闭模型菜单（点空白处已有全屏遮罩层关菜单）
   useEffect(() => {
     if (!menuOpen) return
@@ -731,7 +741,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         <button className="icon-btn" onClick={() => setDrawerOpen(true)} aria-label="会话列表">
           <I n="menu" />
         </button>
-        <div className="model-wrap">
+        <div className="model-wrap" ref={menuWrapRef}>
           <button className="model-pill" onClick={() => setMenuOpen((v) => !v)} aria-label="选择模型">
             {modelLabel}<I n="chev" size={14} />
           </button>

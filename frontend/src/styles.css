@@ -1392,8 +1392,8 @@ body::before {
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   backdrop-filter: blur(24px) saturate(160%);
 }
-/* 下拉菜单底色接近实色：菜单盖在正文上，G3 玻璃仍透字影响可读；用现成 --g-solid（同 .settings-over 的先例） */
-.model-menu, .drop-menu, .st-region-menu { background-color: var(--g-solid); }
+/* 下拉菜单底色全不透明：--g-solid 仍是 95%，放大仍透字；直接用全不透明的 --bg（边框与阴影还在，不会糊成一片） */
+.model-menu, .drop-menu, .st-region-menu { background-color: var(--bg); }
 
 /* 渐变边缘光描边：上左亮、下右暗（只给三个大表面） */
 .tool-slide, .kb-header, .me-stat-card { position: relative; }
