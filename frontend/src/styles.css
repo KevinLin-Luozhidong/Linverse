@@ -1582,3 +1582,80 @@ body::before {
   .st-ev { grid-template-columns: 62px 16px 1fr; }
   .st-fc-card { flex: 0 0 128px; }
 }
+
+/* ============ 桌面响应式：1024px 以上左导航 + 内容加宽，768px 以上先放宽 ============ */
+/* 桌面边栏默认不显示：手机上仍用底部 tabbar */
+.sidebar { display: none; }
+
+/* 平板过渡（768–1023px）：只把窄列放宽，导航和布局不动 */
+@media (min-width: 768px) {
+  .app { max-width: 720px; }
+  .sheet { max-width: 720px; }
+}
+
+/* 桌面（1024px 以上） */
+@media (min-width: 1024px) {
+  /* 外壳变横排：左边栏 + 内容区 */
+  .app { max-width: none; flex-direction: row; }
+  /* 密码门 / 账号恢复屏在桌面也居中 */
+  .app > .gate { flex: 1; min-height: 100dvh; }
+  .main { flex: 1; min-width: 0; }
+  /* 内容区限宽居中：聊天、工具、设置都按这个宽度走，太宽读着累 */
+  .tabview { max-width: 880px; margin: 0 auto; width: 100%; }
+  /* 底部导航收起，改走左边栏；提示条不再给底栏留位置 */
+  .tabbar { display: none; }
+  .toast { bottom: 28px; }
+  /* 底部弹窗在桌面放宽一点，仍贴底居中 */
+  .sheet { max-width: 640px; }
+
+  /* 左边栏 */
+  .sidebar {
+    display: flex; flex-direction: column;
+    width: 240px; flex-shrink: 0; height: 100dvh;
+    background: var(--card);
+    border-right: 1px solid var(--line);
+    padding: 20px 14px;
+  }
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; }
+  .sidebar-logo {
+    width: 36px; height: 36px; border-radius: 11px;
+    background: linear-gradient(135deg, #3b82f6, #60a5fa); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800;
+  }
+  .sidebar-name { font-size: 19px; font-weight: 800; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 4px; }
+  .sidebar-tab {
+    display: flex; align-items: center; gap: 12px;
+    border: 0; background: none; color: var(--ink2);
+    font-size: 15px; font-weight: 600;
+    padding: 11px 12px; border-radius: 12px;
+    cursor: pointer; text-align: left;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .sidebar-tab:hover { background: var(--blue-soft); }
+  .sidebar-tab.active { background: var(--blue-soft); color: var(--blue-deep); }
+  /* 个人中心二级页（设置 / 学习报告）只在个人中心时出现 */
+  .sidebar-sub {
+    margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .sidebar-subitem {
+    border: 0; background: none; color: var(--ink2);
+    font-size: 14px; padding: 9px 12px 9px 46px; border-radius: 10px;
+    cursor: pointer; text-align: left;
+  }
+  .sidebar-subitem:hover { background: var(--blue-soft); }
+  .sidebar-subitem.active { color: var(--blue-deep); font-weight: 700; }
+  .sidebar-foot { margin-top: auto; padding: 10px 12px 0; font-size: 12px; color: var(--ink3); }
+
+  /* 学习工具首页：横向滑动大卡片改成两列网格 */
+  .tool-stream {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible; padding: 4px 20px 16px;
+  }
+  .tool-slide { flex: none; min-height: 240px; }
+  /* 聊天区左右留白多一点 */
+  .chat-list { padding: 12px 28px 16px; }
+  .deep-row { padding: 2px 28px 10px; }
+}

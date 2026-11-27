@@ -10,6 +10,7 @@ import { listProfiles, createProfile, claimProfile, getSettings, siteStatus, get
 
 // App：底部三栏导航（AI助手 / 学习工具 / 个人中心）
 // 个人中心内嵌设置 / 学习报告 / 我的收藏三个二级页；负责账号初始化与外观偏好应用
+// 桌面（1024px 以上）：底部导航收起，改走左侧边栏（见下方 aside.sidebar，样式在 styles.css 末尾）
 type Tab = 'assistant' | 'tools' | 'me'
 type MeView = 'profile' | 'settings' | 'report'
 
@@ -326,6 +327,34 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* 桌面端左侧边栏：1024px 以上才显示（.sidebar 默认 display:none），手机上仍用底部 tabbar */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="sidebar-logo">L</div>
+          <div className="sidebar-name">Linverse</div>
+        </div>
+        <nav className="sidebar-nav">
+          {tabs.map((t) => (
+            <button key={t.id}
+              className={'sidebar-tab' + (tab === t.id ? ' active' : '')}
+              onClick={() => goTab(t.id)}>
+              <I n={tab === t.id ? filledIcon[t.icon] : t.icon} size={22} />
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </nav>
+        {tab === 'me' && (
+          <div className="sidebar-sub">
+            <button className={'sidebar-subitem' + (meView === 'profile' ? ' active' : '')}
+              onClick={() => goMeView('profile')}>个人中心</button>
+            <button className={'sidebar-subitem' + (meView === 'settings' ? ' active' : '')}
+              onClick={() => goMeView('settings')}>设置</button>
+            <button className={'sidebar-subitem' + (meView === 'report' ? ' active' : '')}
+              onClick={() => goMeView('report')}>学习报告</button>
+          </div>
+        )}
+        <div className="sidebar-foot">AI 学习助手</div>
+      </aside>
       <div className="main">
         {visitedTabs.includes('assistant') && (
           <div className="tabview" key={'a' + profileId}
