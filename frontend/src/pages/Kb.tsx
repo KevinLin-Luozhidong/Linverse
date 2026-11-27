@@ -177,7 +177,7 @@ export default function Kb({ active }: { active?: boolean }) {
                   {deleting && confirmDel === b.book
                     ? <span className="kb-del-spin" />
                     : confirmDel === b.book
-                    ? <><I n="trash" size={14} /><span>确认删除</span></>
+                    ? <><I n="trash" size={14} sw={2.5} /><span>确认删除</span></>
                     : <I n="trash" size={16} />}
                 </button>
               </div>
@@ -243,7 +243,7 @@ export default function Kb({ active }: { active?: boolean }) {
 
       {/* 底部提示 */}
       <div className="kb-footer-tip">
-        <I n="info" size={14} />
+        <I n="info" size={14} sw={1.5} />
         <span>想加新书？把教辅 PDF 发给助手，入库后这里自动更新</span>
       </div>
 

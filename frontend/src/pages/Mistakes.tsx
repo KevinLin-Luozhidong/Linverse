@@ -250,7 +250,7 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
       <div className="toolbar-row" style={{ padding: '10px 0 0' }}>
         {/* 排序收进一个下拉按钮：点一下展开选，不平铺占地方 */}
         <div style={{ position: 'relative' }}>
-          <button className="btn btn-ghost" onClick={() => setSortOpen(!sortOpen)} aria-label="排序方式">
+          <button className="btn btn-ghost sort-btn" onClick={() => setSortOpen(!sortOpen)} aria-label="排序方式">
             {SORTS.find((s) => s.v === sort)?.label}
             <I n="chev" size={14} />
           </button>
@@ -297,13 +297,13 @@ export default function Mistakes({ profileId }: { profileId: string | null }) {
               )}
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 {m.questionImageUrl && (
-                  <img src={imgSrc(m.questionImageUrl)} alt="题目"
+                  <img className="m-list-thumb" src={imgSrc(m.questionImageUrl)} alt="题目"
                     style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }} />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div>
                     <span className="m-subject">{m.subject}</span>
-                    {!!m.mastered && <span className="mastered-tag" style={{ marginLeft: 8 }}><I n="check" size={14} />已掌握</span>}
+                    {!!m.mastered && <span className="mastered-tag" style={{ marginLeft: 8 }}><I n="check" size={14} sw={2.5} />已掌握</span>}
                   </div>
                   {m.questionText && (
                     <div className="m-q" style={{

@@ -197,7 +197,7 @@ function SunCard({ sun, payloadDate }: { sun: AnyObj; payloadDate: string }) {
   return (
     <section className="st-sun st-card">
       <div className="st-sec-title">
-        <I n="clock" size={16} /> 太阳轨迹
+        <I n="clock" size={16} sw={2.5} /> 太阳轨迹
       </div>
       <svg className="st-sun-svg" viewBox="0 0 320 168" role="img" aria-label="太阳轨迹">
         <line x1="10" y1="148" x2="310" y2="148" className="st-sun-horizon" />
@@ -358,7 +358,7 @@ export default function Shantou({ active }: { active?: boolean }) {
                   className={r.id === region ? 'on' : ''}
                   onClick={() => pickRegion(r.id)}
                 >
-                  {r.id === region && <I n="check" size={15} />}
+                  {r.id === region && <I n="check" size={15} sw={2.5} />}
                   {r.name}
                 </button>
               ))}
@@ -414,7 +414,7 @@ export default function Shantou({ active }: { active?: boolean }) {
         <section className="st-life" aria-label="生活指数">
           <div className="st-sec-head">
             <div className="st-sec-title">
-              <I n="info" size={16} /> 生活指数
+              <I n="info" size={16} sw={2.5} /> 生活指数
             </div>
             {life.sub ? <div className="st-sec-sub">{life.sub}</div> : null}
           </div>
@@ -439,7 +439,7 @@ export default function Shantou({ active }: { active?: boolean }) {
         <section className="st-fc" aria-label="四日天气预报">
           <div className="st-sec-head">
             <div className="st-sec-title">
-              <I n="chart" size={16} /> 四日预报
+              <I n="chart" size={16} sw={2.5} /> 四日预报
             </div>
             <div className="st-fc-tabs" role="tablist" aria-label="预报指标切换">
               {tabs.map((x) => (
@@ -499,7 +499,7 @@ export default function Shantou({ active }: { active?: boolean }) {
         <section className="st-trips" aria-label="周末两日游">
           <div className="st-sec-head">
             <div className="st-sec-title">
-              <I n="heart" size={16} /> 周末两日游
+              <I n="heart" size={16} sw={2.5} /> 周末两日游
             </div>
             {trips.sub ? <div className="st-sec-sub">{trips.sub}</div> : null}
           </div>
@@ -537,7 +537,7 @@ export default function Shantou({ active }: { active?: boolean }) {
         <section className="st-events" aria-label="展会与活动">
           <div className="st-sec-head">
             <div className="st-sec-title">
-              <I n="flame" size={16} /> 展会时间线
+              <I n="flame" size={16} sw={2.5} /> 展会时间线
             </div>
             {events.sub ? <div className="st-sec-sub">{events.sub}</div> : null}
           </div>
@@ -587,7 +587,7 @@ export default function Shantou({ active }: { active?: boolean }) {
         <section className="st-advice" aria-label="出行建议">
           <div className="st-sec-head">
             <div className="st-sec-title">
-              <I n="check" size={16} /> 出行建议
+              <I n="check" size={16} sw={2.5} /> 出行建议
             </div>
           </div>
           <div className="st-advice-grid">

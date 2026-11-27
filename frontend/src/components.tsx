@@ -50,11 +50,11 @@ const PATHS: Record<string, ReactNode> = {
   crown: <><path d="M3.5 8.5 7 12l5-6.8L17 12l3.5-3.5L19 18.5H5L3.5 8.5Z" /><path d="M5 21h14" /></>,
 }
 
-// 图标组件：size 控制大小，描边继承文字颜色
-export function I({ n, size = 22 }: { n: keyof typeof PATHS; size?: number }) {
+// 图标组件：size 控制大小，描边继承文字颜色；sw 按旁边文字字重定（400→1.5、500–600→2、700→2.5，better-ui）
+export function I({ n, size = 22, sw = 2 }: { n: keyof typeof PATHS; size?: number; sw?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+    <svg className="ic" width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
       aria-hidden>
       {PATHS[n]}
     </svg>

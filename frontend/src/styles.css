@@ -152,6 +152,9 @@ body {
 .icon-btn:active { transform: scale(0.88); background: var(--blue-soft); }
 
 /* 按钮 */
+/* 图标描边不随尺寸缩放：描边宽度按屏幕像素算（better-ui） */
+.ic path, .ic rect, .ic circle, .ic ellipse { vector-effect: non-scaling-stroke; }
+
 .btn {
   border: 0; border-radius: var(--radius-sm);
   background: var(--blue); color: #fff;
@@ -165,6 +168,8 @@ body {
 .btn-line { background: transparent; color: var(--blue); border: 1.5px solid var(--blue); }
 .btn-danger { background: var(--red); }
 .btn-row { display: flex; gap: 10px; }
+/* 排序按钮（错题本）：右图标，图标侧少 2px（better-ui） */
+.sort-btn { padding: 11px 16px 11px 18px; }
 
 /* 输入控件 */
 .input, .textarea, .select {
@@ -271,7 +276,7 @@ body {
   border: 1.5px solid var(--line);
   background: var(--card); color: var(--ink);
   font-size: calc(15px * var(--fss)); font-weight: 600;
-  padding: 8px 14px; border-radius: 20px;
+  padding: 8px 12px 8px 14px; border-radius: 20px;
   cursor: pointer;
   transition: transform 0.15s var(--ease), border-color 0.2s var(--ease);
 }
@@ -289,7 +294,7 @@ body {
 .model-menu button {
   display: flex; align-items: center; gap: 10px; width: 100%;
   border: 0; background: none; color: var(--ink);
-  font-size: calc(15px * var(--fss)); padding: 10px 12px; border-radius: 10px;
+  font-size: calc(15px * var(--fss)); padding: 10px 12px 10px 10px; border-radius: 10px;
   cursor: pointer; text-align: left;
   transition: background 0.15s var(--ease);
 }
@@ -388,7 +393,7 @@ body {
   border: 1.5px solid var(--line);
   background: var(--card); color: var(--ink2);
   font-size: calc(13px * var(--fss)); font-weight: 600;
-  padding: 8px 16px; border-radius: 18px;
+  padding: 8px 16px 8px 14px; border-radius: 18px;
   cursor: pointer;
   transition: transform 0.15s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease);
 }
@@ -509,7 +514,7 @@ body {
   position: relative; width: 52px; height: 52px; border-radius: 14px;
   overflow: hidden; flex-shrink: 0; border: 1px solid var(--line);
 }
-.photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .photo-preview button {
   position: absolute; top: 2px; right: 2px;
   width: 20px; height: 20px; border-radius: 50%;
@@ -520,7 +525,7 @@ body {
 .chat-welcome { margin: auto 0; text-align: center; padding: 0 32px; }
 .chat-welcome .w-title { font-size: calc(21px * var(--fss)); font-weight: 800; margin-bottom: 8px; }
 .chat-welcome .w-sub { font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.7; }
-.quiz-nudge { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 18px; padding: 12px 14px; text-align: left; font-size: calc(14px * var(--fss)); line-height: 1.6; color: var(--blue); background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: var(--radius); }
+.quiz-nudge { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 18px; padding: 12px 14px 12px 12px; text-align: left; font-size: calc(14px * var(--fss)); line-height: 1.6; color: var(--blue); background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: var(--radius); }
 .quiz-nudge:disabled { opacity: 0.6; }
 .stream-cursor { color: var(--blue); animation: stream-blink 1s step-end infinite; }
 @keyframes stream-blink { 50% { opacity: 0; } }
@@ -666,7 +671,7 @@ body {
   .kb-del-btn.confirm:hover { background: #dc2626; }
 }
 .kb-del-btn.confirm {
-  width: auto; padding: 0 12px;
+  width: auto; padding: 0 12px 0 10px;
   background: var(--red); color: #fff;
   font-size: calc(12px * var(--fss)); font-weight: 700;
 }
@@ -708,7 +713,7 @@ body {
 .tools-bar .icon-btn, .tools-bar .mini-chip { flex: none; }
 .mini-chip {
   border: 1.5px solid var(--line); background: var(--card); color: var(--ink2);
-  border-radius: 18px; padding: 7px 14px; font-size: calc(13px * var(--fss)); font-weight: 600;
+  border-radius: 18px; padding: 7px 14px 7px 12px; font-size: calc(13px * var(--fss)); font-weight: 600;
   cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
   transition: transform 0.15s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease);
 }
@@ -792,7 +797,7 @@ body {
 .brief-nav { display: flex; align-items: center; gap: 8px; padding: 10px 12px 2px; }
 .brief-nav-title { flex: 1; text-align: center; font-size: calc(16px * var(--fss)); font-weight: 700; }
 .brief-nav-sp { width: 40px; flex: none; }
-.brief-scroll { flex: 1; overflow-y: auto; }
+.brief-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
 
 /* ============ 错题本 ============ */
 .mistake-sec { padding: 6px 14px 90px; }
@@ -853,7 +858,9 @@ body {
 .mini-btn:active { transform: scale(0.94); }
 .img-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .img-thumb { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
-.img-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.img-thumb img { width: 100%; height: 100%; object-fit: cover; outline: 1px solid var(--image-outline); outline-offset: -1px; }
+/* 错题列表缩略图（行内样式、无 .img-thumb 壳，better-ui） */
+.m-list-thumb { outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .img-thumb button {
   position: absolute; top: 2px; right: 2px;
   width: 22px; height: 22px; border-radius: 50%; border: 0;
@@ -1003,6 +1010,7 @@ body {
   position: absolute; inset: 0;
   background: var(--bg);
   box-shadow: -16px 0 32px rgba(0, 0, 0, 0.18);
+  overscroll-behavior: contain;
   animation: pushIn 0.32s var(--ease);
 }
 @keyframes pushIn { from { transform: translateX(100%); } }
@@ -1201,7 +1209,7 @@ body {
   padding: 8px 18px; min-height: 0;
 }
 .crop-box { position: relative; display: inline-block; max-width: 100%; max-height: 100%; }
-.crop-img { display: block; max-width: 100%; max-height: 62vh; border-radius: 12px; user-select: none; -webkit-user-drag: none; }
+.crop-img { display: block; max-width: 100%; max-height: 62vh; border-radius: 12px; user-select: none; -webkit-user-drag: none; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .crop-mask { position: absolute; background: rgba(0, 0, 0, 0.55); pointer-events: none; }
 .crop-sel {
   position: absolute; border: 2px solid #fff; border-radius: 4px;
@@ -1274,7 +1282,7 @@ body {
 .drop-menu button {
   display: flex; align-items: center; gap: 10px; width: 100%;
   border: 0; background: none; color: var(--ink);
-  padding: 12px 14px; font-size: calc(15px * var(--fss)); font-weight: 600;
+  padding: 12px 14px 12px 12px; font-size: calc(15px * var(--fss)); font-weight: 600;
   border-radius: 10px; cursor: pointer; text-align: left;
 }
 .drop-menu button.on { color: var(--blue-deep); }
@@ -1442,11 +1450,11 @@ body::before {
 /* 地区选择器：照 .model-pill/.model-menu 范式，只用现有变量；菜单另进 G3 浮层玻璃组 */
 .st-regionbar { display: flex; }
 .st-region-wrap { position: relative; }
-.st-region-pill { display: flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: calc(15px * var(--fss)); font-weight: 600; padding: 8px 14px; border-radius: 20px; cursor: pointer; transition: transform 0.15s var(--ease), border-color 0.2s var(--ease); }
+.st-region-pill { display: flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: calc(15px * var(--fss)); font-weight: 600; padding: 8px 12px 8px 14px; border-radius: 20px; cursor: pointer; transition: transform 0.15s var(--ease), border-color 0.2s var(--ease); }
 .st-region-pill:active { transform: scale(0.95); border-color: var(--blue); }
 .st-region-backdrop { position: fixed; inset: 0; z-index: 49; }
 .st-region-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 170px; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px rgba(15, 27, 45, 0.14); padding: 6px; z-index: 50; animation: menuIn 0.2s var(--ease); }
-.st-region-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; color: var(--ink); font-size: calc(15px * var(--fss)); padding: 10px 12px; border-radius: 10px; cursor: pointer; text-align: left; transition: background 0.15s var(--ease); }
+.st-region-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; color: var(--ink); font-size: calc(15px * var(--fss)); padding: 10px 12px 10px 10px; border-radius: 10px; cursor: pointer; text-align: left; transition: background 0.15s var(--ease); }
 .st-region-menu button:active { background: var(--blue-soft); transform: scale(0.98); }
 .st-region-menu button.on { color: var(--blue-deep); font-weight: 700; }
 .st-region-soon { padding: 9px 12px 7px; margin-top: 4px; border-top: 1px solid var(--line); color: var(--ink3); font-size: calc(12.5px * var(--fss)); }
@@ -1458,7 +1466,7 @@ body::before {
 
 /* 天气头区：灯塔图全幅 + 渐变蒙版（值同原版静态页），白字压图上 */
 .st-hero { position: relative; overflow: hidden; border-radius: var(--radius); height: 300px; padding: 0; color: #fff; background: linear-gradient(135deg, var(--blue) 0%, var(--blue-deep) 100%); }
-.st-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .st-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,24,40,.42) 0%, rgba(6,24,40,.08) 34%, rgba(6,24,40,.18) 58%, rgba(6,24,40,.72) 100%); }
 .st-hero-inner { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 20px 20px 34px; text-shadow: 0 1px 6px rgba(6,24,40,.45); }
 .st-hero-place { font-size: calc(15px * var(--fss)); font-weight: 600; opacity: .95; }
@@ -1546,7 +1554,7 @@ body::before {
 .st-trips-list { display: flex; flex-direction: column; gap: 10px; }
 .st-trip { padding: 14px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
 .st-trip-media { position: relative; margin: -14px -14px 2px; }
-.st-trip-media img { display: block; width: 100%; height: 150px; object-fit: cover; }
+.st-trip-media img { display: block; width: 100%; height: 150px; object-fit: cover; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .st-trip-credit { position: absolute; left: 10px; bottom: 8px; font-size: calc(11px * var(--fss)); color: rgba(255,255,255,.88); text-shadow: 0 1px 4px rgba(0,0,0,.55); }
 .st-trip-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .st-trip-day { font-size: calc(12px * var(--fss)); color: var(--ink3); }
@@ -1639,7 +1647,7 @@ body::before {
     display: flex; align-items: center; gap: 12px;
     border: 0; background: none; color: var(--ink2);
     font-size: 15px; font-weight: 600;
-    padding: 11px 12px; border-radius: 12px;
+    padding: 11px 12px 11px 10px; border-radius: 12px;
     cursor: pointer; text-align: left;
     transition: background 0.15s var(--ease), color 0.15s var(--ease);
   }

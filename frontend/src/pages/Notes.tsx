@@ -267,7 +267,7 @@ export default function Notes({ profileId }: { profileId: string | null }) {
                 </div>
               )}
               <div className="note-title">
-                {!!n.pinned && <span className="pin-flag"><I n="pin" size={14} /></span>}
+                {!!n.pinned && <span className="pin-flag"><I n="pin" size={14} sw={2.5} /></span>}
                 {n.title || '无标题'}
               </div>
               <div className="note-content">{n.content}</div>

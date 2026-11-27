@@ -627,7 +627,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           {history.length > 0 && (
             <>
               <div className="sec-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span><I n="clock" size={14} />查词历史</span>
+                <span><I n="clock" size={14} sw={2.5} />查词历史</span>
                 <button className="mini-btn" style={{ color: 'var(--red)', fontSize: `calc(12px * var(--fss))` }}
                   disabled={clearBusy}
                   onClick={async () => {

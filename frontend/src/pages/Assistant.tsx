@@ -741,7 +741,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                       localStorage.setItem('linverse.model', m.v)
                       setMenuOpen(false)
                     }}>
-                    {m.v === model && <I n="check" size={15} />}{effectiveModelName(m.v, deepThink) || m.label}
+                    {m.v === model && <I n="check" size={15} sw={2.5} />}{effectiveModelName(m.v, deepThink) || m.label}
                     <span style={{ marginLeft: 'auto', opacity: 0.55, fontSize: 12 }}>{m.label}</span>
                   </button>
                 ))}
@@ -864,7 +864,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         <button className="brief-strip" onClick={() => (briefPeek ? openPanel('brief') : openPanel('shantou'))}>
           {briefPeek ? (
             <>
-              <span className="brief-strip-ic"><I n="flame" size={16} /></span>
+              <span className="brief-strip-ic"><I n="flame" size={16} sw={2.5} /></span>
               <span className="brief-strip-t">每日早报 · {briefDay(briefPeek.date)}</span>
               <span className="brief-strip-h">
                 {briefPeek.sections.find((s) => s.items.length > 0)?.items[0]?.title || ''}
@@ -872,7 +872,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
             </>
           ) : shantouPeek ? (
             <>
-              <span className="brief-strip-ic"><I n="chart" size={16} /></span>
+              <span className="brief-strip-ic"><I n="chart" size={16} sw={2.5} /></span>
               <span className="brief-strip-t">汕头看板 · {briefDay(shantouPeek.date)}</span>
               {/* payload 可能缺失（后端老数据），缺了就只显示标题，不拼出 undefined */}
               <span className="brief-strip-h">
@@ -894,7 +894,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
             <div className="w-sub">打字问或拍照问，我会按考试的规矩一步步讲</div>
             {unmasteredCount > 0 && (
               <button className="quiz-nudge" onClick={startQuiz} disabled={quizBusy || sending}>
-                <I n="target" size={16} />你有 {unmasteredCount} 道未掌握错题，要让 AI 出题考你吗？
+                <I n="target" size={16} sw={1.5} />你有 {unmasteredCount} 道未掌握错题，要让 AI 出题考你吗？
               </button>
             )}
           </div>

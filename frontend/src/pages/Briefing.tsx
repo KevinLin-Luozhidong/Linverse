@@ -100,7 +100,7 @@ export default function Briefing({ active }: { active?: boolean }) {
 
       {/* 底部提示 */}
       <div className="kb-footer-tip">
-        <I n="info" size={14} />
+        <I n="info" size={14} sw={1.5} />
         <span>早报每天早上自动生成，内容来自公开新闻来源，点来源可看原文</span>
       </div>
 
