@@ -103,6 +103,26 @@ async function saveTurn(profileId, conversationId, question, answer) {
   return cid;
 }
 
+// 把教材/标准问答拼进本轮问题（纯函数，可离线测）。
+// M2 根因修法 P0：以前这里写“优先根据以上教材内容回答”“请优先采用它的答案作答”
+// ——无条件采用。检索一旦错配（上文讲集合、教材却在讲函数），模型就跟着教材跑偏。
+// 现在改成有条件采用：教材只在与本轮问题和对话主题相关时才作依据，不相关就忽略。
+function buildFinalQuestion(question, faq, context) {
+  const q = (question || '').trim();
+  // 标准问答命中：人工校准过的答案放最前面，优先级最高——但只在它确实回答了本轮问题时
+  const faqBlock = faq
+    ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过，如果它确实回答了本轮问题，请优先采用它的答案作答，数学符号和公式必须原文照抄、一字不许改写（√、≤、∈、∪ 等不许"翻译"成英文单词，不许改成 LaTeX）：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
+    : '';
+  return (
+    faqBlock +
+    `以下是教材中的相关内容（已按相关度排序，仅供参考），每段开头的【教材来源N】就是它的真实出处（书名和页码都是真的，直接照抄）：\n\n${context}\n\n---\n` +
+    `用户问题：${q}\n\n` +
+    `要求：教材内容只在与本轮问题和对话主题相关时才作为回答依据；如果教材内容与对话主题不符（比如上文在讲集合、教材却在讲函数），忽略不相关的材料、按对话主题回答；如果教材内容不足以回答，就用你自己的知识补足，但要说明哪些部分超出了教材范围；` +
+    `引用教材时，必须照抄【教材来源N】里的真实书名和真实页码数字，格式为"（参考：《书名》第X页）"（X 换成真实页码数字）；` +
+    `严禁用"第X页"三个字原文输出，严禁编造书名或页码。`
+  );
+}
+
 // ---------- AI 问答 ----------
 // POST /api/ask  body: { profileId, conversationId?, question, imageUrl?, model, deepThink, aiKey?, modelName? }
 // 返回: { answer, thinkSeconds, conversationId, model }
@@ -145,22 +165,15 @@ router.post('/ask', ah(async (req, res) => {
   let finalQuestion = question.trim();
   if (useKb) {
     try {
-      const { searchKbContext } = require('./kb');
-      const { context, refs, faq } = await searchKbContext(question.trim(), 5, profileId);
+      const { searchKbContext, buildRetrievalQuery } = require('./kb');
+      // 检索 query 带上文（M2 根因修法 P0）：本轮问题可能是指代式追问，单看它不知
+      // 道指什么；检索 query 里带上最近的用户问题，主题才不会丢。回答用的仍是原始问题。
+      const retrievalQuery = buildRetrievalQuery(question.trim(), historyMsgs);
+      const { context, refs, faq } = await searchKbContext(retrievalQuery, 5, profileId);
       if (faq || context) {
         kbUsed = true;
         kbRefs = refs;
-        // 标准问答命中：人工校准过的答案放最前面，优先级最高
-        const faqBlock = faq
-          ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过，请优先采用它的答案作答，数学符号和公式必须原文照抄、一字不许改写（√、≤、∈、∪ 等不许"翻译"成英文单词，不许改成 LaTeX）：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
-          : '';
-        finalQuestion =
-          faqBlock +
-          `以下是教材中的相关内容（已按相关度排序，仅供参考），每段开头的【教材来源N】就是它的真实出处（书名和页码都是真的，直接照抄）：\n\n${context}\n\n---\n` +
-          `用户问题：${question.trim()}\n\n` +
-          `要求：优先根据以上教材内容回答；如果教材内容不足以回答，就用你自己的知识补足，但要说明哪些部分超出了教材范围；` +
-          `引用教材时，必须照抄【教材来源N】里的真实书名和真实页码数字，格式为"（参考：《书名》第X页）"（X 换成真实页码数字）；` +
-          `严禁用"第X页"三个字原文输出，严禁编造书名或页码。`;
+        finalQuestion = buildFinalQuestion(question.trim(), faq, context);
       }
     } catch (e) {
       console.warn('[rag] 检索失败，降级为普通问答：', e.message);
@@ -479,3 +492,4 @@ function lookupEcdict(word) {
 }
 
 module.exports = router;
+module.exports._test = { buildFinalQuestion };

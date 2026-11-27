@@ -44,7 +44,7 @@ userContent = question;
 return {
 model: modelName,
 messages: [
-{ role: 'system', content: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解，语言通俗易懂。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。'},
+{ role: 'system', content: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解，语言通俗易懂。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。先结合对话历史确定本轮问题说的是什么（比如“它”指上文提到的东西），不要因为检索到的教材换了话题；教材内容与本轮问题或对话主题不相关时，忽略它；如果历史不足以确定所指，先问清楚再回答。'},
 ...sanitizeHistory(history),
 { role: 'user', content: userContent},
 ],
@@ -143,7 +143,7 @@ const res = await fetchWithSafeRedirects(
 method: 'POST',
 headers: { 'Content-Type': 'application/json'},
 body: JSON.stringify({
-systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。'}]},
+systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。先结合对话历史确定本轮问题说的是什么（比如“它”指上文提到的东西），不要因为检索到的教材换了话题；教材内容与本轮问题或对话主题不相关时，忽略它；如果历史不足以确定所指，先问清楚再回答。'}]},
 contents: geminiContents(historyMsgs, parts),
 }),
 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -577,7 +577,7 @@ async function streamGemini({ question, imageUrl, aiKey, modelName, historyMsgs,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。' }] },
+        systemInstruction: { parts: [{ text: '你是一位耐心的中国高中学习助手，用中文回答，分步骤讲解。数学公式不要用 LaTeX 符号（如 \(x\)、\[...\]），直接用普通文本书写，例如 ax + by = c，变量直接写 x、y。先结合对话历史确定本轮问题说的是什么（比如“它”指上文提到的东西），不要因为检索到的教材换了话题；教材内容与本轮问题或对话主题不相关时，忽略它；如果历史不足以确定所指，先问清楚再回答。' }] },
         contents: geminiContents(historyMsgs, parts),
       }),
       signal: AbortSignal.timeout(120000),

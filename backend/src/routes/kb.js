@@ -57,7 +57,29 @@ return [...map.values()].sort((a, b) => b.score - a.score).map((e) => e.row);
 // 高频问答优先：问题向量与某道标准问答足够像（余弦距离 < 0.3）就直接采用标准答案；
 // 任一失败都不炸，另一路照常工作，全失败才返回空（上层降级为普通问答）。
 // 余弦距离阈值：低于此值视为高置信度命中，直接采用标准答案。
-// 可通过环境变量 FAQ_THRESHOLD 调整（默认 0.3；值越小要求越严格）。
+// 检索 query 带上文（M2 跑题根因修法 P0）：追问里常有“它/那/这个”这种指代，
+// 单看本轮问题不知道指什么，检索就会按字面去别的主題——第二轮“那它的表示方法
+// 有哪些”就是这么检出函数那章的。只用用户问题、不用 assistant 回答（上一轮回
+// 答本身可能已跑题）；最近两条用户问题都带上（第 3 轮“举一个具体的例子”也要能
+// 找回第 1 轮的“集合”）。本轮问题本身已有明确主题时，不带上文，避免旧主题污
+// 染新问题。纯函数，可离线测。
+const ANAPHORIC_RE = /[它他她这那其此]|还|另外|再/;
+function needsRetrievalContext(question) {
+  const q = (question || '').trim();
+  if (!q) return false;
+  return ANAPHORIC_RE.test(q) || q.length <= 12;
+}
+function buildRetrievalQuery(question, historyMsgs) {
+  const q = (question || '').trim();
+  if (!q) return q;
+  if (!needsRetrievalContext(q)) return q;
+  const hist = Array.isArray(historyMsgs) ? historyMsgs : [];
+  const users = hist
+    .filter((m) => m && m.role === 'user' && typeof m.content === 'string' && m.content.trim() && m.content.trim() !== q)
+    .map((m) => m.content.trim());
+  if (!users.length) return q;
+  return [...users.slice(-2), q].join(' ');
+}
 const FAQ_DISTANCE_THRESHOLD = parseFloat(process.env.FAQ_THRESHOLD) || 0.3;
 async function searchKbContext(question, topK = 5, profileId) {
 // 向量链和关键词链互不依赖，并行跑（以前是串行等三段）；标准问答复用向量，拿到向量后再跑
@@ -212,3 +234,5 @@ distance: r.distance,
 
 module.exports = router;
 module.exports.searchKbContext = searchKbContext;
+module.exports.buildRetrievalQuery = buildRetrievalQuery;
+module.exports.needsRetrievalContext = needsRetrievalContext;
