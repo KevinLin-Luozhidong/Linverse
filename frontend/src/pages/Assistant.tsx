@@ -351,6 +351,13 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
+  // Esc 关闭模型菜单（点空白处已有全屏遮罩层关菜单）
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
   // 抽屉标签：会话列表 / 我的收藏（原来在个人中心"更多"里，现挪到这里和历史会话放一起）
   const [drawerTab, setDrawerTab] = useState<'conv' | 'fav'>('conv')
   const [favs, setFavs] = useState<Fav[]>([])

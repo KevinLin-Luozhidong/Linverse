@@ -283,6 +283,7 @@ body {
 .model-pill:active { transform: scale(0.95); border-color: var(--blue); }
 .model-menu {
   position: absolute; top: calc(100% + 8px); left: 0;
+  width: max-content; max-width: min(320px, calc(100vw - 32px));
   min-width: 150px;
   background: var(--card);
   border: 1px solid var(--line); border-radius: 16px;
@@ -295,7 +296,7 @@ body {
   display: flex; align-items: center; gap: 10px; width: 100%;
   border: 0; background: none; color: var(--ink);
   font-size: calc(15px * var(--fss)); padding: 10px 12px 10px 10px; border-radius: 10px;
-  cursor: pointer; text-align: left;
+  cursor: pointer; text-align: left; white-space: nowrap;
   transition: background 0.15s var(--ease);
 }
 .model-menu button:active { background: var(--blue-soft); transform: scale(0.98); }
@@ -1391,6 +1392,8 @@ body::before {
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   backdrop-filter: blur(24px) saturate(160%);
 }
+/* 下拉菜单底色接近实色：菜单盖在正文上，G3 玻璃仍透字影响可读；用现成 --g-solid（同 .settings-over 的先例） */
+.model-menu, .drop-menu, .st-region-menu { background-color: var(--g-solid); }
 
 /* 渐变边缘光描边：上左亮、下右暗（只给三个大表面） */
 .tool-slide, .kb-header, .me-stat-card { position: relative; }
@@ -1453,8 +1456,8 @@ body::before {
 .st-region-pill { display: flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-size: calc(15px * var(--fss)); font-weight: 600; padding: 8px 12px 8px 14px; border-radius: 20px; cursor: pointer; transition: transform 0.15s var(--ease), border-color 0.2s var(--ease); }
 .st-region-pill:active { transform: scale(0.95); border-color: var(--blue); }
 .st-region-backdrop { position: fixed; inset: 0; z-index: 49; }
-.st-region-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 170px; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px rgba(15, 27, 45, 0.14); padding: 6px; z-index: 50; animation: menuIn 0.2s var(--ease); }
-.st-region-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; color: var(--ink); font-size: calc(15px * var(--fss)); padding: 10px 12px 10px 10px; border-radius: 10px; cursor: pointer; text-align: left; transition: background 0.15s var(--ease); }
+.st-region-menu { position: absolute; top: calc(100% + 8px); left: 0; width: max-content; max-width: min(320px, calc(100vw - 32px)); min-width: 170px; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 32px rgba(15, 27, 45, 0.14); padding: 6px; z-index: 50; animation: menuIn 0.2s var(--ease); }
+.st-region-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; color: var(--ink); font-size: calc(15px * var(--fss)); padding: 10px 12px 10px 10px; border-radius: 10px; cursor: pointer; text-align: left; white-space: nowrap; transition: background 0.15s var(--ease); }
 .st-region-menu button:active { background: var(--blue-soft); transform: scale(0.98); }
 .st-region-menu button.on { color: var(--blue-deep); font-weight: 700; }
 .st-region-soon { padding: 9px 12px 7px; margin-top: 4px; border-top: 1px solid var(--line); color: var(--ink3); font-size: calc(12.5px * var(--fss)); }
