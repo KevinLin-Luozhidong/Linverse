@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import Cropper from '../Cropper'
 import Briefing from './Briefing'
@@ -10,10 +10,14 @@ import {
   toggleConversationFavorite, batchDeleteConversations,
   getSettings, getAiKey, effectiveModelName, getCustomName, seedCustomModel, uploadImage, imgSrc, createMistake, getStats, listMistakes,
   getLatestBriefing, getLatestShantouBoard,
-  type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
+  type ConversationMeta, type ChatMsg, type KbRef, type DailyBriefing, type ShantouBoard,
 } from '@api'
 import { toggleFav, isFav } from '../favs'
 import MathKeyboard, { insertIntoTextarea, deleteBackward } from '../MathKeyboard'
+import { KB_PDF } from './Kb'
+
+// 稳定空回调：传给 memo 化的 AnswerCard，避免父级每轮重渲染都传新函数导致 memo 失效
+const noop = () => {}
 
 // AI 助手页：聊天 + 打字机输出 + 拍照问图 + 会话抽屉
 // 顶栏：汉堡 + 模型胶囊（模型菜单分"模型"/"功能"两组），状态胶囊只在未填 Key 时出现
@@ -197,10 +201,14 @@ function splitKnowledge(text: string): { body: string; know: string[] } {
   return { body: rest.join('\n'), know }
 }
 
-// AI 回答卡片：富文本 + 相关知识点 + 胶囊按钮（复制 / 存入错题本 / 收藏）
-function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onToast }: {
+// AI 回答卡片：富文本 + 相关知识点 + 胶囊按钮（复制 / 存入错题本 / 分享 / 收藏）
+// memo 化：流式每 120ms 刷一次，以前整条对话列表每个卡片都重跑 renderRich，
+// 手机上主线程被占满就是"卡顿"的来源；现在只有正在输出的那条重渲染。
+// props 全是原始值或稳定回调（onToast 是 setState，onSkip 用模块级 noop），memo 才生效。
+const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onToast, showActions = true, showSkip = false, kbRefs }: {
   text: string; question: string; profileId: string | null;
   thinkText: string; typing: boolean; onSkip: () => void; onToast: (m: string) => void;
+  showActions?: boolean; showSkip?: boolean; kbRefs?: KbRef[];
 }) {
   const [favTick, setFavTick] = useState(0)
   const [mistakeSubject, setMistakeSubject] = useState('数学')
@@ -245,6 +253,21 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
     setFavTick((t) => t + 1)
     onToast(liked ? '已收藏' : '已取消收藏')
   }
+  // 分享到外面：系统分享面板优先（微信/QQ/备忘录等），没有就退回复制
+  const share = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: question || 'Linverse', text }) } catch { /* 用户取消不提示 */ }
+    } else {
+      try { await navigator.clipboard.writeText(text); onToast('已复制，去别处粘贴分享') } catch { onToast('分享失败') }
+    }
+  }
+  // 引用行点开原书 PDF：跳到对应页（书页码 + 每本书的 PDF 偏移，前言跳第 1 页）
+  const openRef = (r: KbRef) => {
+    const pdf = KB_PDF[r.book]
+    if (!pdf) return
+    const pdfPage = r.page_start > 0 ? r.page_start + pdf.off : 1
+    window.open(`/kb-pdfs/${pdf.file}#page=${pdfPage}`, '_blank')
+  }
 
   return (
     <div className="answer">
@@ -255,10 +278,23 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
           {know.map((k, i) => <span key={i} className="k">{k}{i < know.length - 1 ? '、' : ''}</span>)}
         </div>
       )}
-      {thinkText && <div className="ans-think">{thinkText}</div>}
-      {!typing && (
-        <div className="ans-actions">
+      {thinkText && <div className="ans-think">{typing ? <span className="think-spin" aria-hidden /> : null}{thinkText}</div>}
+      {!typing && showActions && kbRefs && kbRefs.length > 0 && (
+        <div className="ans-refs fade-in">
+          <div className="ans-refs-title"><I n="book" size={13} />参考课本</div>
+          {kbRefs.map((r, i) => (
+            <button key={i} className="ans-ref" onClick={() => openRef(r)}>
+              <span className="ans-ref-book">{r.book}</span>
+              <span className="ans-ref-loc">{[r.chapter, r.section].filter(Boolean).join(' · ')}{r.page_start > 0 ? ` · 第${r.page_start}${r.page_end > r.page_start ? `-${r.page_end}` : ''}页` : ' · 前言'}</span>
+              <I n="chev" size={13} />
+            </button>
+          ))}
+        </div>
+      )}
+      {!typing && showActions && (
+        <div className="ans-actions fade-in">
           <button className="cap-btn" onClick={copy}><I n="copy" size={14} />复制</button>
+          <button className="cap-btn" onClick={share}><I n="share" size={14} />分享</button>
           <button className="cap-btn" onClick={saveToMistakes} disabled={savingMistake}
             title={`科目：${mistakeSubject}`}>
             <I n="notebook" size={14} />{savingMistake ? '存入中…' : '存入错题本'}
@@ -272,16 +308,14 @@ function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onTo
           </button>
         </div>
       )}
-      {typing && (
+      {typing && showSkip && (
         <div className="type-tools">
           <button className="cap-btn" onClick={onSkip}>直接回答</button>
         </div>
       )}
     </div>
   )
-}
-
-// 打字机：逐块显示文本
+})
 function TypeMsg(props: Omit<Parameters<typeof AnswerCard>[0], 'typing' | 'onSkip' | 'thinkText'> & {
   onDone: () => void; onSkipDone: () => void; text: string;
 }) {
@@ -296,7 +330,7 @@ function TypeMsg(props: Omit<Parameters<typeof AnswerCard>[0], 'typing' | 'onSki
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done, text])
-  return <AnswerCard {...rest} text={text.slice(0, n)} typing={!done} thinkText="" onSkip={() => { setN(text.length); onSkipDone() }} />
+  return <AnswerCard {...rest} text={text.slice(0, n)} typing={!done} thinkText="" showSkip onSkip={() => { setN(text.length); onSkipDone() }} />
 }
 
 // 回答下方的耗时标注：深度思考开着才写"已深度思考"，没开只写"用时"——
@@ -399,6 +433,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [batchBusy, setBatchBusy] = useState(false) // 批量删除中：防连点
   const fileRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  // 粘底开关：用户在底部才跟随输出，翻上去读旧消息时不被拽回到底
+  const stickRef = useRef(true)
   const activeConvRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [mathOpen, setMathOpen] = useState(false) // 数学符号盘开关
@@ -545,10 +581,17 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     } finally { setBatchBusy(false) }
   }
 
-  // 聊天区自动滚到底
+  // 聊天区自动滚到底（粘底式）：流式每 120ms 刷一次，以前无条件 scrollTop =
+  // scrollHeight，配合键盘开合、内容长高，页面就一直跳。现在只在用户本
+  // 来就贴底时才跟，翻上去读旧消息时不动；发送新问题时强制重新粘底。
+  const onListScroll = () => {
+    const el = listRef.current
+    if (!el) return
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  }
   useEffect(() => {
     const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight
   }, [msgs, typing])
 
   // 拍照 / 选图：先裁剪（可直接用原图），再上传拿到 url，随问题一起发
@@ -599,6 +642,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       imageUrl: imgUrl || undefined,
       createdAt: new Date().toISOString(),
     }
+    stickRef.current = true
     setMsgs((v) => [...v, userMsg])
     setInput('')
     setSending(true)
@@ -655,7 +699,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
           setConvId(r.conversationId)
           setMsgs((v) => v.map((m, i) => (i === aiIdx ? {
             ...m, content: r.answer,
-            webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
+            webSearched: !!r.webSearched, kbUsed: !!r.kbUsed, kbRefs: r.kbRefs,
             thinkSeconds: r.thinkSeconds || 0, deepThink,
           } : m)))
           // 开了联网搜索却没搜到（搜索挂了或没结果）：说一声，别让他以为开关是摆设
@@ -674,7 +718,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
             setMsgs((v) => {
               const next: ChatMsg[] = [...v, {
                 role: 'assistant' as const, content: r.answer, createdAt: new Date().toISOString(),
-                webSearched: !!r.webSearched, kbUsed: !!r.kbUsed,
+                webSearched: !!r.webSearched, kbUsed: !!r.kbUsed, kbRefs: r.kbRefs,
                 thinkSeconds: r.thinkSeconds || 0, deepThink,
               }]
               setTypingFor(next.length - 1)
@@ -904,7 +948,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       )}
 
       {/* 聊天区 */}
-      <div className="chat-list" ref={listRef}>
+      <div className="chat-list" ref={listRef} onScroll={onListScroll}>
         {msgs.length === 0 && (
           <div className="chat-welcome">
             <div className="w-title">随时问问题</div>
@@ -934,19 +978,18 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                 onToast={setToast}
               />
             ) : i === streamingFor && streamingFor >= 0 ? (
-              // 流式输出中：边收词边显示，末尾一个闪烁光标，状态文案放 thinkText 的位置
-              <>
-                <AnswerCard
-                  text={m.content}
-                  question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
-                  profileId={profileId}
-                  thinkText={streamStatus}
-                  typing={false}
-                  onSkip={() => {}}
-                  onToast={setToast}
-                />
-                <span className="stream-cursor" aria-hidden>▍</span>
-              </>
+              // 流式输出中：边收词边显示，光标是卡片内的 caret；typing=true 让操作栏
+              // 和引用块藏到输出完才浮现，状态文案带经典圆圈转圈
+              <AnswerCard
+                text={m.content}
+                question={i > 0 && msgs[i - 1].role === 'user' ? msgs[i - 1].content : ''}
+                profileId={profileId}
+                thinkText={streamStatus}
+                typing
+                showActions={false}
+                onSkip={noop}
+                onToast={setToast}
+              />
             ) : (
               <AnswerCard
                 text={m.content}
@@ -958,13 +1001,14 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                   thinkLabel(m),
                 ].filter(Boolean).join(' · ') : ''}
                 typing={false}
-                onSkip={() => {}}
+                kbRefs={m.kbRefs}
+                onSkip={noop}
                 onToast={setToast}
               />
             )}
           </div>
         ))}
-        {sending && <Spin />}
+        {sending && streamingFor < 0 && (<div className="spin-slot"><Spin /></div>)}
       </div>
 
       {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}

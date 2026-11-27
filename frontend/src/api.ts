@@ -80,7 +80,7 @@ const delAsProfile = <T>(id: string, p: string) =>
 
 // ---- 类型定义（与契约字段一一对应） ----
 export interface ConversationMeta { id: string; title: string; createdAt: string; favorite?: boolean }
-export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string; webSearched?: boolean; kbUsed?: boolean; thinkSeconds?: number; deepThink?: boolean }
+export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; createdAt: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[]; thinkSeconds?: number; deepThink?: boolean }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
 export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[] }
@@ -186,7 +186,8 @@ export interface KbRef { book: string; chapter: string; section: string; page_st
 
 // 模型列表：问供应商的 /models 要实时列表（用该供应商存的 Key），设置页做成点选
 export const listModels = async (model: string, profileId?: string): Promise<string[]> => {
-  const data = await post<{ models: string[] }>('/models', { model, profileId, aiKey: getAiKey(model) || undefined });
+  // 超时 20 秒：比后端 15 秒长，让后端的人话超时错误先回来，别被前端 abort 抢掉
+  const data = await post<{ models: string[] }>('/models', { model, profileId, aiKey: getAiKey(model) || undefined }, 20000);
   return data.models || [];
 }
 

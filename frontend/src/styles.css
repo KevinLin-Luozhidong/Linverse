@@ -257,8 +257,10 @@ body {
 .spin {
   width: 26px; height: 26px; border-radius: 50%;
   border: 3px solid var(--blue-soft2); border-top-color: var(--blue);
-  animation: spin 0.8s linear infinite; margin: 40px auto;
+  animation: spin 0.8s linear infinite; margin: 0 auto;
 }
+/* 等待整段回答时的转圈槽：固定高度占位，出现/消失不顶动页面 */
+.spin-slot { height: 50px; display: flex; align-items: center; justify-content: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ============ AI 助手页 ============ */
@@ -402,6 +404,23 @@ body {
 .cap-btn.liked { color: var(--orange); border-color: var(--orange); }
 /* 深度思考计时标签 */
 .ans-think { margin-top: 10px; font-size: calc(12px * var(--fss)); color: var(--blue-deep); font-weight: 600; }
+/* 思考/回答中的状态转圈：经典圆圈款（和 .spin 同款式，只缩小），文案前 6px 间距 */
+.think-spin { display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid var(--blue-soft2); border-top-color: var(--blue);
+  animation: spin 0.8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+/* 操作栏/引用块浮现动画：输出完才出现，0.25 秒淡入上浮，别生硬蹦出来 */
+.fade-in { animation: fadeUp 0.25s var(--ease); }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(4px); } }
+/* 参考课本块：和正文分开——字小一号、颜色浅、顶上细线分隔，一眼能分清这不是答案正文 */
+.ans-refs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ans-refs-title { display: flex; align-items: center; gap: 5px;
+  font-size: calc(12px * var(--fss)); font-weight: 700; color: var(--ink3); margin-bottom: 4px; }
+.ans-ref { display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left;
+  padding: 6px 2px; background: none; border: 0; cursor: pointer;
+  font-size: calc(12px * var(--fss)); line-height: 1.5; color: var(--ink3); }
+.ans-ref-book { font-weight: 700; color: var(--ink2); flex-shrink: 0; }
+.ans-ref-loc { flex: 1; min-width: 0; }
+.ans-ref svg { flex-shrink: 0; align-self: center; opacity: 0.5; }
 /* 打字机 */
 .caret { display: inline-block; width: 2px; height: 1.1em; background: var(--blue); vertical-align: -2px; animation: blink 0.9s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
@@ -528,8 +547,6 @@ body {
 .chat-welcome .w-sub { font-size: calc(14px * var(--fss)); color: var(--ink2); line-height: 1.7; }
 .quiz-nudge { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 18px; padding: 12px 14px 12px 12px; text-align: left; font-size: calc(14px * var(--fss)); line-height: 1.6; color: var(--blue); background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.25); border-radius: var(--radius); }
 .quiz-nudge:disabled { opacity: 0.6; }
-.stream-cursor { color: var(--blue); animation: stream-blink 1s step-end infinite; }
-@keyframes stream-blink { 50% { opacity: 0; } }
 
 /* ============ 学习工具页 ============ */
 .tools-home { padding: 20px 0 0; height: 100%; display: flex; flex-direction: column; }

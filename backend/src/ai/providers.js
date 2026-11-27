@@ -12,6 +12,7 @@
 // 超时：AI 问答 60 秒、联网搜索 15 秒。注意：431171c 删演示时误删过这两行，
 // 导致之后所有 ask 都报 FETCH_TIMEOUT_MS 未定义、线上问答全挂——以后删代码别动这块。
 const FETCH_TIMEOUT_MS = 60000;
+const MODELS_TIMEOUT_MS = 15000; // 模型列表单独短超时：见 listModels 注释
 const SEARCH_TIMEOUT_MS = 15000;
 
 // ---------- 真实供应商 ----------
@@ -342,7 +343,7 @@ return data.choices?.[0]?.message?.content || '';
 // ---------- 智谱联网搜索 ----------
 // 独立接口（不走 /chat/completions）：POST https://open.bigmodel.cn/api/paas/v4/web_search
 // 只在"custom 供应商 + 地址是智谱 + 用户打开开关"时调用；失败不抛错，上层降级为普通问答
-async function zhipuWebSearch(query, apiKey) {
+async function zhipuWebSearch(query, apiKey, recency) {
 const res = await fetchWithSafeRedirects('https://open.bigmodel.cn/api/paas/v4/web_search', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`},
@@ -350,7 +351,7 @@ body: JSON.stringify({
 search_engine: 'search_std', // 标准版：约 ¥0.01/次，以智谱控制台账单为准
 search_query: query,
 count: 5, // 只取 5 条：控制延迟和 prompt 长度
-search_recency_filter: 'noLimit',
+search_recency_filter: recency || 'noLimit',
 }),
 signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
 });
@@ -372,9 +373,29 @@ if (r.content) s += `\n   ${r.content}`;
 if (r.link) s += `\n   来源：${r.link}`;
 return s;
 });
-return '【联网搜索结果（仅供参考，时效性信息请以来源为准，回答时请注明信息来源）】\n'
+return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
 + lines.join('\n')
 + '\n\n【用户问题】\n';
+}
+
+// ---------- 联网搜索问句改写 ----------
+// 实测教训（2026-11-28）："今日新闻"这种模糊问句直接搜，智谱 search_std
+// 返回的全是 SEO 垃圾（2023 年旧文、"某国领导人访问了另一个国家"这种
+// 模板 filler），模型拿不到真新闻，只能回"我没有实时更新能力"或编通用
+// 建议。把今天日期写进问句（"2026年11月28日 今日新闻"）立刻能搜到当
+// 天的新闻简报；search_pro 换引擎没用，改写问句才是根治。
+// 时效词命中才改写（普通知识问题不加日期，别污染检索）。
+const TIME_WORDS = /今天|今日|昨天|前天|明天|最新|最近|新闻|热点|现在|今年|本月|本周|昨晚|今早/;
+function isTimeSensitive(q) { return TIME_WORDS.test(q || ''); }
+function todayZh() {
+  return new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric' });
+}
+function buildSearchQuery(question) {
+  return isTimeSensitive(question) ? `${todayZh()} ${question}` : question;
+}
+async function searchForQuestion(question, searchKey) {
+  const timeSensitive = isTimeSensitive(question);
+  return zhipuWebSearch(buildSearchQuery(question), searchKey, timeSensitive ? 'day' : 'noLimit');
 }
 
 // ---------- 模型列表：拉取供应商的 /models，设置页做成点选 ----------
@@ -402,7 +423,15 @@ async function listModels({ model, aiKey, endpoint }) {
   if (kind !== 'gemini') headers.Authorization = `Bearer ${aiKey}`;
   // 不跟随重定向：初始地址虽然过了 assertSafeEndpoint，但 302 能把请求转去
   // 169.254.169.254 这类内网地址（GPT 审查 M1）。宁可让合法跳转报错，也别让重定向绕过校验。
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'error' });
+  // 超时 15 秒就直说，别等 60 秒：前端 20 秒会先断，后端再等下去只是空转；
+  // 超时要报人话（"供应商 15 秒没回应"），别把 AbortError 原样抛给用户。
+  let res;
+  try {
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(MODELS_TIMEOUT_MS), redirect: 'error' });
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('拉取模型列表超时，供应商 15 秒没回应，重试一次试试');
+    throw e;
+  }
   if (!res.ok) throw new Error(await providerErrorText(res, '模型列表'));
   const data = await res.json();
   return normalizeModelIds(kind, data);
@@ -439,7 +468,7 @@ let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写
 let webSearched = false;
 if (webSearch && searchKey) {
 try {
-const results = await zhipuWebSearch(question, searchKey);
+const results = await searchForQuestion(question, searchKey);
 if (results.length) {
 finalQuestion = buildSearchBlock(results) + question;
 webSearched = true;
@@ -633,7 +662,7 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   // 联网搜索：用"自定义"那栏的智谱 Key 搜，跟当前聊的模型没关系（见 ask 里的注释）
   if (webSearch && searchKey) {
     try {
-      const results = await zhipuWebSearch(question, searchKey);
+      const results = await searchForQuestion(question, searchKey);
       if (results.length) {
         finalQuestion = buildSearchBlock(results) + question;
         webSearched = true;
@@ -665,4 +694,4 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
 module.exports = { ask, askStream, listModels };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, MODELS_TIMEOUT_MS };

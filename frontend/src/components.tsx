@@ -48,6 +48,7 @@ const PATHS: Record<string, ReactNode> = {
   star4: <><path d="M12 2.5c.9 5.8 4.2 9.1 10 10-5.8.9-9.1 4.2-10 10-.9-5.8-4.2-9.1-10-10 5.8-.9 9.1-4.2 10-10Z" /></>,
   target: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /></>,
   crown: <><path d="M3.5 8.5 7 12l5-6.8L17 12l3.5-3.5L19 18.5H5L3.5 8.5Z" /><path d="M5 21h14" /></>,
+  share: <><path d="M12 15V3" /><path d="m7 8 5-5 5 5" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></>,
 }
 
 // 图标组件：size 控制大小，描边继承文字颜色；sw 按旁边文字字重定（400→1.5、500–600→2、700→2.5，better-ui）

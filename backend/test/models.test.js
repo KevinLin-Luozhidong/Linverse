@@ -303,3 +303,23 @@ describe('安全重定向（GPT 审查 M7）', () => {
     } finally { delete global.fetch; }
   });
 });
+
+describe('listModels 超时 15 秒就报人话（2026-11-28 用户报"卡住没反应"）', () => {
+  test('超时常量 15 秒，且比前端 20 秒短', () => {
+    assert.equal(_test.MODELS_TIMEOUT_MS, 15000);
+    assert.ok(_test.MODELS_TIMEOUT_MS < 20000, '后端要先超时，前端 abort 不能抢掉人话错误');
+  });
+  test('供应商超时：AbortError 转成人话，不原样抛', async () => {
+    const err = new DOMException('The operation timed out.', 'AbortError');
+    const origFetch = global.fetch;
+    global.fetch = async () => { throw err; };
+    try {
+      await assert.rejects(
+        () => listModels({ model: 'deepseek', aiKey: 'k' }),
+        /拉取模型列表超时，供应商 15 秒没回应/,
+      );
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
+});

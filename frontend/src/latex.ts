@@ -18,6 +18,9 @@ export function cleanLatex(text: string): string {
   let out = text
     .replace(/\\\(/g, '').replace(/\\\)/g, '')
     .replace(/\\\[/g, '').replace(/\\\]/g, '')
+    // 转义大括号先占位：\{ \} 是字面花括号（集合 {a, b, c} 就靠它），
+    // 不能被最后的去括号规则吃掉——以前 \{a, b, c\} 会被洗成 \a, b, c\。
+    .replace(/\\\{/g, '\u0001').replace(/\\\}/g, '\u0002')
   // 分数替换循环跑：单遍正则只能换最内层，嵌套分数第一遍只换内层、再跑才换干净；上限 10 次防死循环
   for (let i = 0; i < 10; i++) {
     const next = out.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '$1/$2')
@@ -34,4 +37,6 @@ export function cleanLatex(text: string): string {
     .replace(/([a-zA-Z])_(\d+)/g, (_m, ch, ds) =>
       ch + ds.split('').map((d: string) => SUBS[d] || d).join(''))
     .replace(/\{([^{}]*)\}/g, '$1')
+    // 占位的大括号还原成字面花括号
+    .replace(/\u0001/g, '{').replace(/\u0002/g, '}')
 }

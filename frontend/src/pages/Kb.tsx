@@ -4,10 +4,12 @@ import { kbBooks, kbDeleteBook, kbBookChunks, type KbBook, type KbChunk } from '
 
 // 原书 PDF：随前端静态资源发布（/kb-pdfs/ 下），点书名展开后可在线查阅或下载。
 // 书名 → 文件名映射：新书入库后把 PDF 放进 frontend/public/kb-pdfs/ 并在这里加一行。
-const KB_PDF: Record<string, { file: string; size: string }> = {
-  '人教A版高中数学必修第一册': { file: 'math-b1.pdf', size: '24.9MB' },
-  '人教版高中生物学必修1 分子与细胞': { file: 'bio-b1.pdf', size: '18.9MB' },
-  '人教版高中生物学必修2 遗传与进化': { file: 'bio-b2.pdf', size: '27.5MB' },
+// off 是"书页码 → PDF 页码"的偏移（数学 book=pdf-7、生物 book=pdf-9，前言记 0）：
+// 引用行点开 PDF 要跳对页，书第 p 页 = PDF 第 p+off 页；前言（p<=0）跳 PDF 第 1 页。
+export const KB_PDF: Record<string, { file: string; size: string; off: number }> = {
+  '人教A版高中数学必修第一册': { file: 'math-b1.pdf', size: '24.9MB', off: 7 },
+  '人教版高中生物学必修1 分子与细胞': { file: 'bio-b1.pdf', size: '18.9MB', off: 9 },
+  '人教版高中生物学必修2 遗传与进化': { file: 'bio-b2.pdf', size: '27.5MB', off: 9 },
 }
 
 // 知识库管理页：查课本的数据来源一览
