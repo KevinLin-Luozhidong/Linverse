@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { I, Toast, Spin, useSwipeBack, useToast} from '../components'
-import { getStats, getBadges, checkin, type Stats, type Badge } from '@api'
+import { getStats, getBadges, checkin, checkinDateKey, isCheckedInToday, type Stats, type Badge } from '@api'
 
 // 学习报告：学习数据一览（统计展示 + 徽章进度），不是空壳
 
@@ -37,9 +37,10 @@ export default function Report({ profileId, onBack }: {
   // 加载失败：以前只有转圈，失败后一直转；现在原因常驻 + 重试。
   const [statsError, setStatsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
-  // 打卡：与个人中心、词典生词本共用同一个本地标记，两边状态一致
-  const [checkinDone, setCheckinDone] = useState(() =>
-    localStorage.getItem('linverse.checkinDate') === new Date().toISOString().slice(0, 10))
+  // 打卡：与个人中心、词典生词本共用同一个本地标记，三边状态一致；标记按账号隔离
+  const [checkinDone, setCheckinDone] = useState(() => isCheckedInToday(profileId))
+  // 切换账号后重算打卡状态（页面常驻挂载，useState 只初始化一次不够）
+  useEffect(() => { setCheckinDone(isCheckedInToday(profileId)) }, [profileId])
   const [checkinBusy, setCheckinBusy] = useState(false)
   const doCheckin = async () => {
     if (!profileId || checkinBusy) return
@@ -47,7 +48,7 @@ export default function Report({ profileId, onBack }: {
     try {
       await checkin(profileId)
       const today = new Date().toISOString().slice(0, 10)
-      localStorage.setItem('linverse.checkinDate', today)
+      localStorage.setItem(checkinDateKey(profileId), today)
       setCheckinDone(true)
       setToast('打卡成功')
       getStats(profileId).then(setStats).catch(() => {})

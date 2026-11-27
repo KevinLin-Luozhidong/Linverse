@@ -412,11 +412,19 @@ async function listVocabulary(profileId) {
 }
 
 async function createVocabulary(v) {
+  // 写入前统一规范化：去空格 + 小写（与 010 迁移的唯一索引口径一致，"Apple" 和 "apple" 是同一个词）
+  const word = (v.word || '').trim().toLowerCase();
+  // 幂等写入：同一账号同一词重复提交时不插第二条，返回已有的那条
   const r = await query(
-    'INSERT INTO vocabulary ("profileId", word, phonetic, meaning) VALUES ($1, $2, $3, $4) RETURNING *',
-    [v.profileId, v.word, v.phonetic || '', v.meaning || '']
+    'INSERT INTO vocabulary ("profileId", word, phonetic, meaning) VALUES ($1, $2, $3, $4) ON CONFLICT ("profileId", word) DO NOTHING RETURNING *',
+    [v.profileId, word, v.phonetic || '', v.meaning || '']
   );
-  return r.rows[0];
+  if (r.rows[0]) return r.rows[0];
+  const existing = await query(
+    'SELECT * FROM vocabulary WHERE "profileId" = $1 AND word = $2',
+    [v.profileId, word]
+  );
+  return existing.rows[0];
 }
 
 async function setVocabularyMastered(id, profileId, mastered) {
@@ -486,9 +494,10 @@ async function countWords(profileId) {
 // ---------- 查词历史（word_history） ----------
 
 async function recordWordHistory(profileId, word) {
-  // ON CONFLICT DO NOTHING：同一账号查过的词只保留一条（表上有 UNIQUE 约束）
+  // 同一账号查过的词只保留一条（表上有 UNIQUE 约束）；重复查词时把 looked_at
+  // 更新为本次时间，旧词能重新回到最近历史前排
   await query(
-    'INSERT INTO word_history ("profileId", word) VALUES ($1, $2) ON CONFLICT ("profileId", word) DO NOTHING',
+    'INSERT INTO word_history ("profileId", word) VALUES ($1, $2) ON CONFLICT ("profileId", word) DO UPDATE SET looked_at = now()',
     [profileId, word]
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, useToast} from '../components'
 import Cropper from '../Cropper'
-import { getStats, getBadges, listProfiles, setAvatar, uploadImage, imgSrc, checkin, type Stats, type Badge } from '@api'
+import { getStats, getBadges, listProfiles, setAvatar, uploadImage, imgSrc, checkin, checkinDateKey, isCheckedInToday, type Stats, type Badge } from '@api'
 
 // 个人中心：按正式版深色稿重做——头像区 + 双栏统计卡 + 7 天打卡 + 横向徽章 + 更多区
 // 徽章解锁以后端为准，阈值兜底保证演示/离线也能亮
@@ -68,10 +68,12 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
   // 现在失败原因常驻 + 重试按钮，打卡按钮也放进失败块（打卡本身不需要统计先加载）。
   const [statsError, setStatsError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
-  // 每日打卡：与词典生词本共用同一个本地标记（linverse.checkinDate），两边状态一致；
+  // 每日打卡：与词典生词本共用同一个本地标记，两边状态一致；标记按账号隔离，
+  // 以前是全局一个键，A 打卡后 B 也显示已打卡。
   // 后端同一天重复打卡只记一次（UNIQUE 约束），另一页按钮状态没来得及同步也无害
-  const [checkinDone, setCheckinDone] = useState(() =>
-    localStorage.getItem('linverse.checkinDate') === new Date().toISOString().slice(0, 10))
+  const [checkinDone, setCheckinDone] = useState(() => isCheckedInToday(profileId))
+  // 切换账号后重算打卡状态（页面常驻挂载，useState 只初始化一次不够）
+  useEffect(() => { setCheckinDone(isCheckedInToday(profileId)) }, [profileId])
   const [checkinBusy, setCheckinBusy] = useState(false)
   const doCheckin = async () => {
     if (!profileId || checkinBusy) return
@@ -79,7 +81,7 @@ export default function Profile({ profileId, onOpenSettings, onOpenReport }: {
     try {
       await checkin(profileId)
       const today = new Date().toISOString().slice(0, 10)
-      localStorage.setItem('linverse.checkinDate', today)
+      localStorage.setItem(checkinDateKey(profileId), today)
       setCheckinDone(true)
       setToast('打卡成功')
       // 打完立刻重拉统计，让连续天数和 7 天圆点当场点亮，不用切页再回来

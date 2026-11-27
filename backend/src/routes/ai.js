@@ -332,16 +332,23 @@ router.get('/dictionary', ah(async (req, res) => {
   // ---------- 2. 自有 ECDICT 词库补漏 ----------
   // 与前端离线包同源，服务端随函数打包一份（backend/data/ecdict.v2.json），
   // 在线查词不用等用户下载离线包也能用上自有词库；手机端下载仍只用于断网场景，绝不自动下载。
-  // 映射沿用前端离线词典的口径：t 按行拆成多条中文释义，与 e 数组同下标对齐，x 解析词形变化。
+  // 中英文释义分开展示：数据包的 t（中文综合行）和 e（英文义项数组）并不按下标对应
+  // （比如 abandon：中文先动词后名词，英文先名词后动词），按下标硬配会把不对应的
+  // 词义拼成一条。中文在前、英文在后，各自展示，不再假装它们一一对应。
+  let fromEcdict = false
   if (meanings.length === 0) {
     const hit = lookupEcdict(word);
     if (hit) {
+      fromEcdict = true
       displayWord = hit.w;
       phonetic = hit.p || '';
       wordForms = parseWordForms(hit.x);
       const zhLines = (hit.t || '').split('\n').filter(Boolean).slice(0, 5);
-      zhLines.forEach((zh, i) => {
-        meanings.push({ pos: '', zh: zh.trim(), en: (hit.e[i] || '').trim() });
+      zhLines.forEach((zh) => {
+        meanings.push({ pos: '', zh: zh.trim(), en: '' });
+      });
+      (hit.e || []).slice(0, 5).forEach((en) => {
+        meanings.push({ pos: '', zh: '', en: String(en).trim() });
       });
       if (meanings.length === 0) {
         meanings.push({ pos: '', zh: '(暂无释义)', en: '' });
@@ -369,7 +376,9 @@ router.get('/dictionary', ah(async (req, res) => {
   }
 
   // 中文释义：只翻 zh 为空的（维基词典来的）；ECDICT 自带中文，不动。
-  // MyMemory 免费翻译把英文释义翻成中文；翻译失败就保留英文，接口照常返回不报错
+  // MyMemory 免费翻译把英文释义翻成中文；翻译失败就保留英文，接口照常返回不报错。
+  // ECDICT 那路中英文分开展示，不用再翻（翻了反而把机器中文贴到英文行上）。
+  if (!fromEcdict) {
   try {
     await Promise.all(
       meanings.slice(0, 6).filter((m) => !m.zh && m.en).map(async (m) => {
@@ -395,6 +404,7 @@ router.get('/dictionary', ah(async (req, res) => {
     );
   } catch {
     // 翻译服务挂了也不影响：英文释义照常返回
+  }
   }
 
   const result = {

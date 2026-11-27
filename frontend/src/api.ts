@@ -383,6 +383,10 @@ export const deleteVocab = (id: string, profileId?: string) =>
 
 // ---- 打卡 / 统计 / 徽章 ----
 export const checkin = (profileId: string) => post<{ streakDays: number }>('/checkin', { profileId })
+// 每日打卡本地标记：按账号隔离（A 打卡后 B 不会被误判为已打卡）；词典生词本与个人中心共用
+export const checkinDateKey = (profileId: string | null) => `linverse.checkinDate.${profileId || 'anon'}`
+export const isCheckedInToday = (profileId: string | null) =>
+  localStorage.getItem(checkinDateKey(profileId)) === new Date().toISOString().slice(0, 10)
 export const getStats = (profileId: string) =>
   get<Stats>(`/stats?profileId=${encodeURIComponent(profileId)}`)
 export const getBadges = (profileId: string) =>

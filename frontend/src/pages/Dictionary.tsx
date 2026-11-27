@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
   lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab, deleteVocab,
-  dueVocab, checkin, type DictResult, type DictSource, type VocabWord,
+  dueVocab, checkin, checkinDateKey, isCheckedInToday, type DictResult, type DictSource, type VocabWord,
 } from '@api'
 
 // 词典页：查词 / 生词本两个子板块
@@ -64,10 +64,17 @@ async function queryOfflineDict(word: string): Promise<DictResult | null> {
         const [k, v] = part.split(':')
         if (k && v && labelMap[k]) wordForms.push({ form: v, label: labelMap[k] })
       }
-      // 中文释义按行拆成多条，英文释义取 e 数组同下标（v2 格式）
-      const meanings = (e.t || '').split('\n').filter(Boolean).slice(0, 5).map((zh, i) => ({
-        pos: '', zh: zh.trim(), en: (e.e[i] || '').trim(), examples: [],
-      }))
+      // 中英文释义分开展示：t（中文综合行）和 e（英文义项数组）并不按下标对应
+      // （比如 abandon：中文先动词后名词，英文先名词后动词），按下标硬配会把
+      // 不对应的词义拼成一条。中文在前、英文在后，各自展示。
+      const meanings = [
+        ...(e.t || '').split('\n').filter(Boolean).slice(0, 5).map((zh) => ({
+          pos: '', zh: zh.trim(), en: '', examples: [],
+        })),
+        ...(e.e || []).slice(0, 5).map((en) => ({
+          pos: '', zh: '', en: String(en).trim(), examples: [],
+        })),
+      ]
       resolve({
         word: e.w,
         phonetic: e.p || undefined,
@@ -89,6 +96,12 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   // 输入防抖自动查词：停 500ms 没再打字就自动查，不用每次点"查词"；Enter/点按钮照常立即查
   const searchTimer = useRef<number>(0)
   const lastSearched = useRef('')
+  // 查词请求序号：只接受最新一次请求的结果，旧请求晚回来也不覆盖（弱网乱序修掉）
+  const searchSeq = useRef(0)
+  const isLatestSearch = (seq: number) => seq === searchSeq.current
+  // 离线包状态的同步镜像：下载完成当刻 setDictPkg 还没生效，紧接着的自动查词
+  // 闭包里仍看到旧的 null；读 ref 就不会误报"先下载离线词典包"
+  const dictPkgRef = useRef<{ count: number; version?: number } | null>(null)
   // 组件卸载时清掉待触发的定时器，避免切页后还发请求
   useEffect(() => () => window.clearTimeout(searchTimer.current), [])
   // 查词失败的行内提示：只靠 2 秒 toast 时，用户一晃神就只剩空白结果区，以为“静默失败”；
@@ -106,25 +119,41 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [due, setDue] = useState<VocabWord[]>([])
   const [all, setAll] = useState<VocabWord[]>([])
   const [revealed, setRevealed] = useState<Record<string, boolean>>({}) // 已展开释义的卡片
-  const [checkinDone, setCheckinDone] = useState(() => {
-    // 检查今天是否已打卡（刷新页面后不重复打卡）
-    const today = new Date().toISOString().slice(0, 10)
-    return localStorage.getItem('linverse.checkinDate') === today
-  })
+  const [checkinDone, setCheckinDone] = useState(() => isCheckedInToday(profileId))
+  // 打卡状态按账号读：切换账号、切回生词本、页面重新可见、跨日后都重算
+  // （页面常驻挂载，useState 只初始化一次不够；以前还和个人中心共用一个全局标记，A 打卡后 B 也显示已打卡）
+  const refreshCheckin = () => setCheckinDone(isCheckedInToday(profileId))
+  useEffect(() => { refreshCheckin() }, [profileId, sub]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const onShow = () => { if (!document.hidden) refreshCheckin() }
+    document.addEventListener('visibilitychange', onShow)
+    window.addEventListener('focus', onShow)
+    return () => { document.removeEventListener('visibilitychange', onShow); window.removeEventListener('focus', onShow) }
+  }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [checkinBusy, setCheckinBusy] = useState(false) // 打卡中：防连点（与个人中心页同款）
   const [reviewBusy, setReviewBusy] = useState(false) // 复习提交中：防连点
   const [clearBusy, setClearBusy] = useState(false) // 清除历史中：防连点
   const [delVocabId, setDelVocabId] = useState<string | null>(null) // 生词删除二次确认
   const [delVocabBusy, setDelVocabBusy] = useState(false) // 生词删除提交中：防连点
 
+  // 列表请求版本号：清除、删除、复习等写操作后，之前发出的旧 GET 晚回来也不
+  // 能覆盖界面（幽灵条目）；只有最新一轮的响应才能写状态
+  const listEpoch = useRef(0)
+  const [historyError, setHistoryError] = useState('')
+  const [vocabError, setVocabError] = useState('')
   const loadHistory = () => {
     if (!profileId) return
-    getWordHistory(profileId).then(setHistory).catch(() => {})
+    const v = listEpoch.current
+    setHistoryError('')
+    getWordHistory(profileId).then((h) => { if (listEpoch.current === v) setHistory(h) }).catch(() => { if (listEpoch.current === v) setHistoryError('历史加载失败') })
   }
   const loadVocab = () => {
     if (!profileId) return
-    listVocab(profileId).then(setAll).catch(() => {})
-    dueVocab(profileId).then(setDue).catch(() => {})
+    const v = listEpoch.current
+    setVocabError('')
+    listVocab(profileId).then((w) => { if (listEpoch.current === v) setAll(w) }).catch(() => { if (listEpoch.current === v) setVocabError('生词加载失败') })
+    // 新一轮到期队列进来，展开标记全部清掉（下次到期重新遮住自测）
+    dueVocab(profileId).then((d) => { if (listEpoch.current === v) { setDue(d); setRevealed({}) } }).catch(() => { if (listEpoch.current === v) setVocabError('生词加载失败') })
   }
   useEffect(() => { loadHistory(); loadVocab() }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -134,8 +163,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     if (!target) return
     lastSearched.current = target
     const source = src || dictSource
+    const seq = ++searchSeq.current
     setSearching(true)
     setDictError('')
+    // 新查词开始就清掉旧结果：失败后旧词卡片不能还留在下面（否则报错和旧结果同时出现）
+    setResult(null)
     // 离线缓存：查过的词存本地，没网时也能看（真正的"离线词典包"基础）
     const cacheKey = `linverse.dictCache.${profileId || 'anon'}`
     const readCache = (): Record<string, DictResult> => {
@@ -143,7 +175,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     }
     // 离线词典：直接查已下载的包，断网也能用
     if (source === 'offline') {
-      if (!dictPkg) {
+      if (!dictPkgRef.current) {
         setToast('先下载离线词典包才能用')
         setDictError('先下载离线词典包才能用')
         setSearching(false)
@@ -151,6 +183,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       }
       try {
         const hit = await queryOfflineDict(target)
+        if (!isLatestSearch(seq)) return
         if (hit) {
           setResult(hit)
           setOfflineHit(false)
@@ -158,21 +191,25 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         } else {
           // 离线包里没有，回落到在线默认词典
           const r = await lookupWord(target, 'dict', { profileId: profileId || undefined })
+          if (!isLatestSearch(seq)) return
           setResult(r)
           setOfflineHit(false)
           setOfflinePkgHit(false)
           setToast('离线包里没有这个词，已用在线词典')
+          loadHistory()
         }
       } catch (e) {
+        if (!isLatestSearch(seq)) return
         setToast(e instanceof Error ? e.message : '查词失败')
         setDictError(e instanceof Error ? e.message : '查词失败')
       } finally {
-        setSearching(false)
+        if (isLatestSearch(seq)) setSearching(false)
       }
       return
     }
     try {
       const r = await lookupWord(target, source, { profileId: profileId || undefined })
+      if (!isLatestSearch(seq)) return
       setResult(r)
       setOfflineHit(false)
       setOfflinePkgHit(false)
@@ -187,8 +224,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     } catch (e) {
       // 在线失败三级回落：已下载的离线词库 → 本地旧缓存 → 报错。
       // 在线 404/超时/其他异常都走这里，不再要求用户手动切到离线词典
-      if (dictPkg) {
+      if (!isLatestSearch(seq)) return
+      if (dictPkgRef.current) {
         const pkgHit = await queryOfflineDict(target)
+        if (!isLatestSearch(seq)) return
         if (pkgHit) {
           setResult(pkgHit)
           setOfflineHit(false)
@@ -209,7 +248,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         setDictError(e instanceof Error ? e.message : '查词失败')
       }
     } finally {
-      setSearching(false)
+      if (isLatestSearch(seq)) setSearching(false)
     }
   }
   const [offlineHit, setOfflineHit] = useState(false) // 当前结果来自离线缓存
@@ -225,8 +264,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     openDictDB().then(getDictMeta).then((m) => {
       if (m && m.version === DICT_PACKAGE_VERSION) {
         setDictPkg(m)
+        dictPkgRef.current = m
       } else {
         setDictPkg(null)
+        dictPkgRef.current = null
         if (m) setToast('离线词库已升级，请重新下载')
       }
     }).catch(() => {})
@@ -239,8 +280,31 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     try {
       const res = await fetch('ecdict.v2.json')
       if (!res.ok) throw new Error('下载失败')
-      setDlProgress('解析中…')
-      const words = await res.json() as EcdictEntry[]
+      // 流式读响应体，显示真实下载进度（以前 fetch 一回响应头就显示"解析中…"，
+      // 10.6MB 的 body 还在路上，进度条长时间不动）
+      let words: EcdictEntry[]
+      if (res.body) {
+        const total = Number(res.headers.get('content-length') || 0)
+        const reader = res.body.getReader()
+        const chunks: Uint8Array[] = []
+        let received = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          chunks.push(value)
+          received += value.length
+          const mb = (received / 1048576).toFixed(1)
+          setDlProgress(total ? `下载中… ${mb}MB / ${(total / 1048576).toFixed(1)}MB` : `下载中… ${mb}MB`)
+        }
+        const buf = new Uint8Array(received)
+        let off = 0
+        for (const c of chunks) { buf.set(c, off); off += c.length }
+        setDlProgress('解析中…')
+        words = JSON.parse(new TextDecoder().decode(buf)) as EcdictEntry[]
+      } else {
+        setDlProgress('解析中…')
+        words = await res.json() as EcdictEntry[]
+      }
       setDlProgress(`存入中… (0/${words.length})`)
       const db = await openDictDB()
       // 清空旧数据
@@ -272,6 +336,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         tx.onerror = () => reject(tx.error)
       })
       setDictPkg({ count: words.length, version: DICT_PACKAGE_VERSION })
+      dictPkgRef.current = { count: words.length, version: DICT_PACKAGE_VERSION }
       setToast(`离线词典下载完成，共 ${words.length} 词`)
       // 下载完成后，如果已有输入单词，自动重新查词
       if (word.trim()) { search(word.trim(), 'offline') }
@@ -289,6 +354,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     } catch {}
   }, [profileId, result])
   const pickSource = (s: DictSource) => {
+    // 切来源后，待触发的旧来源防抖查询不再发出（否则旧来源请求晚回来会覆盖新来源的结果）
+    window.clearTimeout(searchTimer.current)
     setDictSource(s)
     localStorage.setItem('linverse.dictSource', s)
     // 切换离线词典时，先检查词典包是否已下载
@@ -302,7 +369,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     }
   }
 
-  // 加入生词本：取第一条中文释义
+  // 加入生词本：释义优先取中文，没有中文取英文，两者都没有就不加入
   const [joining, setJoining] = useState(false)
   const joinVocab = async () => {
     if (!result || !profileId || joining) return
@@ -310,15 +377,20 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       setToast('已经在生词本里了')
       return
     }
+    const meaning = result.meanings.find((m) => m.zh)?.zh
+      || result.meanings.find((m) => m.en)?.en || ''
+    if (!meaning) { setToast('暂无可保存释义'); return }
     setJoining(true)
     try {
-      await addVocab({
+      const saved = await addVocab({
         profileId,
         word: result.word,
         phonetic: result.phonetic,
-        meaning: result.meanings[0]?.zh || '',
+        meaning,
       })
       setToast('已加入生词本')
+      // 成功后立刻更新本地列表，不等异步刷新回来（否则 joining 一松手再点一次就重复插入）
+      if (saved && saved.id) setAll((list) => [saved, ...list.filter((x) => x.word.toLowerCase() !== result.word.toLowerCase())])
       loadVocab()
     } catch (e) {
       setToast(e instanceof Error ? e.message : '加入失败')
@@ -331,13 +403,16 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     setReviewBusy(true)
     try {
       await reviewVocab(v.id, known, profileId || undefined)
+      // 写操作后旧的列表 GET 作废（晚回来会把刚复习掉的词恢复出来）
+      listEpoch.current++
       setDue((list) => {
         const next = list.filter((x) => x.id !== v.id)
         // 过滤后判断，避免闭包旧値问题
         if (next.length === 0) setToast('今日复习完成！太棒了🎉')
         return next
       })
-      setRevealed((r) => ({ ...r, [v.id]: true }))
+      // 复习完清掉该词的展开标记：下次再到期时重新遮住自测，而不是直接露释义
+      setRevealed((r) => { const { [v.id]: _, ...rest } = r; return rest })
     } catch (e) {
       setToast(e instanceof Error ? e.message : '提交失败')
     } finally { setReviewBusy(false) }
@@ -350,6 +425,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     setDelVocabBusy(true)
     try {
       await deleteVocab(v.id, profileId || undefined)
+      // 写操作后旧的列表 GET 作废（晚回来会把刚删的词恢复出来）
+      listEpoch.current++
       setAll((list) => list.filter((x) => x.id !== v.id))
       setDue((list) => list.filter((x) => x.id !== v.id))
       setDelVocabId(null)
@@ -366,7 +443,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     try {
       await checkin(profileId)
       const today = new Date().toISOString().slice(0, 10)
-      localStorage.setItem('linverse.checkinDate', today)
+      localStorage.setItem(checkinDateKey(profileId), today)
       setCheckinDone(true)
       setToast('打卡成功')
     } catch (e) {
@@ -477,7 +554,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               {result.meanings.map((m, i) => (
                 <div key={i} className="dict-meaning">
                   <span className="dict-pos">{m.pos}</span>
-                  <span>{m.zh}{m.en ? <span style={{ color: 'var(--ink3)', fontSize: `calc(13px * var(--fss))` }}> · {m.en}</span> : null}</span>
+                  {/* 只有英文释义的条目只显示英文（中文行为空时不留" · "）；中英文都有的正常拼 */}
+                  <span>{m.zh ? <>{m.zh}{m.en ? <span style={{ color: 'var(--ink3)', fontSize: `calc(13px * var(--fss))` }}> · {m.en}</span> : null}</> : m.en}</span>
                   {/* 每条释义下的例句（带中文翻译） */}
                   {m.examples && m.examples.map((e, j) => (
                     <div key={j} className="dict-ex" style={{ marginTop: 4 }}>
@@ -523,6 +601,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
             </div>
           )}
 
+          {historyError && (
+            <div className="safe-note" style={{ color: 'var(--red)' }}>
+              {historyError}，<button className="mini-btn" onClick={loadHistory}>重试</button>
+            </div>
+          )}
           {history.length > 0 && (
             <>
               <div className="sec-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -534,6 +617,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                     setClearBusy(true)
                     try {
                       await clearWordHistory(profileId)
+                      // 写操作后旧的历史 GET 作废（晚回来会把刚清掉的历史恢复出来）
+                      listEpoch.current++
                       setHistory([])
                       setToast('历史已清除')
                     } catch (e) {
@@ -542,7 +627,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   }}>{clearBusy ? '清除中…' : '清除历史'}</button>
               </div>
               {history.slice(0, 20).map((h, i) => (
-                <div key={i} className="hist-item" onClick={() => { setWord(h.word); search(h.word) }}>
+                <div key={i} className="hist-item" onClick={() => { window.clearTimeout(searchTimer.current); setWord(h.word); search(h.word) }}>
                   <span>{h.word}</span>
                   <span className="hist-time">{new Date(h.createdAt).toLocaleDateString()}</span>
                 </div>
@@ -569,7 +654,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   <div className="dict-pack-name">{p.n}</div>
                   <div className="dict-pack-sub">{p.d}</div>
                 </div>
-                <span className="dict-pack-wait">词库待接入</span>
+                {/* 状态跟真实包走：已下载就显示已下载，别再写死"词库待接入" */}
+                <span className="dict-pack-wait">
+                  {dictPkg ? `已下载（${dictPkg.count} 词）` : downloading ? (dlProgress || '下载中…') : '词库待接入'}
+                </span>
               </div>
             ))}
           </div>
@@ -585,7 +673,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
           </div>
 
           <div className="sec-title">到期复习（{due.length}）</div>
-          {due.length === 0 ? (
+          {vocabError ? (
+            <div className="safe-note" style={{ color: 'var(--red)' }}>
+              {vocabError}，不是没有单词，是没加载出来——<button className="mini-btn" onClick={loadVocab}>重试</button>
+            </div>
+          ) : due.length === 0 ? (
             <Empty text="太棒了，没有需要复习的单词" />
           ) : due.map((v) => (
             <div key={v.id} className="review-card">
@@ -616,10 +708,12 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               {all.map((v) => (
                 <div key={v.id} className="hist-item" style={{ cursor: 'pointer' }}
                   onClick={() => {
-                    // 点击单词跳转到查词 tab 并自动搜索
+                    // 点击单词跳转到查词 tab 并自动搜索，用当前选中的来源
+                    // （以前写死在线查词，离线档下点了生词却偷偷走网络，按钮还显示离线）
+                    window.clearTimeout(searchTimer.current)
                     setSub('dict')
                     setWord(v.word)
-                    search(v.word, 'dict')
+                    search(v.word)
                   }}>
                   <span><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))` }}>{v.meaning}</span></span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
