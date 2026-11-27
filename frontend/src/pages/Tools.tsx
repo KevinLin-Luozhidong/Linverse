@@ -110,7 +110,7 @@ export default function Tools({ profileId }: { profileId: string | null }) {
         <div className="tools-title-row">
           <div className="tools-title">学习工具</div>
         </div>
-        <div className="tools-sub">左右滑动选一个工具，点开直接进</div>
+        <div className="tools-sub"><span className="tools-sub-m">左右滑动选一个工具，点开直接进</span><span className="tools-sub-d">点开直接进</span></div>
         <div className="tool-stream" ref={streamRef} onScroll={onScroll}>
           {TOOLS.map((t) => (
             <button key={t.id} className="tool-slide" onClick={pick(t.id)}>

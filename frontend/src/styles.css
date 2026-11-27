@@ -1586,6 +1586,8 @@ body::before {
 /* ============ 桌面响应式：1024px 以上左导航 + 内容加宽，768px 以上先放宽 ============ */
 /* 桌面边栏默认不显示：手机上仍用底部 tabbar */
 .sidebar { display: none; }
+/* 工具页副标题的桌面版文案默认不显示：手机上仍是“左右滑动”版 */
+.tools-sub-d { display: none; }
 
 /* 平板过渡（768–1023px）：只把窄列放宽，导航和布局不动 */
 @media (min-width: 768px) {
@@ -1655,6 +1657,10 @@ body::before {
     overflow: visible; padding: 4px 20px 16px;
   }
   .tool-slide { flex: none; min-height: 240px; }
+  /* 桌面没有轮播：副标题换成不带“左右滑动”的版本，翻页圆点隐藏 */
+  .tools-sub-m { display: none; }
+  .tools-sub-d { display: inline; }
+  .dots { display: none; }
   /* 聊天区左右留白多一点 */
   .chat-list { padding: 12px 28px 16px; }
   .deep-row { padding: 2px 28px 10px; }
