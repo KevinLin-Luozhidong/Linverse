@@ -301,7 +301,9 @@ async function listModels({ model, aiKey, endpoint }) {
   }
   const headers = { 'Content-Type': 'application/json' };
   if (kind !== 'gemini') headers.Authorization = `Bearer ${aiKey}`;
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  // 不跟随重定向：初始地址虽然过了 assertSafeEndpoint，但 302 能把请求转去
+  // 169.254.169.254 这类内网地址（GPT 审查 M1）。宁可让合法跳转报错，也别让重定向绕过校验。
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'error' });
   if (!res.ok) throw new Error(await providerErrorText(res, '模型列表'));
   const data = await res.json();
   return normalizeModelIds(kind, data);

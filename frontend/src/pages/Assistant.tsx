@@ -8,7 +8,7 @@ import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, askStream, listConversations, createConversation, getConversation, deleteConversation,
   toggleConversationFavorite, batchDeleteConversations,
-  getSettings, getAiKey, effectiveModelName, getCustomName, getAiModelMap, setAiModel as saveAiModel, uploadImage, imgSrc, createMistake, getStats, listMistakes,
+  getSettings, getAiKey, effectiveModelName, getCustomName, seedCustomModel, uploadImage, imgSrc, createMistake, getStats, listMistakes,
   getLatestBriefing, getLatestShantouBoard,
   type ConversationMeta, type ChatMsg, type DailyBriefing, type ShantouBoard,
 } from '@api'
@@ -394,9 +394,10 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     if (!profileId || !active) return
     getSettings(profileId).then((s) => {
       if (s.aiProvider && !localStorage.getItem('linverse.model')) setModel(s.aiProvider)
-      // 智谱的模型名以前存在后端设置里：新表里没有智谱那行时，用后端存的那个值播种
+      // 智谱的模型名以前存在后端设置里：按"账号+接口地址"播种——换了账号或换了地址就按后端重播，
+      // 别让上一个账号的模型名串过来（GPT 审查 M4）
       // （聊天页也要播：用户不打开设置页、直接进聊天页时，菜单里也得显示 glm-4v-flash）
-      if (!getAiModelMap().custom && s.aiModel) saveAiModel(s.aiModel, 'custom')
+      seedCustomModel(profileId, s.aiModel, s.aiEndpoint)
       setCustomEndpoint(s.aiEndpoint || '')
     }).catch(() => {})
   }, [profileId, active])
@@ -595,7 +596,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         modelName: effectiveModelName(model, deepThink) || undefined, // 模型名：用户在设置里每个供应商自己选的，顶栏显示的和实际用的都是这个
     aiKey: getAiKey(model) || undefined, // Key 只从本地读，按当前模型取对应的 Key 随请求带给后端
         webSearch: webSearch && webSearchAvailable, // 开关开且有智谱 Key 才传 true
-        searchKey: webSearchAvailable ? getAiKey('custom') || undefined : undefined, // 联网搜索用的智谱 Key（"自定义"那栏的）
+        searchKey: (webSearch && webSearchAvailable) ? getAiKey('custom') || undefined : undefined, // 联网搜索用的智谱 Key（"自定义"那栏的）；开关关了就不带，别把无关的 Key 发出去（GPT 审查 m1）
         useKb, // 查课本：RAG 检索知识库
         historyMsgs,
       }

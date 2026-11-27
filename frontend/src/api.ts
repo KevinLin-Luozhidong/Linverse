@@ -536,6 +536,24 @@ export const setAiModel = (name: string, model?: string) => {
   else delete map[m]
   localStorage.setItem(AI_MODELS, JSON.stringify(map))
 }
+// 自定义模型名只属于"某个账号 + 某个接口地址"：GPT 审查 M4——以前只按 custom 存，
+// 账号 B 会沿用账号 A 播种的 glm-4v-flash，盖掉自己后端正确的 llama3。
+// 所以播种时按"账号|接口地址"核对身份：身份变了就按当前账号的后端设置重播（后端没填就清空旧值），
+// 身份没变就不动——用户在设置里自己改的名字不会被播种盖掉。
+const CUSTOM_MODEL_ORIGIN = 'linverse.aiModels.customOrigin'
+export const customModelOriginKey = (profileId?: string | null, endpoint?: string) =>
+  `${profileId || ''}|${(endpoint || '').trim().replace(/\/+$/, '')}`
+export const getCustomModelOrigin = () => localStorage.getItem(CUSTOM_MODEL_ORIGIN) || ''
+export const setCustomModelOrigin = (v: string) => {
+  if (v) localStorage.setItem(CUSTOM_MODEL_ORIGIN, v)
+  else localStorage.removeItem(CUSTOM_MODEL_ORIGIN)
+}
+export const seedCustomModel = (profileId: string | null, aiModel?: string, aiEndpoint?: string) => {
+  const key = customModelOriginKey(profileId, aiEndpoint)
+  if (getCustomModelOrigin() === key) return // 身份没变：本地的就是这个账号这个地址的，别动
+  setAiModel(aiModel || '', 'custom') // 身份变了：按后端设置重播，后端没填就把旧账号的值清掉
+  setCustomModelOrigin(key)
+}
 // 有效模型名：真正拿去问的名字，顶栏显示和发请求都用它，保证显示的和实际用的一致。
 // 深度思考开时，OpenAI 切 o3、Gemini 切 gemini-2.5-flash（推理模型）；
 // 用户填的已经是推理模型（o1/o3/o4、gemini-2.5/3 系）就不切，尊重他的选择；

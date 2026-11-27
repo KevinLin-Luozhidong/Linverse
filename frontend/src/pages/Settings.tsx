@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { I, Toast, useSwipeBack, useToast} from '../components'
 import {
   listProfiles, createProfile, renameProfile, deleteProfile,
-  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getAiModelMap, getCustomName, setCustomName as saveCustomName, deriveCustomName, listModels, getCachedProfiles, type Profile as P,
+  getSettings, saveSettings, getAiKey, setAiKey, getAiKeyMap, getAiModel, setAiModel as saveAiModel, getCustomName, setCustomName as saveCustomName, deriveCustomName, seedCustomModel, setCustomModelOrigin, customModelOriginKey, listModels, getCachedProfiles, type Profile as P,
   siteStatus, siteSetPassword, siteReset,
   dangerStatus, setDangerPassword,
   signupStatus, setSignupAllow, clearPid, setPid, getProfileToken, setProfileToken, clearProfileAuth,
@@ -106,6 +106,11 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // AI 接口（演示已删，默认 DeepSeek）
   const [provider, setProvider] = useState('deepseek')
+  // 拉模型列表是异步的：回包时要核对供应商/账号还是不是点按钮那会儿的，变了就丢弃旧回包（GPT 审查 M3）
+  const providerRef = useRef(provider)
+  providerRef.current = provider
+  const profileIdRef = useRef(profileId)
+  profileIdRef.current = profileId
   const [aiModel, setAiModel] = useState('')
   // "自定义"那栏的名字：用户自己定（默认按接口地址推断：现在是智谱，换供应商就改成对应的名字）
   const [customName, setCustomName] = useState(() => getCustomName())
@@ -146,8 +151,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
         setAiKey('', saved[0])
       }
       setKey(getAiKey(pv)) // Key 跟着供应商走：读到哪个供应商，就显示哪个的 Key
-      // 智谱的模型名以前存在后端设置里：新表里没有智谱那行时，用后端存的那个值播种
-      if (!getAiModelMap().custom && s.aiModel) saveAiModel(s.aiModel, 'custom')
+      // 智谱的模型名以前存在后端设置里：按"账号+接口地址"播种——换了账号或换了地址就按后端重播，
+      // 别让上一个账号的模型名串过来（GPT 审查 M4）
+      seedCustomModel(profileId, s.aiModel, s.aiEndpoint)
       setAiModel(getAiModel(pv)) // 模型名也跟着供应商走
       setEndpoint(s.aiEndpoint || '')
       setCustomName(getCustomName(s.aiEndpoint || '')) // 名字跟着接口地址走：没改过名就按地址推断（智谱/本地/其他）
@@ -264,8 +270,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   }
 
   // 保存 AI 设置：Key 写 localStorage，其余写后端
-  const saveAi = async () => {
-    if (!profileId || savingAi) return
+  // 返回是否存上：选择模型时要先调它把接口地址存到后端，存不上就别拉列表（GPT 审查 M2）
+  const saveAi = async (): Promise<boolean> => {
+    if (!profileId || savingAi) return false
     setSavingAi(true)
     setAiKey(key.trim(), provider) // Key 按供应商分开存：这个 Key 只归当前这个供应商
     saveAiModel(aiModel.trim(), provider) // 模型名也按供应商分开存
@@ -277,8 +284,11 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       // 否则下次播种会把别的供应商的模型名错当成智谱的
       await saveSettings({ profileId, aiProvider: provider, aiModel: provider === 'custom' ? aiModel.trim() : undefined, aiEndpoint: provider === 'custom' ? endpoint.trim() : undefined })
       localStorage.setItem('linverse.model', provider)
+      // 自定义的模型名现在属于"这个账号 + 这个接口地址"：把身份记下来，播种就不会拿旧账号的值来盖它（GPT 审查 M4）
+      if (provider === 'custom') setCustomModelOrigin(customModelOriginKey(profileId, endpoint))
       setToast('已保存')
-    } catch (e) { setToast(e instanceof Error ? e.message : '保存失败') }
+      return true
+    } catch (e) { setToast(e instanceof Error ? e.message : '保存失败'); return false }
     finally { setSavingAi(false) }
   }
 
@@ -535,11 +545,20 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       onClick={async () => {
         if (modelList) { setModelList(null); return }
         if (key.trim()) setAiKey(key.trim(), provider) // 刚粘贴还没按保存的 Key：先存下来再拉列表
+        // 自定义要先把接口地址存到后端再拉列表：不然新 Key 会被发到后端存的旧地址去（GPT 审查 M2）
+        if (provider === 'custom') {
+          if (!endpoint.trim()) { setToast('先填接口地址'); return }
+          if (!(await saveAi())) { setToast('地址没存上，先检查网络再试'); return }
+        }
+        const p = provider // 记住点按钮那会儿的供应商/账号，回包时核对
+        const pid = profileId
         setLoadingModels(true)
         try {
-          const list = await listModels(provider, profileId || undefined)
+          const list = await listModels(p, pid || undefined)
+          // 拉列表期间换了供应商/账号：旧回包作废，别把旧供应商的模型名写进新供应商（GPT 审查 M3）
+          if (p !== providerRef.current || pid !== profileIdRef.current) return
           // 当前在用的模型名即使不在列表里（比如智谱的 glm-4v-flash），也放第一行，别把它选没了
-          const cur = getAiModel(provider)
+          const cur = getAiModel(p)
           setModelList(cur && !list.includes(cur) ? [cur, ...list] : list)
           if (!list.length) setToast('没拉到模型列表，检查 Key 是否有效')
         } catch (e) { setToast(e instanceof Error ? e.message : '拉取失败') }

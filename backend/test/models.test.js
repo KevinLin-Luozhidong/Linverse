@@ -134,3 +134,29 @@ describe('listModels（桩 fetch）', () => {
     } finally { delete global.fetch; }
   });
 });
+
+describe('listModels 不跟随重定向（GPT 审查 M1）', () => {
+  // 初始地址过了 assertSafeEndpoint，不代表安全：302 能把请求转去内网地址。
+  // 修法是 fetch 加 redirect: 'error'——真 fetch 遇到重定向直接抛错，不跟过去。
+  // 桩 fetch 模拟这个行为：返回 302（带内网 Location），断言两点：
+  // ① 请求里确实带了 redirect: 'error'；② 302 不会被当成模型列表解析，必须抛错。
+  test('302 到内网地址：请求带 redirect:error，且抛错不解析', async () => {
+    const { listModels } = require('../src/ai/providers');
+    let capturedOpts = null;
+    global.fetch = async (url, opts) => {
+      capturedOpts = opts;
+      return {
+        ok: false, status: 302,
+        headers: { get: (n) => (String(n).toLowerCase() === 'location' ? 'http://169.254.169.254/latest/meta-data/' : null) },
+        json: async () => ({ data: [{ id: 'mock-internal-response' }] }),
+      };
+    };
+    try {
+      await assert.rejects(
+        listModels({ model: 'deepseek', aiKey: 'k' }),
+        (e) => /302/.test(e.message)
+      );
+      assert.equal(capturedOpts.redirect, 'error');
+    } finally { delete global.fetch; }
+  });
+});
