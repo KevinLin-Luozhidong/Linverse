@@ -692,6 +692,6 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched };
 }
 
-module.exports = { ask, askStream, listModels };
+module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
 module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, MODELS_TIMEOUT_MS };

@@ -106,6 +106,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
 
   // AI 接口（演示已删，默认 DeepSeek）
   const [provider, setProvider] = useState('deepseek')
+  const [providerLoaded, setProviderLoaded] = useState(false) // 设置读回来之前，菜单行先显示「加载中…」，别拿默认值 DeepSeek 闪一下
   // 拉模型列表是异步的：回包时要核对供应商/账号还是不是点按钮那会儿的，变了就丢弃旧回包（GPT 审查 M3）
   const providerRef = useRef(provider)
   providerRef.current = provider
@@ -143,7 +144,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
     }).catch(() => {})
     setKey(getAiKey()) // Key 只从本地读
     setAiModel(getAiModel()) // 模型名也只从本地读
-    if (!profileId) return
+    if (!profileId) { setProviderLoaded(true); return }
     getSettings(profileId).then((s) => {
       if (cancelled) return
       setFontSize(s.fontSize || 'medium')
@@ -167,7 +168,8 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       setEndpoint(s.aiEndpoint || '')
       setCustomName(getCustomName(s.aiEndpoint || '')) // 名字跟着接口地址走：没改过名就按地址推断（智谱/本地/其他）
       applyAppearance(s.fontSize || 'medium', s.theme || 'system')
-    }).catch(() => {})
+      setProviderLoaded(true)
+    }).catch(() => { setProviderLoaded(true) })
     return () => { cancelled = true }
   }, [profileId])
 
@@ -349,6 +351,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 访问密码：网站大门的密码锁。设好后别人打开网址要先输对密码才能用。
   // 密码只存后端的 SHA256，前端不存原文；验证通过后存 token，后续请求自动带上
   const [pwSet, setPwSet] = useState(false)
+  const [pwLoaded, setPwLoaded] = useState(false) // 同上：密码状态读回来之前不显示「未设置」
   const [savingName, setSavingName] = useState(false)
   const [savingAi, setSavingAi] = useState(false)
   const [savingSitePw, setSavingSitePw] = useState(false)
@@ -358,7 +361,7 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   const [oldPw, setOldPw] = useState('')
   const [newPw, setNewPw] = useState('')
   useEffect(() => {
-    siteStatus().then((s) => setPwSet(s.passwordSet)).catch(() => {})
+    siteStatus().then((s) => { setPwSet(s.passwordSet); setPwLoaded(true) }).catch(() => { setPwLoaded(true) })
   }, [])
   const saveSitePw = async () => {
     const p = newPw.trim()
@@ -769,13 +772,13 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
           <div className="settings-page">
             <div className="set-group">
               {row('profile', 'user', 'blue', '个人资料', displayName)}
-              {row('ai', 'key', 'green', 'AI 接口', providerLabel)}
+              {row('ai', 'key', 'green', 'AI 接口', providerLoaded ? providerLabel : '加载中…')}
               {row('accounts', 'users', 'orange', '多账号', `共 ${profiles.length} 个`)}
             </div>
             <div className="set-group">
               {row('appearance', 'moon', 'blue', '外观', themeLabel)}
               {row('font', 'textsize', 'green', '字体大小', fontLabel)}
-              {row('sitepw', 'lock', 'gray', '访问密码', pwSet ? '已设置' : '未设置')}
+              {row('sitepw', 'lock', 'gray', '访问密码', pwLoaded ? (pwSet ? '已设置' : '未设置') : '加载中…')}
               {row('storage', 'db', 'orange', '存储空间', `缓存 ${cacheMB} MB`)}
             </div>
             <div className="set-group">

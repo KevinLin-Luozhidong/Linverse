@@ -3,7 +3,7 @@
 const express = require('express');
 const multer = require('multer');
 const dao = require('../db/dao');
-const { ask, askStream, listModels } = require('../ai/providers');
+const { ask, askStream, listModels, isTimeSensitive } = require('../ai/providers');
 const { ah, need } = require('./helpers');
 
 const router = express.Router();
@@ -155,7 +155,11 @@ router.post('/ask', ah(async (req, res) => {
     sendEvent = (type, data) => {
       try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
     };
-    sendEvent('status', { text: useKb ? '正在查课本…' : '正在思考…' });
+    // 时效问题（"今日新闻"这类）＋开了联网搜索：课本根本答不了，检索到的无关教材块
+    // 还会把模型带跑偏（实测：模型跟着教材说"教材里没有新闻"，把搜到的新闻晾一边）。
+    // 这种组合直接跳过课本检索，只走联网搜索；搜不到或没开搜索时照常查课本。
+    const doKb = useKb && !(webSearch && searchKey && isTimeSensitive(question.trim()));
+    sendEvent('status', { text: doKb ? '正在查课本…' : '正在思考…' });
   }
 
   // RAG 查课本：开了开关就先做向量检索，把最相关的教材块拼进问题里。
@@ -163,7 +167,7 @@ router.post('/ask', ah(async (req, res) => {
   let kbRefs = [];
   let kbUsed = false;
   let finalQuestion = question.trim();
-  if (useKb) {
+  if (doKb) {
     try {
       const { searchKbContext, buildRetrievalQuery } = require('./kb');
       // 检索 query 带上文（M2 根因修法 P0）：本轮问题可能是指代式追问，单看它不知

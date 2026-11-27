@@ -345,8 +345,22 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   // 每日早报 / 汕头看板共用一条入口横幅：挂载时各拉最新一期，哪个拉到就显示哪个，
   // 失败/暂无数据都静默（不弹错、不挡聊天）。覆盖层首次打开后常驻挂载，display 显隐
   // （同 App 其它面板惯例）
-  const [briefPeek, setBriefPeek] = useState<DailyBriefing | null>(null)
-  const [shantouPeek, setShantouPeek] = useState<ShantouBoard | null>(null)
+  // 早报/看板一天才换一期：先读本地缓存立刻显示，后台再拉新的（stale-while-revalidate），
+  // 横条不用等后端冷启动才出现；缓存超过一天就不要，日期写在横条上，旧数据看得出来。
+  const readPeekCache = <T,>(key: string): T | null => {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return null
+      const { at, data } = JSON.parse(raw)
+      if (Date.now() - at > 24 * 3600 * 1000) return null
+      return data as T
+    } catch { return null }
+  }
+  const writePeekCache = (key: string, data: unknown) => {
+    try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), data })) } catch {}
+  }
+  const [briefPeek, setBriefPeek] = useState<DailyBriefing | null>(() => readPeekCache('linverse.briefPeek'))
+  const [shantouPeek, setShantouPeek] = useState<ShantouBoard | null>(() => readPeekCache('linverse.shantouPeek'))
   const [briefOpen, setBriefOpen] = useState(false)
   const [briefVisited, setBriefVisited] = useState(false)
   // 覆盖层当前分段：默认早报；横幅点进来时由 openPanel 指定要落在哪一段
@@ -357,8 +371,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     setBriefOpen(true)
   }
   useEffect(() => {
-    getLatestBriefing().then(setBriefPeek).catch(() => {})
-    getLatestShantouBoard().then(setShantouPeek).catch(() => {})
+    getLatestBriefing().then((b) => { if (b) { writePeekCache('linverse.briefPeek', b); setBriefPeek(b) } }).catch(() => {})
+    getLatestShantouBoard().then((b) => { if (b) { writePeekCache('linverse.shantouPeek', b); setShantouPeek(b) } }).catch(() => {})
   }, [])
   // 截图调试用：?brief=1 直接打开早报子页（保持原行为，落在早报 tab）
   useEffect(() => {
