@@ -29,7 +29,9 @@ function openDictDB(): Promise<IDBDatabase> {
       req.result.createObjectStore('words', { keyPath: 'w' })
       req.result.createObjectStore('meta', { keyPath: 'k' })
     }
-    req.onsuccess = () => { _dictDB = req.result; resolve(req.result) }
+    // 连接被浏览器关掉时清掉缓存（上次下载中断后，缓存的旧连接再开事务会报
+    // "The database connection is closing"，下次重新开才行）
+    req.onsuccess = () => { _dictDB = req.result; req.result.onclose = () => { _dictDB = null }; resolve(req.result) }
     req.onerror = () => reject(req.error)
   })
 }
@@ -258,6 +260,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [dictPkg, setDictPkg] = useState<{ count: number; version?: number } | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [dlProgress, setDlProgress] = useState('')
+  const [dlError, setDlError] = useState('') // 下载失败原因常驻显示（光靠 2 秒 toast，用户一晃神就只剩回到初始状态的按钮）
   // 版本门：只认 version 2 的包；旧包（无 version）视为无效，提示重新下载，
   // 避免新旧格式混读导致查词异常
   useEffect(() => {
@@ -277,8 +280,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const downloadDictPkg = async () => {
     setDownloading(true)
     setDlProgress('下载中…')
+    setDlError('')
+    // 下载超时：流式读取卡住时不再无限等，120 秒没下完就报错、可重试
+    // （以前卡住会悄悄回到初始按钮，没有任何报错）
+    const ctrl = new AbortController()
+    const timer = window.setTimeout(() => ctrl.abort(), 120000)
     try {
-      const res = await fetch('ecdict.v2.json')
+      const res = await fetch('ecdict.v2.json', { signal: ctrl.signal })
       if (!res.ok) throw new Error('下载失败')
       // 流式读响应体，显示真实下载进度（以前 fetch 一回响应头就显示"解析中…"，
       // 10.6MB 的 body 还在路上，进度条长时间不动）
@@ -341,8 +349,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       // 下载完成后，如果已有输入单词，自动重新查词
       if (word.trim()) { search(word.trim(), 'offline') }
     } catch (e) {
-      setToast(e instanceof Error ? e.message : '下载失败')
+      // IndexedDB 连接已关闭（上次下载中断后缓存的连接失效）：清掉缓存，下次重新开
+      if (e instanceof Error && /closing/i.test(e.message)) _dictDB = null
+      const msg = e instanceof Error && e.name === 'AbortError' ? '下载超时，请重试' : (e instanceof Error ? e.message : '下载失败')
+      setDlError(msg)
+      setToast(msg)
     } finally {
+      window.clearTimeout(timer)
       setDownloading(false)
       setDlProgress('')
     }
@@ -505,6 +518,11 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   onClick={downloadDictPkg} disabled={downloading}>
                   {downloading ? (dlProgress || '下载中…') : '下载离线词典包（约 10.6MB，一次下载断网可用）'}
                 </button>
+              )}
+              {dlError && (
+                <div style={{ marginTop: 8, fontSize: `calc(12px * var(--fss))`, color: 'var(--red)' }}>
+                  {dlError}，<button className="mini-btn" onClick={downloadDictPkg}>重试</button>
+                </div>
               )}
             </div>
           )}

@@ -428,8 +428,13 @@ router.get('/dictionary', ah(async (req, res) => {
 
 // ---------- 维基释义清洗 + 自有 ECDICT 词库（服务端版） ----------
 // stripHtml：维基释义带网页标记（链接、用法标签），只留纯文本。
+// 注意：释义里会混进 <style> 块（如 .mw-parser-output .defdate{...} 这种 CSS），
+// 光去标签会把 CSS 正文留在释义里（abandon 第 1、2 条实测漏出来过）；先整块删掉
+// style/script 再去标签。
 function stripHtml(html) {
   return String(html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
