@@ -893,9 +893,9 @@ body {
 .pdf-overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg); }
 .pdf-nav { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .pdf-title { flex: 1; min-width: 0; text-align: center; font-size: calc(15px * var(--fss)); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pdf-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: #fff; }
+.pdf-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; background: #fff; }
 .pdf-status { padding: 32px 16px; text-align: center; color: var(--muted); font-size: calc(14px * var(--fss)); display: flex; flex-direction: column; gap: 12px; align-items: center; }
-.pdf-canvas { display: block; margin: 0 auto; }
+.pdf-canvas { display: block; margin: 0 auto; max-width: 100%; height: auto; }
 .pdf-pager { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px; background: var(--bg); border-top: 1px solid var(--line); }
 .pdf-pageno { font-size: calc(14px * var(--fss)); color: var(--muted); }
 
