@@ -763,10 +763,22 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     } catch (e) {
       // 出错时：如果还在同一会话，移除用户消息并恢复图片、弹失败提示；已切走就不动也不弹（别在新会话里报旧会话的错）
       if (sendReqIdRef.current === reqId) {
-        setMsgs((v) => v.slice(0, -1))
+        const msg = e instanceof Error ? e.message : '发送失败'
+        // 没填 Key 不一样：问题不能悄悄消失——留在对话里、下面跟一条常驻的
+        // 报错，再把问题放回输入框（输入框空着才放，不抢用户正在打的字），
+        // 填好 Key 点发送就能接着问（2026-11-28 快速开始实测：空号点入口
+        // 只闪一下 toast 就回到空状态，用户根本不知道问没问出去）。
+        if (msg.includes('还没填 AI Key')) {
+          setMsgs((v) => [...v, {
+            role: 'assistant' as const, content: msg, createdAt: new Date().toISOString(),
+          }])
+          setInput((cur) => (cur === '' ? question : cur))
+        } else {
+          setMsgs((v) => v.slice(0, -1))
+          setToast(msg)
+        }
         // 只在用户没有在等待期间主动清除图片时才恢复（避免违背用户意图）
         setImgUrl((cur) => cur === '' && savedImgUrl ? savedImgUrl : cur)
-        setToast(e instanceof Error ? e.message : '发送失败')
       }
       setTypingFor(-1)
     } finally {

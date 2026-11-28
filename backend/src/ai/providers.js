@@ -656,7 +656,7 @@ function normalizeModelIds(kind, data) {
 
 // ---------- 统一入口 ----------
 
-async function ask({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, historyMsgs }) {
+async function ask({ model, question, rawQuestion, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, historyMsgs }) {
 // Key 优先级：请求体 aiKey > 环境变量 AI_API_KEY > 无（没 Key 就报错）
 const key = aiKey || process.env.AI_API_KEY || '';
 const started = Date.now();
@@ -673,11 +673,16 @@ let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写
 let webSearched = false;
 let newsMode = false;
 let newsResults = [];
+// 搜索只看用户原问题，不看拼了教材的 question：教材正文常带"今年/现在"这类
+// 时效词（实测：数学必修一第 2 页就有"今年"），拿拼好的长串去判会把普通知识
+// 问题误判成时效问题，搜回当天热点、还贴上新闻列表规则，答案就跑题了。
+// rawQuestion 由调用方（ai.js）传原始问题；老调用方不传就回落到 question。
+const qForSearch = (rawQuestion || question || '').trim();
 if (webSearch && searchKey) {
 try {
-const { results, timeSensitive } = await searchForQuestion(question, searchKey);
+const { results, timeSensitive } = await searchForQuestion(qForSearch, searchKey);
 if (results.length) {
-newsMode = timeSensitive && isNewsQuestion(question);
+newsMode = timeSensitive && isNewsQuestion(qForSearch);
 newsResults = results;
 finalQuestion = buildSearchBlock(results) + question + (newsMode ? NEWS_JSON_RULES : (timeSensitive ? NEWS_OUTPUT_RULES : ''));
 webSearched = true;
@@ -857,7 +862,7 @@ async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, de
 
 // 流式统一入口：与 ask() 同款分发，只是把回答一个词一个词推给 onToken；
 // 返回 { answer, thinkSeconds, webSearched }（answer 是全量文本，路由拿它存档）。
-async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, historyMsgs, onToken, onStatus, onPartial }) {
+async function askStream({ model, question, rawQuestion, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, historyMsgs, onToken, onStatus, onPartial }) {
   const key = aiKey || process.env.AI_API_KEY || '';
   const started = Date.now();
   let answer = '';
@@ -887,12 +892,14 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   let finalQuestion = question;
   let webSearched = false;
   // 联网搜索：用"自定义"那栏的智谱 Key 搜，跟当前聊的模型没关系（见 ask 里的注释）
+  // 搜索只看用户原问题（rawQuestion），不看拼了教材的 question：见 ask() 里的注释。
+  const qForSearch = (rawQuestion || question || '').trim();
   if (webSearch && searchKey) {
     try {
       if (onStatus) onStatus('正在联网搜索…');
-      const { results, timeSensitive } = await searchForQuestion(question, searchKey);
+      const { results, timeSensitive } = await searchForQuestion(qForSearch, searchKey);
       if (results.length) {
-        newsMode = timeSensitive && isNewsQuestion(question);
+        newsMode = timeSensitive && isNewsQuestion(qForSearch);
         newsResults = results;
         finalQuestion = buildSearchBlock(results) + question + (newsMode ? NEWS_JSON_RULES : (timeSensitive ? NEWS_OUTPUT_RULES : ''));
         webSearched = true;

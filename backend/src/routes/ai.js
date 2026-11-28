@@ -194,6 +194,7 @@ router.post('/ask', ah(async (req, res) => {
       const { answer, thinkSeconds, webSearched } = await askStream({
         model: model || 'deepseek',
         question: finalQuestion,
+        rawQuestion: question.trim(), // 搜索分类只看原问题：finalQuestion 拼了教材，里面常有"今年/现在"这类时效词（2026-11-28 跑题 bug）
         imageUrl: resolveImageForVision(imageUrl),
         deepThink: !!deepThink,
         aiKey,
@@ -224,6 +225,7 @@ router.post('/ask', ah(async (req, res) => {
   const { answer, thinkSeconds, webSearched } = await ask({
     model: model || 'deepseek',
     question: finalQuestion,
+    rawQuestion: question.trim(), // 同上：搜索分类只看原问题
     imageUrl: resolveImageForVision(imageUrl),
     deepThink: !!deepThink,
     aiKey,

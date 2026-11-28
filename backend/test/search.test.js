@@ -114,3 +114,44 @@ describe('normalizePublishDate（发布日期归一化）', () => {
     assert.equal(normalizePublishDate('昨天'), '昨天');
   });
 });
+
+describe('ask() 搜索只看原问题（RAG 拼串不得影响时效判断）', () => {
+  // 线上实测回归（2026-11-28，测试账号 ID 3，会话 58）："集合的定义是什么"
+  // 开了联网搜索后答出 5 条"黄道吉日"新闻。根因：ai.js 把拼了教材的 finalQuestion
+  // 当 question 传进 ask()，ask() 拿它去判时效、拼搜索词；数学必修一第 2 页
+  // 教材正文里有"今年"，整串被判成时效问题，搜索词变成"今天日期 + 教材全文"，
+  // 搜回当天热点，还贴上 NEWS_OUTPUT_RULES，模型就只列新闻、不答问题了。
+  // 修法：ai.js 另传 rawQuestion（用户原问题），ask()/askStream() 的搜索分类
+  // 与搜索词只看 rawQuestion；拼了教材的 question 仍原样进模型提示词。
+  const { ask } = require('../src/ai/providers');
+  const AUGMENTED = '以下是教材中的相关内容（已按相关度排序，仅供参考）：\n\n【教材来源1】人民教育出版社 在小学和初中，我们已经接触过一些集合。今年我们进一步了解集合的含义。\n\n---\n用户问题：集合的定义是什么\n\n要求：教材内容只在与本轮问题和对话主题相关时才作为回答依据。';
+
+  test('拼了教材的长串本身会被误判（对照：这就是当时的坑）', () => {
+    assert.equal(isTimeSensitive(AUGMENTED), true);
+  });
+
+  test('rawQuestion 是普通问题：搜原问题、不贴新闻列表规则、教材仍进提示词', async () => {
+    let searchQuery = null;
+    let modelBody = '';
+    const orig = global.fetch;
+    global.fetch = async (url, opts) => {
+      const u = String(url);
+      const body = opts?.body ? JSON.parse(opts.body) : {};
+      if (u.includes('web_search')) {
+        searchQuery = body.search_query;
+        return { ok: true, status: 200, json: async () => ({ search_result: [
+          { title: '2026年11月28日是不是黄道吉日', content: 'c', link: 'https://example.com/a', publish_date: '2026-11-28' },
+        ]}) };
+      }
+      modelBody = JSON.stringify(body);
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '集合的定义是：把一些元素组成的总体。' } }] }) };
+    };
+    try {
+      const r = await ask({ model: 'custom', question: AUGMENTED, rawQuestion: '集合的定义是什么', aiKey: 'k', endpoint: 'https://open.bigmodel.cn/api/paas/v4', modelName: 'glm-4v-flash', webSearch: true, searchKey: 'k', historyMsgs: [] });
+      assert.equal(searchQuery, '集合的定义是什么');
+      assert.doesNotMatch(modelBody, /只依据上述联网搜索结果回答/);
+      assert.match(modelBody, /今年/); // 教材内容仍在提示词里，没被修掉
+      assert.match(r.answer, /集合的定义是/);
+    } finally { global.fetch = orig; }
+  });
+});
