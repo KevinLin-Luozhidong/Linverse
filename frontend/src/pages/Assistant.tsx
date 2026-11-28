@@ -3,6 +3,7 @@ import { I, Toast, Spin, Empty, useToast} from '../components'
 import Cropper from '../Cropper'
 import Briefing from './Briefing'
 import Shantou from './Shantou'
+import PdfViewer from './PdfViewer'
 import { cleanLatex } from '../latex'
 import { renderMathHtml } from '../math'
 import { listFavs, removeFav, type Fav } from '../favs'
@@ -307,7 +308,7 @@ const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkTe
   text: string; question: string; profileId: string | null;
   thinkText: string; typing: boolean; onSkip: () => void; onToast: (m: string) => void;
   showActions?: boolean; showSkip?: boolean; kbRefs?: KbRef[];
-  onOpenRef?: (url: string, title: string) => void;
+  onOpenRef?: (url: string, page: number, title: string) => void;
 }) {
   const [favTick, setFavTick] = useState(0)
   const [mistakeSubject, setMistakeSubject] = useState('数学')
@@ -364,16 +365,16 @@ const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkTe
     }
   }
   // 引用行点开原书 PDF：跳到对应页（书页码 + 每本书的 PDF 偏移，前言跳第 1 页）。
-  // 不再 window.open 新标签（手机上新标签的 PDF 阅读器没有明显退出键，用户出不来），
-  // 改走应用内全屏浮层：顶部有关闭 ×，点一下就回聊天。
+  // 走应用内 pdf.js 浮层（顶部有关闭 × 回聊天，页宽贴合手机屏），
+  // 不再 window.open 新标签（手机上新标签的 PDF 阅读器没有明显退出键），
+  // 也不用 iframe（iframe 里浏览器阅读器不认 #page=、总停在第 1 页且不贴合宽度）。
   const openRef = (r: KbRef) => {
     const pdf = KB_PDF[r.book]
     if (!pdf) return
     const pdfPage = r.page_start > 0 ? r.page_start + pdf.off : 1
-    const url = `/kb-pdfs/${pdf.file}#page=${pdfPage}`
     const title = `${r.book} · 第${r.page_start > 0 ? r.page_start : '前言'}页`
-    if (onOpenRef) { onOpenRef(url, title); return }
-    window.open(url, '_blank')
+    if (onOpenRef) { onOpenRef(`/kb-pdfs/${pdf.file}`, pdfPage, title); return }
+    window.open(`/kb-pdfs/${pdf.file}#page=${pdfPage}`, '_blank')
   }
 
   return (
@@ -509,8 +510,10 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
   // 原书 PDF 浮层：点“参考课本”后在应用内全屏打开，顶部有关闭 × 回聊天；
-  // 不走 window.open 新标签（手机上新标签的 PDF 阅读器没有明显退出键）。
-  const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null)
+  // 用 pdf.js 渲染指定页（宽度贴合手机屏）——
+  // 浏览器自带 PDF 阅读器在 iframe 里不认 #page= 跳页、也不做宽度适配，
+  // 在新标签里又没有明显退出键。page 是 PDF 实际页码（书页码 + 偏移）。
+  const [pdfView, setPdfView] = useState<{ url: string; page: number; title: string } | null>(null)
   const menuWrapRef = useRef<HTMLDivElement>(null)
   // 点菜单外任意处关闭：窗口级 mousedown + ref 判定（全屏遮罩层实测两次没接住点击，顶栏 sticky 层叠上下文可疑，改走这条最稳的路）
   useEffect(() => {
@@ -1190,7 +1193,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                 showActions={false}
                 onSkip={noop}
                 onToast={setToast}
-                onOpenRef={(url, title) => setPdfView({ url, title })}
+                onOpenRef={(url, page, title) => setPdfView({ url, page, title })}
               />
             ) : (
               <AnswerCard
@@ -1206,7 +1209,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                 kbRefs={m.kbRefs}
                 onSkip={noop}
                 onToast={setToast}
-                onOpenRef={(url, title) => setPdfView({ url, title })}
+                onOpenRef={(url, page, title) => setPdfView({ url, page, title })}
               />
             )}
           </div>
@@ -1290,7 +1293,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       {cropSrc && (
         <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
       )}
-      {/* 原书 PDF 浮层：应用内全屏打开，顶部有关闭 × 回聊天；iframe 里是浏览器自带 PDF 阅读器 */}
+      {/* 原书 PDF 浮层：应用内全屏打开，顶部有关闭 × 回聊天；pdf.js 把指定页渲染成
+          贴合手机屏宽的图片，带上一页/下一页（iframe 与新标签两条路都已证实不行） */}
       {pdfView && (
         <div className="pdf-overlay">
           <div className="pdf-nav">
@@ -1300,7 +1304,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
             <span className="pdf-title">{pdfView.title}</span>
             <span className="brief-nav-sp" />
           </div>
-          <iframe className="pdf-frame" src={pdfView.url} title={pdfView.title} />
+          <PdfViewer url={pdfView.url} page={pdfView.page} title={pdfView.title} />
         </div>
       )}
     </div>

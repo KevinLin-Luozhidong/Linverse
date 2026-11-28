@@ -114,7 +114,12 @@ console.warn('[rag] 问答库检索失败：', e.message);
 }
 // 命中标准问答时只留 2 块教材佐证（2026-10-22 优化）：标准答案已人工校准，
 // 全量 5 块拼进去只是白烧 token、拖慢回答；没命中时保持 topK 不变
-const uniq = rrfFuse(vecRows, kwRows).slice(0, faq ? 2 : topK);
+// 前言/导引块（page_start <= 0，无书页码）不进引用：那是写书的话（讲这本书怎么编），
+// 不是知识点；混进来只会让回答去引一本"前言"、还占掉正经知识块的位置。
+// 只有当所有命中块都是前言时才保留（免得整轮查课本落空）。
+const fused = rrfFuse(vecRows, kwRows);
+const nonPreface = fused.filter((r) => r.page_start > 0);
+const uniq = (nonPreface.length ? nonPreface : fused).slice(0, faq ? 2 : topK);
 if (!uniq.length && !faq) return { context: '', refs: [], faq: null };
 const fmtPage = (r) => {
 if (r.page_start <= 0) return '前言'; // 前言/导引块（PDF 前 7 页，无书页码）
