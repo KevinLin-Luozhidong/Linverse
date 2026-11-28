@@ -1643,6 +1643,9 @@ body::before {
 .tools-sub-d { display: none; }
 /* 桌面端会话栏默认不显示：手机上仍走左侧抽屉 */
 .conv-rail { display: none; }
+/* chat-main 默认不占位：手机上它是 display:contents，里面的顶栏/消息列/输入框照旧是 chat-wrap 的直接子项；
+   漏了这行手机端聊天区会散架（chat-list 拿不到 flex 高度、输入框不再贴底） */
+.chat-main { display: contents; }
 /* 词典两栏默认只显示当前子板块（.sub-dict/.sub-vocab 控制，和原来条件渲染的行为一致） */
 .dict-sec.sub-dict .dict-col-vocab { display: none; }
 .dict-sec.sub-vocab .dict-col-main { display: none; }
