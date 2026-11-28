@@ -55,6 +55,8 @@ describe('buildSearchBlock（搜索块提示词）', () => {
 describe('NEWS_OUTPUT_RULES（时效问题的回答要求）', () => {
   test('固定模板＋上限 10 条＋不写开场结语＋日期未注明兜底', () => {
     assert.match(NEWS_OUTPUT_RULES, /最多10条不重复的新闻/);
+    assert.match(NEWS_OUTPUT_RULES, /每个来源最多取2条/);
+    assert.match(NEWS_OUTPUT_RULES, /同一事件只列一次/);
     assert.match(NEWS_OUTPUT_RULES, /不写开场或结语/);
     assert.match(NEWS_OUTPUT_RULES, /【来源发布：日期】/);
     assert.match(NEWS_OUTPUT_RULES, /写"日期未注明"/);
