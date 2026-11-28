@@ -21,6 +21,9 @@ assert.equal(isNewsQuestion('今日新闻'), true);
 assert.equal(isNewsQuestion('今天有什么新闻'), true);
 assert.equal(isNewsQuestion('来份早报'), true);
 assert.equal(isNewsQuestion('最近有什么热点'), true);
+assert.equal(isNewsQuestion('今天发生了什么'), true);
+assert.equal(isNewsQuestion('今天有什么大事'), true);
+assert.equal(isNewsQuestion('给我每日新闻'), true);
 });
 test('新闻联播是什么（定义问题）与集合定义都不算', () => {
 assert.equal(isNewsQuestion('新闻联播是什么'), false);
