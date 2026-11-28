@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 // 数学符号键盘第二轮：计算器式符号盘，点一下插到输入框光标处。
 // 给 AI 助手 / 错题本 / 笔记本的输入框共用，调用方只负责：
@@ -46,6 +46,11 @@ const BACKSPACE_KEY: MathKey = { label: '⌫', snippet: '', action: 'backspace',
 // ° 0.3→0.22（压过头了）、， -0.28→-0.31、∠ -0.08→-0.11；
 // ♀♂ 新测：圆圈+竖杆的字形在 PingFang 里整整沉底约 8px（0.48em），新补 -0.40/-0.43。
 // . 只在数字组，第五轮没量到，不动，仍是 -0.28。
+// 第六轮（2026-11-28，用户令"运行时测量"）：上面这张手标表只在 iPhone PingFang 上准，
+// 换字体会反向补偿（GPT 结论，见本轮问答）。改走运行时测量：组件挂载后用
+// canvas measureText 量每个单字在当前字体里的实际包围盒，动态算偏移
+// （见 measureNudges），换字体/换手机自动重算。手标表留作兜底：测不到时
+// （老浏览器不支持 actualBoundingBoxAscent）仍用它。
 const NUDGE_EM: Record<string, number> = {
   '，': -0.31, '.': -0.28, '_': -0.51,
   '·': 0.07, '%': 0.07, '!': 0.07, '∠': -0.11,
@@ -219,6 +224,46 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
   },
 ]
 
+// 运行时测量（2026-11-28，用户令"运行时测量"，替代手标表做主路径）：
+// 用 canvas measureText 量每个单字符号在当前字体里的实际字形包围盒，
+// 动态算偏移，换字体/换手机自动重算，不用再逐台标定。
+// 原理：actualBoundingBoxAscent（A，基线到字形顶）、actualBoundingBoxDescent
+// （D，基线到字形底），字形中心 c=(D-A)/2（相对基线，正数在基线下方）；
+// 取基准组（+−×÷=()[]，本就该居中的运算符）中心的中位数当目标，
+// 每字偏移 =（目标 − 该字中心）/ 字号，正数往下，跟手标表同一口径。
+// 注意包围盒中心不等于墨水重心/光学中心，结果是"接近齐"不是像素级完美，
+// 但它跟字体走，不会像手标表那样在别的字体上反向补偿。
+// 测不到（不支持 actualBoundingBoxAscent）返回 null，调用方保留手标表。
+const REF_CHARS = ['+', '−', '×', '÷', '=', '(', ')', '[', ']']
+
+function measureNudges(font: string, fontPx: number): Record<string, number> | null {
+  try {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.font = font
+    const probe = ctx.measureText('+')
+    if (probe.actualBoundingBoxAscent === undefined || probe.actualBoundingBoxDescent === undefined) return null
+    const centers: Record<string, number> = {}
+    const chars = new Set<string>()
+    for (const g of GROUPS) for (const k of g.keys) {
+      if (k.label.length === 1) chars.add(k.label)
+    }
+    for (const ch of chars) {
+      const m = ctx.measureText(ch)
+      centers[ch] = (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2
+    }
+    const ref = REF_CHARS.map((c) => centers[c]).filter((v) => v !== undefined).sort((a, b) => a - b)
+    if (ref.length === 0 || !fontPx) return null
+    const target = ref[Math.floor(ref.length / 2)]
+    const out: Record<string, number> = {}
+    for (const ch of chars) out[ch] = (target - centers[ch]) / fontPx
+    return out
+  } catch {
+    return null
+  }
+}
+
 // 取光标位置：输入框没聚焦过时 selectionStart 是 0（不是 null），
 // 注释里说的"取不到追加到末尾"兜底实际走不到——
 // 没点过输入框就先点符号，符号会插到开头。没聚焦且光标在开头时，
@@ -287,6 +332,27 @@ export default function MathKeyboard({
   onClose?: () => void
 }) {
   const [tab, setTab] = useState(0)
+  // 运行时测量的偏移表：初始用手标表（第一帧不闪），挂载后量到就换成实测值；
+  // 测不到时一直用手标表。
+  const [nudges, setNudges] = useState<Record<string, number>>(NUDGE_EM)
+  const gridRef = useRef<HTMLDivElement>(null)
+
+  // 挂载后量一次（useLayoutEffect：在绘制前量，首帧就带偏移，不闪）；
+  // 字体加载完再量一次（系统字体一般已就绪，这步是兜底）。
+  // 键盘每次打开都重新挂载，所以改了字号设置后下次打开会自动重算。
+  useLayoutEffect(() => {
+    const measure = () => {
+      const keyEl = gridRef.current?.querySelector('.math-key')
+      if (!keyEl) return
+      const cs = getComputedStyle(keyEl)
+      const measured = measureNudges(cs.font, parseFloat(cs.fontSize))
+      if (measured) setNudges(measured)
+    }
+    measure()
+    let cancelled = false
+    document.fonts?.ready.then(() => { if (!cancelled) measure() }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const handleKey = (key: MathKey) => {
     if (key.action === 'backspace') {
@@ -311,7 +377,7 @@ export default function MathKeyboard({
           <button type="button" className="math-close" onClick={onClose} aria-label="收起符号盘">×</button>
         )}
       </div>
-      <div className="math-grid">
+      <div className="math-grid" ref={gridRef}>
         {GROUPS[tab].keys.map((k) => (
           <button key={k.label} type="button"
             // 超过 2 个字的键（绝对值、log底）字号收一档，不然在 390px 屏上会换行顶高整行
@@ -325,7 +391,7 @@ export default function MathKeyboard({
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleKey(k) }
             }}>
-            <span style={NUDGE_EM[k.label] !== undefined ? { transform: `translateY(${NUDGE_EM[k.label]}em)` } : undefined}>{k.label}</span>
+            <span style={nudges[k.label] !== undefined ? { transform: `translateY(${nudges[k.label]}em)` } : undefined}>{k.label}</span>
           </button>
         ))}
       </div>
