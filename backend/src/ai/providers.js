@@ -386,10 +386,20 @@ if (r.content) s += `\n   ${r.content}`;
 if (r.link) s += `\n   来源：${r.link}`;
 return s;
 });
-return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；回答新闻类问题时，每条新闻开头必须标注该条的发布日期，照抄上面给出的日期，严禁编造，没有日期的写"日期未注明"；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
+return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；回答中的每条新闻必须标注对应来源的发布日期（上面每条结果的"发布日期"字段就是它）；该日期仅表示来源网页的发布日期，不代表其中新闻自身的发布日期或事件发生日期，不得混用；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
 + lines.join('\n')
 + '\n\n【用户问题】\n';
 }
+
+// 时效问题（新闻类）的回答要求：只在用户问题之后追加（GPT 评审 2026-11-28）。
+// 教训：日期规则只放搜索块头部会被小模型无视——实测 36 条新闻 0 条带日期，
+// 还附带重复、只有标题的条目、序号全是"1."、开头误称"对话历史"。
+// 改法：头部只留短规则，完整要求放问题之后（离答案最近）；固定模板＋项目符号
+// （规避编号问题）；每条必须带"来源发布"日期＋来源标题，不得把来源发布日期
+// 说成事件发生日期；上限 10 条（不用 GPT 建议的 5 条：上次"10 条真新闻"是用户
+// 认可的好答案，36 条才是要治的毛病）。
+// 注意：只在时效问题追加；普通知识问题不加，别把"列出新闻"套到非新闻问题上。
+const NEWS_OUTPUT_RULES = `\n\n【回答要求】\n请只依据上述联网搜索结果回答用户问题，直接列出最多10条不重复的新闻，不写开场或结语。允许从同一合集提取多条，但每条必须对应所给内容中明确、独立的新闻事实；不得补充未提供的事实，不得将同一事件重复列出。每条固定格式为：\n- 【来源发布：日期】标题：一至两句事实摘要。（来源：对应来源标题）\n将格式中的"日期"替换为对应来源"发布日期"字段的原值；字段为"未注明"时，写"日期未注明"。每条都必须保留日期标注和来源，不得把来源发布日期称为事件发生日期。摘要只能复述所给内容支持的事实；信息不足时减少条数，不凑数，不输出只有标题的条目。\n`;
 
 // ---------- 联网搜索问句改写 ----------
 // 实测教训（2026-11-28）："今日新闻"这种模糊问句直接搜，智谱 search_std
@@ -408,7 +418,8 @@ function buildSearchQuery(question) {
 }
 async function searchForQuestion(question, searchKey) {
   const timeSensitive = isTimeSensitive(question);
-  return zhipuWebSearch(buildSearchQuery(question), searchKey, timeSensitive ? 'day' : 'noLimit');
+  const results = await zhipuWebSearch(buildSearchQuery(question), searchKey, timeSensitive ? 'day' : 'noLimit');
+  return { results, timeSensitive };
 }
 
 // ---------- 模型列表：拉取供应商的 /models，设置页做成点选 ----------
@@ -481,9 +492,9 @@ let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写
 let webSearched = false;
 if (webSearch && searchKey) {
 try {
-const results = await searchForQuestion(question, searchKey);
+const { results, timeSensitive } = await searchForQuestion(question, searchKey);
 if (results.length) {
-finalQuestion = buildSearchBlock(results) + question;
+finalQuestion = buildSearchBlock(results) + question + (timeSensitive ? NEWS_OUTPUT_RULES : '');
 webSearched = true;
 }
 } catch (err) {
@@ -675,9 +686,9 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   // 联网搜索：用"自定义"那栏的智谱 Key 搜，跟当前聊的模型没关系（见 ask 里的注释）
   if (webSearch && searchKey) {
     try {
-      const results = await searchForQuestion(question, searchKey);
+      const { results, timeSensitive } = await searchForQuestion(question, searchKey);
       if (results.length) {
-        finalQuestion = buildSearchBlock(results) + question;
+        finalQuestion = buildSearchBlock(results) + question + (timeSensitive ? NEWS_OUTPUT_RULES : '');
         webSearched = true;
       }
     } catch (err) {
@@ -707,4 +718,4 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
 module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate, MODELS_TIMEOUT_MS };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, searchForQuestion, MODELS_TIMEOUT_MS };

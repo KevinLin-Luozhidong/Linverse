@@ -5,7 +5,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { _test } = require('../src/ai/providers');
-const { isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate } = _test;
+const { isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, searchForQuestion } = _test;
 
 describe('isTimeSensitive（时效词判断）', () => {
   test('新闻类问句命中', () => {
@@ -46,7 +46,53 @@ describe('buildSearchBlock（搜索块提示词）', () => {
     ]);
     assert.match(block, /发布日期：2026-11-28/);
     assert.match(block, /发布日期：未注明/);
-    assert.match(block, /每条新闻开头必须标注该条的发布日期/);
+    // 头部规则（GPT 评审 2026-11-28 第二轮）：标对应来源的发布日期，不得混同事件日期
+    assert.match(block, /对应来源的发布日期/);
+    assert.match(block, /不得混用/);
+  });
+});
+
+describe('NEWS_OUTPUT_RULES（时效问题的回答要求）', () => {
+  test('固定模板＋上限 10 条＋不写开场结语＋日期未注明兜底', () => {
+    assert.match(NEWS_OUTPUT_RULES, /最多10条不重复的新闻/);
+    assert.match(NEWS_OUTPUT_RULES, /不写开场或结语/);
+    assert.match(NEWS_OUTPUT_RULES, /【来源发布：日期】/);
+    assert.match(NEWS_OUTPUT_RULES, /写"日期未注明"/);
+    assert.match(NEWS_OUTPUT_RULES, /不得把来源发布日期称为事件发生日期/);
+    assert.match(NEWS_OUTPUT_RULES, /不输出只有标题的条目/);
+  });
+});
+
+describe('searchForQuestion（搜 + 时效判断）', () => {
+  // 桩掉全局 fetch：只测 searchForQuestion 的返回形状与日期归一化，不真调智谱
+  function stubFetch() {
+    const orig = global.fetch;
+    global.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ search_result: [
+        { title: 'A', content: 'c', link: 'https://example.com/a', publish_date: '2026-11-28T08:00:00+08:00' },
+        { title: 'B', content: 'c', link: 'https://example.com/b' },
+      ]}),
+    });
+    return () => { global.fetch = orig; };
+  }
+  test('时效问题返回 timeSensitive=true、结果带归一化日期', async () => {
+    const restore = stubFetch();
+    try {
+      const { results, timeSensitive } = await searchForQuestion('今日新闻', 'k');
+      assert.equal(timeSensitive, true);
+      assert.equal(results.length, 2);
+      assert.equal(results[0].publish_date, '2026-11-28');
+      assert.equal(results[1].publish_date, '');
+    } finally { restore(); }
+  });
+  test('普通问题返回 timeSensitive=false', async () => {
+    const restore = stubFetch();
+    try {
+      const { timeSensitive } = await searchForQuestion('集合的定义是什么', 'k');
+      assert.equal(timeSensitive, false);
+    } finally { restore(); }
   });
 });
 
