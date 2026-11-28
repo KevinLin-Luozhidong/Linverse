@@ -1,7 +1,7 @@
 const assert = require('node:assert');
 const { describe, test} = require('node:test');
 const providers = require('../src/ai/providers');
-const { isNewsQuestion, renderNewsAnswer, NEWS_JSON_RULES, todayISO, todayZh} = providers._test;
+const { isNewsQuestion, renderNewsAnswer, stripUnbalancedQuotes, NEWS_JSON_RULES, todayISO, todayZh} = providers._test;
 
 // 搜索结果桩（publish_date 已是归一化后的 YYYY-MM-DD）
 const RESULTS = [
@@ -120,5 +120,51 @@ assert.match(out, /1\. 蓝天立一审被判死缓（来源：《每日资讯简
 
 test('TODAY 桩日期与运行当天一致（防测试写死日期）', () => {
 assert.match(TODAY, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('不成对引号去掉，成对的保留', () => {
+assert.equal(stripUnbalancedQuotes('国常会稳市”提振A股'), '国常会稳市提振A股');
+assert.equal(stripUnbalancedQuotes('《大额存单管理办法》公布'), '《大额存单管理办法》公布');
+assert.equal(stripUnbalancedQuotes('“a”b”'), '“a”b');
+assert.equal(stripUnbalancedQuotes('a"b'), 'ab');
+assert.equal(stripUnbalancedQuotes('a"b"c'), 'a"b"c');
+});
+
+test('渲染时标题里不成对的引号也被去掉', () => {
+const raw = jsonItems([
+{ title: '国常会稳市”提振A股', time: '', summary: '沪指涨超3%。', source: '每日资讯简报', date: '2026-11-28'},
+]);
+const out = renderNewsAnswer(raw, RESULTS);
+assert.match(out, /1\. 国常会稳市提振A股（来源：《每日资讯简报》）：沪指涨超3%。/);
+assert.doesNotMatch(out, /”/);
+});
+
+test('每来源最多取 2 条由后端强制：先各取前 2 条，再按原顺序补满', () => {
+const items = [];
+for (let i = 1; i <= 7; i++) {
+items.push({ title: `早报新闻${i}`, time: '', summary: `摘要${i}。`, source: '早安长春！新闻早班车', date: '2026-11-28'});
+}
+for (let i = 1; i <= 2; i++) {
+items.push({ title: `简报新闻${i}`, time: '', summary: `摘要${i}。`, source: '每日资讯简报', date: '2026-11-28'});
+}
+const out = renderNewsAnswer(jsonItems(items), RESULTS);
+const lines = out.split('\n').filter((l) => /^\d+\. /.test(l));
+assert.equal(lines.length, 9);
+assert.match(lines[0], /早报新闻1/);
+assert.match(lines[1], /早报新闻2/);
+assert.match(lines[2], /简报新闻1/);
+assert.match(lines[3], /简报新闻2/);
+assert.match(lines[4], /早报新闻3/);
+assert.match(lines[8], /早报新闻7/);
+});
+
+test('只有一个来源时：先取 2 条再补满，仍出 10 条', () => {
+const items = [];
+for (let i = 1; i <= 12; i++) {
+items.push({ title: `早报新闻${i}`, time: '', summary: `摘要${i}。`, source: '早安长春！新闻早班车', date: '2026-11-28'});
+}
+const out = renderNewsAnswer(jsonItems(items), RESULTS);
+const lines = out.split('\n').filter((l) => /^\d+\. /.test(l));
+assert.equal(lines.length, 10);
 });
 });

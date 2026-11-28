@@ -440,6 +440,32 @@ function timeInContent(time, content) {
   if (hm && c.includes(`${Number(hm[1])}点`)) return true;
   return false;
 }
+// 标题/摘要去不成对的引号：模型照抄来源内容时会带进不成对的引号
+// （实测"国常会稳市”提振A股"多了一个右引号），成对的保留
+const QUOTE_PAIRS = [['“', '”'], ['‘', '’'], ['「', '」'], ['『', '』'], ['《', '》'], ['"', '"']];
+function stripUnbalancedQuotes(s) {
+  let text = String(s || '');
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (open === close) {
+      // 对称引号（"）：奇数个就去掉最后一个
+      if ((text.split(open).length - 1) % 2 === 1) {
+        const i = text.lastIndexOf(open);
+        text = text.slice(0, i) + text.slice(i + 1);
+      }
+      continue;
+    }
+    for (let guard = 0; guard < 5; guard++) {
+      const opens = text.split(open).length - 1;
+      const closes = text.split(close).length - 1;
+      if (opens === closes) break;
+      const ch = opens > closes ? open : close;
+      const i = text.lastIndexOf(ch);
+      if (i < 0) break;
+      text = text.slice(0, i) + text.slice(i + 1);
+    }
+  }
+  return text;
+}
 // 模型原文（JSON）＋搜索结果 → 渲染好的 Markdown。
 // 校验：source 必须在搜索结果里找得到（对不上就丢条，防编造）；date 以来源的
 // publish_date 为准（模型写错就纠正，没写就补上）；time 不在来源内容里就去掉；
@@ -462,10 +488,9 @@ function renderNewsAnswer(raw, results) {
   if (!items || !items.length) return raw;
   const today = todayISO();
   const seen = new Set();
-  const out = [];
+  const cands = [];
   for (const it of items) {
-    if (out.length >= 10) break;
-    const title = String((it && it.title) || '').trim();
+    const title = stripUnbalancedQuotes(String((it && it.title) || '').trim());
     const source = String((it && it.source) || '').trim();
     if (!title || !source) continue;
     const key = normKey(title);
@@ -478,10 +503,24 @@ function renderNewsAnswer(raw, results) {
     if (!hit) continue;
     seen.add(key);
     const time = timeInContent(it.time, hit.content) ? String(it.time).trim() : '';
-    const summary = String((it && it.summary) || '').trim();
-    out.push({ title, time, summary, source: hit.title, date: hit.publish_date || '' });
+    const summary = stripUnbalancedQuotes(String((it && it.summary) || '').trim());
+    cands.push({ title, time, summary, source: hit.title, date: hit.publish_date || '' });
   }
-  if (!out.length) return raw;
+  if (!cands.length) return raw;
+  // 每来源最多取 2 条（提示词里的约束模型没遵守，后端强制）：先按原顺序各取前 2 条，
+  // 再按原顺序补满 10 条——条数不缩水，来源分布更均匀。
+  const perSource = new Map();
+  const out = [];
+  for (const c of cands) {
+    const n = perSource.get(c.source) || 0;
+    if (n < 2) { perSource.set(c.source, n + 1); out.push(c); }
+  }
+  if (out.length < 10) {
+    for (const c of cands) {
+      if (out.length >= 10) break;
+      if (!out.includes(c)) out.push(c);
+    }
+  }
   const lines = [`【${todayZh()} 今日新闻】`, ''];
   out.forEach((it, i) => {
     const parts = [];
@@ -829,4 +868,4 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
 module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, stripUnbalancedQuotes, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };
