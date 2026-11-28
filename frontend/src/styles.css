@@ -359,7 +359,7 @@ body {
 }
 .conv-item:active { transform: scale(0.98); background: var(--blue-soft); }
 .conv-item.active { background: var(--blue-soft); }
-.conv-title { flex: 1; font-size: calc(14px * var(--fss)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-title { flex: 1; font-size: calc(14px * var(--fss)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; /* 标题里的 ♀♂ 等符号同样走 STIX Two Math，中文走苹方：历史会话列表不再混字体错位 */ font-family: 'LinverseSymbols', 'PingFang SC', sans-serif; }
 .conv-del { color: var(--ink3); border: 0; background: none; cursor: pointer; padding: 4px; display: flex; }
 /* 会话管理模式：勾选框 + 星标收藏 + 管理栏（关抽屉自动退出，见 Assistant.tsx） */
 .conv-item.selected { background: var(--blue-soft); }
@@ -391,7 +391,7 @@ body {
 .user-bubble img { max-width: 100%; height: auto; max-height: 420px; object-fit: contain; border-radius: 10px; margin-bottom: 8px; display: block; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 
 /* AI 回答：无边框卡片，排版舒适，重点蓝色高亮 */
-.answer { max-width: 100%; font-size: var(--fs); line-height: 1.75; color: var(--ink); font-family: 'LinverseSymbols', 'PingFang SC', sans-serif; }
+.answer { max-width: 100%; font-size: var(--fs); line-height: 1.75; color: var(--ink); font-family: 'LinverseSymbols', 'PingFang SC', sans-serif; /* 长链接（如百度知道 URL）必须断行，否则会横向溢出、流式输出时整页左右晃 */ overflow-wrap: break-word; word-break: break-word; }
 .answer img { max-width: 100%; border-radius: 12px; margin-bottom: 8px; display: block; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .rich p { margin: 0 0 12px; }
 .rich p:last-child { margin-bottom: 0; }
