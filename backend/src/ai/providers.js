@@ -473,20 +473,21 @@ function stripUnbalancedQuotes(s) {
 // 渲染：首行放一次今天日期；每条"标题（时间，来源：《X》）：摘要"，没有 time
 // 就不写 time 位，没有 summary 就不写冒号；只有 date 与今天不同才在括号里加该条
 // 日期（平日日期只放最前面一次）。
-function renderNewsAnswer(raw, results) {
-  const list = Array.isArray(results) ? results : [];
-  let parsed = null;
+// 拆成三段供流式逐条渲染共用：解析（parseNewsJson）→ 校验排序
+// （validateNewsItems）→ 渲染（formatNewsAnswer）。
+function parseNewsJson(raw) {
   try {
     let text = String(raw || '').trim();
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start < 0 || end <= start) return raw;
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch { return raw; }
-  const items = parsed && Array.isArray(parsed.items) ? parsed.items : null;
-  if (!items || !items.length) return raw;
-  const today = todayISO();
+    if (start < 0 || end <= start) return null;
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    return parsed && Array.isArray(parsed.items) ? parsed.items : null;
+  } catch { return null; }
+}
+function validateNewsItems(items, results) {
+  const list = Array.isArray(results) ? results : [];
   const seen = new Set();
   const cands = [];
   for (const it of items) {
@@ -506,7 +507,7 @@ function renderNewsAnswer(raw, results) {
     const summary = stripUnbalancedQuotes(String((it && it.summary) || '').trim());
     cands.push({ title, time, summary, source: hit.title, date: hit.publish_date || '' });
   }
-  if (!cands.length) return raw;
+  if (!cands.length) return [];
   // 每来源最多取 2 条（提示词里的约束模型没遵守，后端强制）：先按原顺序各取前 2 条，
   // 再按原顺序补满 10 条——条数不缩水，来源分布更均匀。
   const perSource = new Map();
@@ -521,6 +522,10 @@ function renderNewsAnswer(raw, results) {
       if (!out.includes(c)) out.push(c);
     }
   }
+  return out;
+}
+function formatNewsAnswer(out) {
+  const today = todayISO();
   const lines = [`【${todayZh()} 今日新闻】`, ''];
   out.forEach((it, i) => {
     const parts = [];
@@ -532,6 +537,49 @@ function renderNewsAnswer(raw, results) {
     lines.push(line);
   });
   return lines.join('\n');
+}
+function renderNewsAnswer(raw, results) {
+  const items = parseNewsJson(raw);
+  if (!items || !items.length) return raw;
+  const out = validateNewsItems(items, results);
+  if (!out.length) return raw;
+  return formatNewsAnswer(out);
+}
+// 流式逐条渲染：模型边出 JSON 边抠出已写完的条目（花括号配对才算写完），
+// 校验渲染后返回当前能显示的 Markdown；没有完整条目时返回 null（继续等）。
+// 做法：找 "items" 后的 [，逐个抠顶层 {...}（字符串/转义感知的花括号配对），
+// 抠出的逐个 JSON.parse，坏的跳过。渲染与最终答案共用同一套校验＋排序，
+// 所以逐条显示的内容与最终 done 的答案一致，不会跳变。
+function extractNewsPartial(raw, results) {
+  const text = String(raw || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  const itemsIdx = text.indexOf('"items"');
+  if (itemsIdx < 0) return null;
+  const arrStart = text.indexOf('[', itemsIdx);
+  if (arrStart < 0) return null;
+  const items = [];
+  let i = arrStart + 1;
+  while (i < text.length) {
+    while (i < text.length && /[\s,]/.test(text[i])) i++;
+    if (i >= text.length || text[i] === ']') break;
+    if (text[i] !== '{') break; // 不是对象开头：后面的没法抠，等更多词
+    let depth = 0; let inStr = false; let esc = false; let j = i;
+    for (; j < text.length; j++) {
+      const ch = text[j];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) break; }
+    }
+    if (depth !== 0) break; // 对象没写完，等更多词
+    try { items.push(JSON.parse(text.slice(i, j + 1))); } catch { /* 坏对象跳过 */ }
+    i = j + 1;
+  }
+  if (!items.length) return null;
+  const out = validateNewsItems(items, results);
+  if (!out.length) return null;
+  return formatNewsAnswer(out);
 }
 
 // ---------- 联网搜索问句改写 ----------
@@ -809,15 +857,27 @@ async function streamCustom({ question, imageUrl, aiKey, endpoint, modelName, de
 
 // 流式统一入口：与 ask() 同款分发，只是把回答一个词一个词推给 onToken；
 // 返回 { answer, thinkSeconds, webSearched }（answer 是全量文本，路由拿它存档）。
-async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, historyMsgs, onToken }) {
+async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint, modelName, webSearch, searchKey, historyMsgs, onToken, onStatus, onPartial }) {
   const key = aiKey || process.env.AI_API_KEY || '';
   const started = Date.now();
   let answer = '';
-  // 新闻结构化时压制流式：模型出 JSON，不实时推词，出完后统一渲染再发
-  // （前端最终用 done 事件的 answer 整体替换占位消息，不会重复显示）
+  // 新闻结构化时逐条推：模型出 JSON，写完一条就校验渲染一条推给前端，
+  // 首条约 4 秒就出现，不用干等 20 秒才一次性出全文（用户嫌"好慢"的根因：
+  // 以前出完才统一渲染，前面只显示"正在回答…"）。
+  // 前端收到 partial 是整体替换占位消息（不是追加），最终 done 的答案与
+  // 最后一条 partial 一致，不会重复、不会跳变。
   let newsMode = false;
   let newsResults = [];
-  const emit = (t) => { answer += t; if (!newsMode) onToken(t); };
+  let lastPartial = '';
+  const emit = (t) => {
+    answer += t;
+    if (newsMode) {
+      const partial = extractNewsPartial(answer, newsResults);
+      if (partial && partial !== lastPartial) { lastPartial = partial; if (onPartial) onPartial(partial); }
+      return;
+    }
+    onToken(t);
+  };
 
   // 没 Key 就直说，不推假词
   if (!key) {
@@ -829,12 +889,14 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   // 联网搜索：用"自定义"那栏的智谱 Key 搜，跟当前聊的模型没关系（见 ask 里的注释）
   if (webSearch && searchKey) {
     try {
+      if (onStatus) onStatus('正在联网搜索…');
       const { results, timeSensitive } = await searchForQuestion(question, searchKey);
       if (results.length) {
         newsMode = timeSensitive && isNewsQuestion(question);
         newsResults = results;
         finalQuestion = buildSearchBlock(results) + question + (newsMode ? NEWS_JSON_RULES : (timeSensitive ? NEWS_OUTPUT_RULES : ''));
         webSearched = true;
+        if (onStatus) onStatus(newsMode ? '正在整理新闻…' : '正在回答…');
       }
     } catch (err) {
       console.error('[web_search] 搜索失败，降级为普通问答：', err.message);
@@ -858,14 +920,15 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
     default:
       throw new Error(`不支持的模型类型：${model}`);
   }
-  // 新闻结构化：模型出完 JSON 后统一渲染，再一次性发给前端
+  // 新闻结构化：模型出完 JSON 后统一渲染成最终答案（逐条推的 partial 已
+  // 经把内容显示完了，这里不用再 onToken 全文推一次——推了前端会追加重复。
+  // done 事件照常带最终答案，前端整体替换一次收尾。）
   if (newsMode) {
     answer = renderNewsAnswer(answer, newsResults);
-    onToken(answer);
   }
   return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched };
 }
 
 module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, stripUnbalancedQuotes, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, extractNewsPartial, validateNewsItems, formatNewsAnswer, stripUnbalancedQuotes, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };

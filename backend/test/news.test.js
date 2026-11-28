@@ -1,7 +1,7 @@
 const assert = require('node:assert');
 const { describe, test} = require('node:test');
 const providers = require('../src/ai/providers');
-const { isNewsQuestion, renderNewsAnswer, stripUnbalancedQuotes, NEWS_JSON_RULES, todayISO, todayZh} = providers._test;
+const { isNewsQuestion, renderNewsAnswer, extractNewsPartial, validateNewsItems, stripUnbalancedQuotes, NEWS_JSON_RULES, todayISO, todayZh} = providers._test;
 
 // 搜索结果桩（publish_date 已是归一化后的 YYYY-MM-DD）
 const RESULTS = [
@@ -166,5 +166,48 @@ items.push({ title: `早报新闻${i}`, time: '', summary: `摘要${i}。`, sour
 const out = renderNewsAnswer(jsonItems(items), RESULTS);
 const lines = out.split('\n').filter((l) => /^\d+\. /.test(l));
 assert.equal(lines.length, 10);
+});
+
+test('逐条渲染：第一条写完就能显示，第二条没写完不显示', () => {
+const partial = '{"items": [{"title": "新闻A", "time": "", "summary": "摘要A。", "source": "早安长春！新闻早班车", "date": "2026-11-28"}, {"title": "新闻B", "time": "", "summary": "摘要B';
+const out = extractNewsPartial(partial, RESULTS);
+assert.ok(out);
+assert.match(out, /1\. 新闻A/);
+assert.doesNotMatch(out, /新闻B/);
+});
+
+test('逐条渲染：没有完整条目时返回 null（继续等）', () => {
+assert.equal(extractNewsPartial('{"items": [{"title": "新闻A", "time": ""', RESULTS), null);
+assert.equal(extractNewsPartial('不是 JSON', RESULTS), null);
+assert.equal(extractNewsPartial('', RESULTS), null);
+});
+
+test('逐条渲染：分段喂入，最后一条 partial 与最终答案一致', () => {
+const full = jsonItems([
+{ title: '新闻A', time: '', summary: '摘要A。', source: '早安长春！新闻早班车', date: '2026-11-28'},
+{ title: '新闻B', time: '', summary: '摘要B。', source: '每日资讯简报', date: '2026-11-28'},
+{ title: '新闻C', time: '', summary: '摘要C。', source: '早安长春！新闻早班车', date: '2026-11-28'},
+]);
+// 在第二、三条的开头处切开，模拟流式逐词到达（jsonItems 是 JSON.stringify，无空格）
+const cut1 = full.indexOf('{"title":"新闻B"');
+const cut2 = full.indexOf('{"title":"新闻C"');
+const partials = [];
+for (const chunk of [full.slice(0, cut1), full.slice(0, cut2), full]) {
+const p = extractNewsPartial(chunk, RESULTS);
+if (p) partials.push(p);
+}
+assert.equal(partials.length, 3);
+assert.match(partials[0], /1\. 新闻A/);
+assert.doesNotMatch(partials[0], /新闻B/);
+assert.match(partials[1], /新闻B/);
+assert.equal(partials[2], renderNewsAnswer(full, RESULTS));
+});
+
+test('逐条渲染：标题里带花括号/引号也不抠错对象', () => {
+const partial = '{"items": [{"title": "A{x}B", "time": "", "summary": "他说 \\"好\\" 。", "source": "早安长春！新闻早班车", "date": "2026-11-28"}, {"title": "新闻B", "time": "", "summary": "摘要B。", "source": "每日资讯简报", "date": "2026-11-28"}]}';
+const out = extractNewsPartial(partial, RESULTS);
+assert.ok(out);
+assert.match(out, /A\{x\}B/);
+assert.match(out, /2\. 新闻B/);
 });
 });

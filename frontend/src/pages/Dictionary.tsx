@@ -90,6 +90,19 @@ async function queryOfflineDict(word: string): Promise<DictResult | null> {
   })
 }
 
+// 词性简写：在线词典返回的是完整英文词（noun/verb……），界面上只显示标准缩写
+const POS_SHORT: Record<string, string> = {
+  noun: 'n.', verb: 'v.', adjective: 'adj.', adverb: 'adv.',
+  pronoun: 'pron.', preposition: 'prep.', conjunction: 'conj.',
+  interjection: 'interj.', article: 'art.', exclamation: 'excl.',
+  numeral: 'num.', determiner: 'det.',
+}
+const shortPos = (pos: string) => {
+  const p = (pos || '').trim()
+  if (!p) return ''
+  return POS_SHORT[p.toLowerCase()] || p
+}
+
 export default function Dictionary({ profileId }: { profileId: string | null }) {
   const [sub, setSub] = useState<Sub>('dict')
   const [word, setWord] = useState('')
@@ -133,7 +146,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     return () => { document.removeEventListener('visibilitychange', onShow); window.removeEventListener('focus', onShow) }
   }, [profileId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [checkinBusy, setCheckinBusy] = useState(false) // 打卡中：防连点（与个人中心页同款）
-  const [reviewBusy, setReviewBusy] = useState(false) // 复习提交中：防连点
+  const [reviewBusyId, setReviewBusyId] = useState<string | number | null>(null) // 正在提交的那个单词 id：防连点只锁自己，别把整列按钮都锁了
   const [clearBusy, setClearBusy] = useState(false) // 清除历史中：防连点
   const [delVocabId, setDelVocabId] = useState<string | null>(null) // 生词删除二次确认
   const [delVocabBusy, setDelVocabBusy] = useState(false) // 生词删除提交中：防连点
@@ -384,6 +397,9 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
 
   // 加入生词本：释义优先取中文，没有中文取英文，两者都没有就不加入
   const [joining, setJoining] = useState(false)
+  const [optimisticJoined, setOptimisticJoined] = useState<Record<string, boolean>>({}) // 刚点过"加入"的词：按钮立刻变"已加入"，不等网络回来
+  // 当前查的词是不是已经在生词本里：本地列表里有，或刚点过加入（网络还没回来）
+  const inVocab = !!result && (all.some((v) => v.word.toLowerCase() === result.word.toLowerCase()) || !!optimisticJoined[result.word.toLowerCase()])
   const joinVocab = async () => {
     if (!result || !profileId || joining) return
     if (all.some((v) => v.word.toLowerCase() === result.word.toLowerCase())) {
@@ -393,6 +409,9 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     const meaning = result.meanings.find((m) => m.zh)?.zh
       || result.meanings.find((m) => m.en)?.en || ''
     if (!meaning) { setToast('暂无可保存释义'); return }
+    const wkey = result.word.toLowerCase()
+    // 点下立刻记下来：按钮马上变"已加入"，网络慢也不干等
+    setOptimisticJoined((s) => ({ ...s, [wkey]: true }))
     setJoining(true)
     try {
       const saved = await addVocab({
@@ -404,16 +423,19 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       setToast('已加入生词本')
       // 成功后立刻更新本地列表，不等异步刷新回来（否则 joining 一松手再点一次就重复插入）
       if (saved && saved.id) setAll((list) => [saved, ...list.filter((x) => x.word.toLowerCase() !== result.word.toLowerCase())])
+      setOptimisticJoined((s) => { const { [wkey]: _, ...rest } = s; return rest })
       loadVocab()
     } catch (e) {
+      // 失败把乐观标记撤掉，按钮变回"加入生词本"，可以再点
+      setOptimisticJoined((s) => { const { [wkey]: _, ...rest } = s; return rest })
       setToast(e instanceof Error ? e.message : '加入失败')
     } finally { setJoining(false) }
   }
 
-  // 复习反馈：懂 / 不懂（提交中禁用按钮，防连点重复提交）
+  // 复习反馈：已掌握 / 未掌握（提交中只锁点的那个单词，别的单词照常能点）
   const review = async (v: VocabWord, known: boolean) => {
-    if (reviewBusy) return
-    setReviewBusy(true)
+    if (reviewBusyId !== null) return
+    setReviewBusyId(v.id)
     try {
       await reviewVocab(v.id, known, profileId || undefined)
       // 写操作后旧的列表 GET 作废（晚回来会把刚复习掉的词恢复出来）
@@ -428,7 +450,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       setRevealed((r) => { const { [v.id]: _, ...rest } = r; return rest })
     } catch (e) {
       setToast(e instanceof Error ? e.message : '提交失败')
-    } finally { setReviewBusy(false) }
+    } finally { setReviewBusyId(null) }
   }
 
   // 删除生词：点一次进确认态，再点一次真正删除（与错题本单条删除同款）
@@ -571,7 +593,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               )}
               {result.meanings.map((m, i) => (
                 <div key={i} className="dict-meaning">
-                  <span className="dict-pos">{m.pos}</span>
+                  <span className="dict-pos">{shortPos(m.pos)}</span>
                   {/* 只有英文释义的条目只显示英文（中文行为空时不留" · "）；中英文都有的正常拼 */}
                   <span>{m.zh ? <>{m.zh}{m.en ? <span style={{ color: 'var(--ink3)', fontSize: `calc(13px * var(--fss))` }}> · {m.en}</span> : null}</> : m.en}</span>
                   {/* 每条释义下的例句（带中文翻译） */}
@@ -613,8 +635,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   ))}
                 </>
               )}
-              <button className="btn btn-ghost" style={{ width: '100%', marginTop: 14 }} onClick={joinVocab} disabled={joining}>
-                {joining ? '加入中…' : '加入生词本'}
+              <button className="btn btn-ghost" style={{ width: '100%', marginTop: 14 }} onClick={joinVocab} disabled={joining || inVocab}>
+                {inVocab ? '已加入 ✓' : joining ? '加入中…' : '加入生词本'}
               </button>
             </div>
           )}
@@ -707,7 +729,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                   释义已遮住，先自己想想，点我查看
                 </div>}
               <div className="btn-row" style={{ justifyContent: 'center' }}>
-                <button className="btn btn-line" disabled={reviewBusy} onClick={() => review(v, false)}>不懂</button>
+                <button className="btn btn-line" disabled={reviewBusyId === v.id} onClick={() => review(v, false)}>未掌握</button>
                 <button className="btn btn-ghost" onClick={() => {
                   // 跳过：移到队列末尾
                   setDue((list) => {
@@ -715,7 +737,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                     return [...rest, v]
                   })
                 }}>跳过</button>
-                <button className="btn" disabled={reviewBusy} onClick={() => review(v, true)}>懂了</button>
+                <button className="btn" disabled={reviewBusyId === v.id} onClick={() => review(v, true)}>已掌握</button>
               </div>
             </div>
           ))}

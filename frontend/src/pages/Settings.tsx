@@ -142,9 +142,11 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
       const me = list.find((p) => p.id === profileId)
       if (me) setDisplayName(me.name)
     }).catch(() => {})
-    setKey(getAiKey()) // Key 只从本地读
-    setAiModel(getAiModel()) // 模型名也只从本地读
-    if (!profileId) { setProviderLoaded(true); return }
+    // Key / 模型名不在挂载时先填：没读到后端设置前，"当前供应商"还是默认值
+    // DeepSeek，getAiModel()/getAiKey() 不传参会读成上次聊天用的供应商的值
+    // （比如智谱的 glm-4v-flash），这时点保存/切供应商就会把智谱的名字存到
+    // DeepSeek 名下——设置读回来之后再填，才是各供应商自己的值。
+    if (!profileId) { setKey(getAiKey('deepseek')); setAiModel(getAiModel('deepseek')); setProviderLoaded(true); return }
     getSettings(profileId).then((s) => {
       if (cancelled) return
       setFontSize(s.fontSize || 'medium')
@@ -285,6 +287,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   // 返回是否存上：选择模型时要先调它把接口地址存到后端，存不上就别拉列表（GPT 审查 M2）
   const saveAi = async (): Promise<boolean> => {
     if (!profileId || savingAi) return false
+    // 设置还没读回来时别保存：供应商还是默认值，框里的模型名/Key 可能是上次
+    // 用的供应商的值，存了就是串供应商（DeepSeek 名下存进 glm-4v-flash 的根因）
+    if (!providerLoaded) { setToast('设置还在加载，稍等一下再保存'); return false }
     setSavingAi(true)
     setAiKey(key.trim(), provider) // Key 按供应商分开存：这个 Key 只归当前这个供应商
     saveAiModel(aiModel.trim(), provider) // 模型名也按供应商分开存
@@ -535,6 +540,9 @@ export default function Settings({ profileId, onBack, onProfileChange }: {
   <button key={p.v} className={provider === p.v ? 'on' : ''}
   onClick={() => {
     if (p.v === provider) return
+    // 设置还没读回来时别切供应商：框里的模型名/Key 还是空的，切过去会把空值
+    // 存回旧供应商（setAiModel('', …) 是删除），把已存的名字清掉
+    if (!providerLoaded) return
     setAiKey(key.trim(), provider) // 先把当前框里的 Key 存回旧供应商，别丢了
     saveAiModel(aiModel.trim(), provider) // 模型名也一样，先存回旧供应商
     if (provider === 'custom') saveCustomName(customName !== deriveCustomName(endpoint) ? customName : '') // 离开"自定义"那栏时，名字也存回（只在用户改过时存）

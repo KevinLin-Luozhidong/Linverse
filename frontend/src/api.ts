@@ -200,12 +200,14 @@ export async function ask(p: AskParams): Promise<AskResult> {
 // ---- AI 问答（流式） ----
 // 流式：POST /api/ask 带 stream:true，后端按 SSE 推词；
 // onToken 每来一个词调一次，onStatus 收状态事件（正在查课本/正在回答）；
+// onPartial 收新闻逐条渲染的中间全文（整体替换占位消息，不是追加）；
 // 结束时 done 事件里带完整结果（conversationId、thinkSeconds 等）。
 // 失败时抛错的方式与 req() 一致（401 密码失效同样弹密码门）。
 export async function askStream(
   p: AskParams,
   onToken: (t: string) => void,
   onStatus?: (text: string) => void,
+  onPartial?: (text: string) => void,
 ): Promise<AskResult> {
   const token = getSiteToken()
   const requestProfileId = getPid()
@@ -257,6 +259,7 @@ export async function askStream(
     try { d = JSON.parse(data) } catch { return }
     if (event === 'token' && typeof d.text === 'string') onToken(d.text)
     else if (event === 'status' && typeof d.text === 'string') onStatus?.(d.text)
+    else if (event === 'partial' && typeof d.text === 'string') onPartial?.(d.text)
     else if (event === 'done') result = d as AskResult
     else if (event === 'error') throw new Error(typeof d.message === 'string' ? d.message : '流式回答失败')
   }
@@ -528,10 +531,31 @@ function readAiModels(): Record<string, string> {
 }
 export const getAiModelMap = (): Record<string, string> => ({ ...readAiModels() })
 // 取模型名：传供应商就取他的；不传取当前选中供应商的；没存过就返回建议值
+// 模型名的"娘家"：各家模型名的前缀是固定的（glm- 是智谱、deepseek- 是 DeepSeek……）。
+// 某供应商名下存了别家的模型名，调接口一定报"模型不存在"，只能是串过去的脏数据，
+// 不是用户有意填的——读到就当没存过，返回建议值，并把脏数据清掉（自愈）。
+const MODEL_FAMILY: { re: RegExp; provider: string }[] = [
+  { re: /^glm-/i, provider: 'custom' },
+  { re: /^deepseek-/i, provider: 'deepseek' },
+  { re: /^gemini-/i, provider: 'gemini' },
+  { re: /^(gpt-|chatgpt-|o1|o3|o4)(-|$)/i, provider: 'openai' },
+]
 export const getAiModel = (model?: string) => {
   const m = model || localStorage.getItem('linverse.model') || 'deepseek'
   const map = readAiModels()
-  if (map[m]) return map[m]
+  const stored = map[m]
+  if (stored) {
+    // "自定义"那栏接口地址用户随便填，不校验（他可能把自定义指向别家兼容接口）
+    if (m !== 'custom') {
+      const family = MODEL_FAMILY.find((f) => f.re.test(stored))
+      if (family && family.provider !== m) {
+        delete map[m]
+        localStorage.setItem(AI_MODELS, JSON.stringify(map))
+        return AI_MODEL_PREFILLS[m] || ''
+      }
+    }
+    return stored
+  }
   return AI_MODEL_PREFILLS[m] || ''
 }
 export const setAiModel = (name: string, model?: string) => {

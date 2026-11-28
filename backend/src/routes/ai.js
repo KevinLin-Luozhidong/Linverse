@@ -203,6 +203,8 @@ router.post('/ask', ah(async (req, res) => {
         searchKey: searchKey || '', // 联网搜索用的智谱 Key（"自定义"那栏的），跟当前聊的模型没关系
         historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
         onToken: (t) => sendEvent('token', { text: t }),
+        onStatus: (t) => sendEvent('status', { text: t }),
+        onPartial: (t) => sendEvent('partial', { text: t }),
       });
       const cid = await saveTurn(profileId, conversationId, question, answer, kbRefs);
       if (!cid) {

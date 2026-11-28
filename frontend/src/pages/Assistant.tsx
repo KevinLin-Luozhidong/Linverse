@@ -712,6 +712,9 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         const r = await askStream(params,
           (t) => { full += t },
           (text) => { if (sendReqIdRef.current === reqId) setStreamStatus(text) },
+          // 新闻逐条渲染：partial 是当前完整全文，整体替换（不是追加）；
+          // 普通问答不走 partial，full 仍由 onToken 追加。
+          (text) => { if (sendReqIdRef.current === reqId) full = text },
         )
         stopFlush()
         updatePlaceholder()

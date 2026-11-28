@@ -15,7 +15,12 @@ export interface MathKey {
   snippet: string // 实际插入的文本
   caret?: number // 插入后光标落在 snippet 起始后的第几位，默认 snippet 末尾
   action?: 'insert' | 'backspace' // 默认 insert；backspace 走 onBackspace
+  aria?: string // 读屏播报：不填就读 label；⌫ 这类图形键要填人话
 }
+
+// 退格键：只有数字组原来有，其他组想改错得先切回来——
+// 每组末尾都放一个，走到哪都能删。
+const BACKSPACE_KEY: MathKey = { label: '⌫', snippet: '', action: 'backspace', aria: '退格' }
 
 const GROUPS: { name: string; keys: MathKey[] }[] = [
   {
@@ -32,7 +37,7 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: '9', snippet: '9' },
       { label: '0', snippet: '0' },
       { label: '.', snippet: '.' },
-      { label: '⌫', snippet: '', action: 'backspace' },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -47,13 +52,18 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: '·', snippet: '·' },
       { label: '%', snippet: '%' },
       { label: '°', snippet: '°' },
-      { label: '（', snippet: '（' },
-      { label: '）', snippet: '）' },
+      // 括号统一用半角：跟 [ ] 一致，LaTeX 里也能直接用；全角 （） 打中文时走系统键盘
+      { label: '(', snippet: '(' },
+      { label: ')', snippet: ')' },
       { label: '[', snippet: '[' },
       { label: ']', snippet: ']' },
       { label: '!', snippet: '!' },
       { label: '∠', snippet: '∠' },
       { label: '，', snippet: '，' },
+      // 生物遗传题常用：♀♂（P: ♀Aa × ♂Aa 这类杂交组合）
+      { label: '♀', snippet: '♀' },
+      { label: '♂', snippet: '♂' },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -70,6 +80,7 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: '绝对值', snippet: '||', caret: 1 },
       { label: '^', snippet: '^' },
       { label: '_', snippet: '_' },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -85,9 +96,10 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: 'ln(', snippet: 'ln()', caret: 3 },
       { label: 'lg(', snippet: 'lg()', caret: 3 },
       // \log_{ 底数 }( 真数 )："\\log_{" 占 6 位，光标落在底数花括号里
-      { label: 'log 底数', snippet: '\\log_{}()', caret: 6 },
+      { label: 'log底', snippet: '\\log_{}()', caret: 6 },
       { label: 'e', snippet: 'e' },
       { label: 'e^x', snippet: 'e^{}', caret: 3 },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -105,6 +117,7 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: 'φ', snippet: 'φ' },
       { label: 'ω', snippet: 'ω' },
       { label: 'Δ', snippet: 'Δ' },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -120,11 +133,16 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: '⊇', snippet: '⊇' },
       { label: '∅', snippet: '∅' },
       { label: '∁', snippet: '∁' },
+      // 描述法写集合全靠这三个：{x ∈ ℝ | x > 0}，以前盘上打不出来
+      { label: '{', snippet: '{' },
+      { label: '}', snippet: '}' },
+      { label: '|', snippet: '|' },
       { label: 'ℕ', snippet: 'ℕ' },
       { label: 'ℤ', snippet: 'ℤ' },
       { label: 'ℚ', snippet: 'ℚ' },
       { label: 'ℝ', snippet: 'ℝ' },
       { label: 'ℂ', snippet: 'ℂ' },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -138,6 +156,9 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: '≈', snippet: '≈' },
       { label: '∞', snippet: '∞' },
       { label: '∝', snippet: '∝' },
+      { label: '⊥', snippet: '⊥' },
+      { label: '∥', snippet: '∥' },
+      BACKSPACE_KEY,
     ],
   },
   {
@@ -160,9 +181,23 @@ const GROUPS: { name: string; keys: MathKey[] }[] = [
       { label: '∧', snippet: '∧' },
       { label: '∨', snippet: '∨' },
       { label: '¬', snippet: '¬' },
+      BACKSPACE_KEY,
     ],
   },
 ]
+
+// 取光标位置：输入框没聚焦过时 selectionStart 是 0（不是 null），
+// 注释里说的"取不到追加到末尾"兜底实际走不到——
+// 没点过输入框就先点符号，符号会插到开头。没聚焦且光标在开头时，
+// 按"追加到末尾"处理；已经聚焦、光标就是在开头时，照原样插在开头。
+function caretRange(el: HTMLTextAreaElement, value: string): [number, number] {
+  const start = el.selectionStart ?? value.length
+  const end = el.selectionEnd ?? value.length
+  if (document.activeElement !== el && start === 0 && end === 0) {
+    return [value.length, value.length]
+  }
+  return [start, end]
+}
 
 // 把 snippet 插到 textarea 光标处（有选区则替换选区），插完只恢复光标，
 // 不调 focus：符号键的 pointerdown 已经阻止了焦点转移，焦点本来就没丢；
@@ -176,8 +211,7 @@ export function insertIntoTextarea(
   caret?: number,
 ) {
   if (!el) { setValue(value + snippet); return }
-  const start = el.selectionStart ?? value.length
-  const end = el.selectionEnd ?? value.length
+  const [start, end] = caretRange(el, value)
   const next = value.slice(0, start) + snippet + value.slice(end)
   setValue(next)
   const pos = start + (caret ?? snippet.length)
@@ -194,8 +228,7 @@ export function deleteBackward(
   setValue: (v: string) => void,
 ) {
   if (!el) return
-  const start = el.selectionStart ?? value.length
-  const end = el.selectionEnd ?? value.length
+  const [start, end] = caretRange(el, value)
   let next = value
   let pos = start
   if (start !== end) {
@@ -232,20 +265,25 @@ export default function MathKeyboard({
 
   return (
     <div className="math-panel">
-      <div className="math-tabs">
-        {GROUPS.map((g, i) => (
-          <button key={g.name} className={tab === i ? 'on' : ''}
-            onClick={() => setTab(i)}>
-            {g.name}
-          </button>
-        ))}
+      <div className="math-head">
+        <div className="math-tabs">
+          {GROUPS.map((g, i) => (
+            <button key={g.name} type="button" className={tab === i ? 'on' : ''}
+              onClick={() => setTab(i)}>
+              {g.name}
+            </button>
+          ))}
+        </div>
         {onClose && (
-          <button className="math-close" onClick={onClose} aria-label="收起符号盘">×</button>
+          <button type="button" className="math-close" onClick={onClose} aria-label="收起符号盘">×</button>
         )}
       </div>
       <div className="math-grid">
         {GROUPS[tab].keys.map((k) => (
-          <button key={k.label} className="math-key"
+          <button key={k.label} type="button"
+            // 超过 2 个字的键（绝对值、log底）字号收一档，不然在 390px 屏上会换行顶高整行
+            className={k.label.length > 2 ? 'math-key math-key--sm' : 'math-key'}
+            aria-label={k.aria || undefined}
             // pointerdown 阶段阻止输入框失焦，直接执行插入或退格，不走 onClick：
             // onClick 在 blur 之后才触发，是卡顿的另一半成因。
             onPointerDown={(e) => { e.preventDefault(); handleKey(k) }}
