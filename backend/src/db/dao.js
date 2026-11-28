@@ -467,6 +467,21 @@ async function reviewVocabulary(id, profileId, known) {
   return r.rows[0] || null;
 }
 
+// 跳过：今天先不复习，明天再看——只把下次复习日期推到明天，
+// 不动间隔、不记一次复习、不改掌握状态（跟"答错了"的区别：答错会把间隔重置为 1 天）
+async function skipVocabulary(id, profileId) {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const nextReview = `${d.getFullYear()}-${m}-${day}`;
+  const r = await query(
+    'UPDATE vocabulary SET "nextReview" = $1 WHERE id = $2 AND "profileId" = $3 RETURNING *',
+    [nextReview, id, profileId]
+  );
+  return r.rows[0] || null;
+}
+
 // 删除生词：只删本账号的（id + profileId 双条件，防越权删别人的词）
 async function deleteVocabulary(id, profileId) {
   const r = await query(
@@ -661,7 +676,7 @@ module.exports = {
   setConversationFavorite, deleteConversations,
   listMistakes, createMistake, updateMistake, deleteMistake, countMistakes, countMasteredMistakes,
   listNotes, createNote, updateNote, deleteNote, countNotes,
-  listVocabulary, createVocabulary, setVocabularyMastered, reviewVocabulary, deleteVocabulary,
+  listVocabulary, createVocabulary, setVocabularyMastered, reviewVocabulary, skipVocabulary, deleteVocabulary,
   listDueVocabulary, countWords,
   recordWordHistory, listWordHistory, clearWordHistory,
   checkin, countCheckinDays, streakDays,

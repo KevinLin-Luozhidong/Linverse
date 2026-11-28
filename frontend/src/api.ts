@@ -380,6 +380,8 @@ export const updateVocab = (id: string, v: Partial<VocabWord>, profileId?: strin
   put<VocabWord>(`/vocabulary/${id}${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, v)
 export const reviewVocab = (id: string, known: boolean, profileId?: string) =>
   post(`/vocabulary/${id}/review${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, { known })
+export const skipVocab = (id: string, profileId?: string) =>
+  post(`/vocabulary/${id}/skip${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`, {})
 export const dueVocab = (profileId: string) =>
   get<VocabWord[]>(`/vocabulary/due?profileId=${encodeURIComponent(profileId)}`)
 export const deleteVocab = (id: string, profileId?: string) =>

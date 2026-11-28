@@ -1,5 +1,5 @@
 // 生词本 + 查词历史
-// 生词本：GET/POST /api/vocabulary，PUT /api/vocabulary/:id，POST /:id/review，GET /vocabulary/due
+// 生词本：GET/POST /api/vocabulary，PUT /api/vocabulary/:id，POST /:id/review，POST /:id/skip，GET /vocabulary/due
 // 查词历史：GET /api/word-history
 const express = require('express');
 const dao = require('../db/dao');
@@ -55,6 +55,15 @@ router.post('/:id/review', ah(async (req, res) => {
   if (need(res, typeof req.body.known === 'boolean', 'known 必填且为布尔值')) return;
   const profileId = req.query.profileId || req.body.profileId;
   const v = await dao.reviewVocabulary(req.params.id, profileId, req.body.known);
+  if (!v) return res.status(404).json({ error: '单词不存在' });
+  res.json(v);
+}));
+
+// 跳过：今天先不复习，明天再看（只推日期，不动间隔、不记复习次数）
+router.post('/:id/skip', ah(async (req, res) => {
+  if (need(res, req.query.profileId || req.body.profileId, 'profileId 必填')) return;
+  const profileId = req.query.profileId || req.body.profileId;
+  const v = await dao.skipVocabulary(req.params.id, profileId);
   if (!v) return res.status(404).json({ error: '单词不存在' });
   res.json(v);
 }));

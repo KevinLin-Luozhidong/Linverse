@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { I, Toast, Spin, Empty, useToast} from '../components'
 import {
-  lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab, deleteVocab,
+  lookupWord, getWordHistory, clearWordHistory, listVocab, addVocab, reviewVocab, skipVocab, deleteVocab,
   dueVocab, checkin, checkinDateKey, isCheckedInToday, type DictResult, type DictSource, type VocabWord,
 } from '@api'
 
@@ -453,6 +453,24 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
     } finally { setReviewBusyId(null) }
   }
 
+  // 跳过：今天先不复习，明天再看——只把下次复习日期推到明天，不动间隔、不记复习次数、不改掌握
+  // 以前是"移到队列末尾"，但复习区是全部卡片同时列出来，挪到末尾等于还在眼前，
+  // 只有一个词时点了等于没点，所以改成真从今天的复习列表里拿掉
+  const skipReview = async (v: VocabWord) => {
+    if (reviewBusyId !== null) return
+    setReviewBusyId(v.id)
+    try {
+      await skipVocab(v.id, profileId || undefined)
+      // 写操作后旧的列表 GET 作废（晚回来会把刚跳过的词恢复出来）
+      listEpoch.current++
+      setDue((list) => list.filter((x) => x.id !== v.id))
+      setRevealed((r) => { const { [v.id]: _, ...rest } = r; return rest })
+      setToast('已跳过，明天再复习')
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '提交失败')
+    } finally { setReviewBusyId(null) }
+  }
+
   // 删除生词：点一次进确认态，再点一次真正删除（与错题本单条删除同款）
   const delVocab = async (v: VocabWord) => {
     if (delVocabId !== v.id) { setDelVocabId(v.id); return }
@@ -729,13 +747,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                 </div>}
               <div className="btn-row" style={{ justifyContent: 'center' }}>
                 <button className="btn btn-line" disabled={reviewBusyId === v.id} onClick={() => review(v, false)}>未掌握</button>
-                <button className="btn btn-ghost" onClick={() => {
-                  // 跳过：移到队列末尾
-                  setDue((list) => {
-                    const rest = list.filter((x) => x.id !== v.id)
-                    return [...rest, v]
-                  })
-                }}>跳过</button>
+                <button className="btn btn-ghost" disabled={reviewBusyId === v.id} onClick={() => skipReview(v)}>跳过</button>
                 <button className="btn" disabled={reviewBusyId === v.id} onClick={() => review(v, true)}>已掌握</button>
               </div>
             </div>
