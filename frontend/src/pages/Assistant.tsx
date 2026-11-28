@@ -4,6 +4,7 @@ import Cropper from '../Cropper'
 import Briefing from './Briefing'
 import Shantou from './Shantou'
 import { cleanLatex } from '../latex'
+import { renderMathHtml } from '../math'
 import { listFavs, removeFav, type Fav } from '../favs'
 import {
   ask, askStream, listConversations, createConversation, getConversation, deleteConversation,
@@ -36,6 +37,14 @@ function briefDay(d: string) {
   return `${Number(m[2])}月${Number(m[3])}日`
 }
 
+// KaTeX 渲染一段 LaTeX 成行内节点；失败返回 null（调用方回退到纯文本）。
+// KaTeX 输出是安全的 HTML（trust:false），直接插进页面。
+function mathNode(latex: string, key: number | string): ReactNode | null {
+  const html = renderMathHtml(latex)
+  if (!html) return null
+  return <span key={key} dangerouslySetInnerHTML={{ __html: html }} />
+}
+
 // 从 source[start] 起读一个 {…} 组：按花括号深度配对，支持嵌套。
 // 失败（不配对、到文末未闭合、起首不是 {）返回 null，调用方负责回退。
 function readFractionGroup(source: string, start: number): { content: string; end: number } | null {
@@ -63,6 +72,15 @@ function readFraction(source: string, start: number): { numerator: string; denom
   return { numerator: num.content, denominator: den.content, end: den.end }
 }
 
+// 从 source[start] 起读 \ce{化学式}；失败返回 null。
+// 化学方程式走 KaTeX 的 mhchem 扩展（\ce{H2O}、\ce{2H2 + O2 -> 2H2O}），不再手写。
+function readCe(source: string, start: number): { content: string; end: number } | null {
+  if (!source.startsWith('\\ce', start)) return null
+  const g = readFractionGroup(source, start + 3)
+  if (!g || !g.content) return null
+  return { content: g.content, end: g.end }
+}
+
 // 从 source[start] 起读 \sqrt{被开方数} 或 \sqrtX（单个字符）；失败返回 null。
 // 根号必须画成真正的部首（√ + 横线盖住被开方数），不能只转成 √{...} 纯文本——
 // 纯文本画不出横线，高中生要的是课本那种。渲染见 renderRich / renderUserText 里的 .sqrt。
@@ -81,9 +99,8 @@ function readSqrt(source: string, start: number): { radicand: string; end: numbe
   return null
 }
 
-// 用户气泡：只把 \frac{分子}{分母} 转成叠排分数，其他内容原样显示。
-// 不走 renderRich：用户原话不做标题/列表/**重点**二次排版；分子分母递归同一套；
-// 解析失败时拼成 a/b（或分子/），不留 \frac 命令字符。
+// 用户气泡：\frac、\sqrt、\ce 走 KaTeX 专业渲染，其他内容原样显示。
+// 不走 renderRich：用户原话不做标题/列表/**重点**二次排版。
 function renderUserText(text: string): ReactNode[] {
   const out: ReactNode[] = []
   let cursor = 0
@@ -94,40 +111,38 @@ function renderUserText(text: string): ReactNode[] {
   while (cursor < text.length) {
     const atFrac = text.indexOf('\\frac', cursor)
     const atSqrt = text.indexOf('\\sqrt', cursor)
+    const atCe = text.indexOf('\\ce', cursor)
     let at = -1
-    let isSqrt = false
-    if (atFrac >= 0 && (atSqrt < 0 || atFrac <= atSqrt)) { at = atFrac }
-    else if (atSqrt >= 0) { at = atSqrt; isSqrt = true }
-    if (at < 0) { pushPlain(text.slice(cursor)); break }
+    let kind: 'frac' | 'sqrt' | 'ce' | null = null
+    if (atFrac >= 0 && (atSqrt < 0 || atFrac <= atSqrt) && (atCe < 0 || atFrac <= atCe)) { at = atFrac; kind = 'frac' }
+    else if (atSqrt >= 0 && (atCe < 0 || atSqrt <= atCe)) { at = atSqrt; kind = 'sqrt' }
+    else if (atCe >= 0) { at = atCe; kind = 'ce' }
+    if (at < 0 || !kind) { pushPlain(text.slice(cursor)); break }
     pushPlain(text.slice(cursor, at))
-    if (isSqrt) {
+    if (kind === 'sqrt') {
       const r = readSqrt(text, at)
       if (r) {
-        out.push(
-          <span className="sqrt" key={key}>
-            <span className="sqrt-sign">√</span>
-            <span className="sqrt-body">{renderUserText(r.radicand)}</span>
-          </span>,
-        )
-        key += 1
-        cursor = r.end
-        continue
+        const node = mathNode(text.slice(at, r.end), key)
+        if (node) { out.push(node); key += 1; cursor = r.end; continue }
       }
       pushPlain('\\sqrt')
       cursor = at + 5
       continue
     }
+    if (kind === 'ce') {
+      const c = readCe(text, at)
+      if (c) {
+        const node = mathNode(text.slice(at, c.end), key)
+        if (node) { out.push(node); key += 1; cursor = c.end; continue }
+      }
+      pushPlain('\\ce')
+      cursor = at + 3
+      continue
+    }
     const f = readFraction(text, at)
     if (f) {
-      out.push(
-        <span className="frac" key={key}>
-          <span className="frac-num">{renderUserText(f.numerator)}</span>
-          <span className="frac-den">{renderUserText(f.denominator)}</span>
-        </span>,
-      )
-      key += 1
-      cursor = f.end
-      continue
+      const node = mathNode(text.slice(at, f.end), key)
+      if (node) { out.push(node); key += 1; cursor = f.end; continue }
     }
     const num = readFractionGroup(text, at + 5)
     if (num) {
@@ -153,65 +168,72 @@ function renderRich(text: string): ReactNode[] {
     out.push(<L key={'l' + out.length}>{listBuf.items.map((t, i) => <li key={i}>{inline(t)}</li>)}</L>)
     listBuf = null
   }
-  // 行内：**重点** 转蓝色高亮；\frac{分子}{分母} 转叠排分数（分子在上、分母在下）。
-  // 分数段不经过 cleanLatex（它会把分数压成 a/b）；普通文本段在下面单独跑 cleanLatex。
+  // 行内：**重点** 转蓝色高亮；\frac、\sqrt、\ce 走 KaTeX 专业渲染（根号横线、分数、化学式）；
+  // 上标 base^exp 走 KaTeX；其余普通文本段跑 cleanLatex（下标、简单符号）。
   function inline(s: string): ReactNode[] {
     const out: ReactNode[] = []
     let cursor = 0
     let key = 0
     const renderPlain = (plain: string) => {
       if (!plain) return
-      const cleaned = cleanLatex(plain)
-      cleaned.split(/(\*\*[^*]+\*\*)/g).forEach((p) => {
-        if (!p) return
-        if (p.startsWith('**') && p.endsWith('**') && p.length > 4) {
-          out.push(<span key={key} className="hl">{p.slice(2, -2)}</span>)
-        } else {
-          out.push(<span key={key}>{p}</span>)
+      // 先拆上标：单字符底数 + ^ + 指数（x^2、A^{n+1}）走 KaTeX；
+      // 复杂底数（如 (x+y)^2）暂不拆，仍走 cleanLatex 原样显示，不出错即可。
+      const parts = plain.split(/([A-Za-z0-9]\^(?:\{[^{}]*\}|[A-Za-z0-9]))/g)
+      for (const p of parts) {
+        if (!p) continue
+        if (/^[A-Za-z0-9]\^/.test(p)) {
+          const node = mathNode(p, key)
+          if (node) { out.push(node); key += 1; continue }
         }
-        key += 1
-      })
+        const cleaned = cleanLatex(p)
+        cleaned.split(/(\*\*[^*]+\*\*)/g).forEach((q) => {
+          if (!q) return
+          if (q.startsWith('**') && q.endsWith('**') && q.length > 4) {
+            out.push(<span key={key} className="hl">{q.slice(2, -2)}</span>)
+          } else {
+            out.push(<span key={key}>{q}</span>)
+          }
+          key += 1
+        })
+      }
     }
     while (cursor < s.length) {
       const atFrac = s.indexOf('\\frac', cursor)
       const atSqrt = s.indexOf('\\sqrt', cursor)
+      const atCe = s.indexOf('\\ce', cursor)
       let at = -1
-      let isSqrt = false
-      if (atFrac >= 0 && (atSqrt < 0 || atFrac <= atSqrt)) { at = atFrac }
-      else if (atSqrt >= 0) { at = atSqrt; isSqrt = true }
-      if (at < 0) { renderPlain(s.slice(cursor)); break }
+      let kind: 'frac' | 'sqrt' | 'ce' | null = null
+      if (atFrac >= 0 && (atSqrt < 0 || atFrac <= atSqrt) && (atCe < 0 || atFrac <= atCe)) { at = atFrac; kind = 'frac' }
+      else if (atSqrt >= 0 && (atCe < 0 || atSqrt <= atCe)) { at = atSqrt; kind = 'sqrt' }
+      else if (atCe >= 0) { at = atCe; kind = 'ce' }
+      if (at < 0 || !kind) { renderPlain(s.slice(cursor)); break }
       renderPlain(s.slice(cursor, at))
-      if (isSqrt) {
+      if (kind === 'sqrt') {
         const r = readSqrt(s, at)
         if (r) {
-          // 被开方数递归走同一套 inline：嵌套分数、嵌套根号、上下标都生效。
-          out.push(
-            <span className="sqrt" key={key}>
-              <span className="sqrt-sign">√</span>
-              <span className="sqrt-body">{inline(r.radicand)}</span>
-            </span>,
-          )
-          key += 1
-          cursor = r.end
-          continue
+          // 整段 LaTeX 交给 KaTeX（根号横线、嵌套分数、上下标一次到位）。
+          const node = mathNode(s.slice(at, r.end), key)
+          if (node) { out.push(node); key += 1; cursor = r.end; continue }
         }
         // 解析失败回退，绝不抛异常：原样交给 cleanLatex（√{...} 纯文本兜底）。
         renderPlain('\\sqrt')
         cursor = at + 5
         continue
       }
+      if (kind === 'ce') {
+        const c = readCe(s, at)
+        if (c) {
+          const node = mathNode(s.slice(at, c.end), key)
+          if (node) { out.push(node); key += 1; cursor = c.end; continue }
+        }
+        renderPlain('\\ce')
+        cursor = at + 3
+        continue
+      }
       const f = readFraction(s, at)
       if (f) {
-        // 分子/分母递归走同一套 inline：嵌套分数、分子里的 \sqrt、上下标都生效。
-        out.push(
-          <span className="frac" key={key}>
-            <span className="frac-num">{inline(f.numerator)}</span>
-            <span className="frac-den">{inline(f.denominator)}</span>
-          </span>,
-        )
-        key += 1
-        cursor = f.end
-        continue
+        const node = mathNode(s.slice(at, f.end), key)
+        if (node) { out.push(node); key += 1; cursor = f.end; continue }
       }
       // 解析失败回退，绝不抛异常：能拆出分子/分母就拼成 a/b 纯文本；
       // 只拆出分子就拼成分子/；连分子都没有就原样保留 \frac，继续往后扫。
