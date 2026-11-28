@@ -487,7 +487,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   }
 
   return (
-    <div className="dict-sec">
+    <div className={'dict-sec sub-' + sub}>
       <div className="work-head">
         <div className="work-kicker">学习工具</div>
         <div className="work-title">词典</div>
@@ -500,8 +500,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
         </button>
       </div>
 
-      {sub === 'dict' && (
-        <>
+      {/* 查词栏：手机上只在 sub==='dict' 时显示，桌面与生词本并排（见 styles.css 桌面区） */}
+      <div className="dict-col dict-col-main">
           <div className="toolbar-row" style={{ padding: '12px 0 0' }}>
             <div className="search-box">
               <I n="search" size={18} />
@@ -701,11 +701,10 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               </div>
             ))}
           </div>
-        </>
-      )}
+        </div>
 
-      {sub === 'vocab' && (
-        <>
+      {/* 生词本栏：手机上只在 sub==='vocab' 时显示，桌面与查词并排 */}
+      <div className="dict-col dict-col-vocab">
           <div className="btn-row" style={{ marginTop: 12 }}>
             <button className="btn" style={{ flex: 1 }} onClick={doCheckin} disabled={checkinDone || checkinBusy}>
               {checkinDone ? '✓ 今日已打卡' : checkinBusy ? '打卡中…' : '每日打卡'}
@@ -767,8 +766,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
               ))}
             </>
           )}
-        </>
-      )}
+        </div>
       <Toast msg={toastMsg} tkey={toastKey} />
     </div>
   )

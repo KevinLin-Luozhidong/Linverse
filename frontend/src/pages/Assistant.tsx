@@ -804,6 +804,30 @@ export default function Assistant({ profileId, active = true }: { profileId: str
 
   return (
     <div className="chat-wrap">
+      {/* 桌面端会话栏：1024px 以上常驻左侧（.conv-rail 默认 display:none），手机上仍走左侧抽屉 */}
+      <div className="conv-rail">
+        <div className="conv-rail-head">
+          <span>会话</span>
+          <button className="mini-btn" onClick={() => setDrawerOpen(true)}>管理</button>
+        </div>
+        <button className="btn btn-ghost" style={{ width: '100%' }} onClick={newConv}>
+          ＋ 新会话
+        </button>
+        <div className="conv-rail-list">
+          {convs.length === 0 && <Empty text="还没有会话，开始第一次提问吧" />}
+          {convs.map((c) => (
+            <div key={c.id}
+              className={'conv-item' + (c.id === convId ? ' active' : '')}
+              onClick={() => openConv(c.id)}>
+              <span className="conv-title">{c.title || '新会话'}</span>
+              <button className={'conv-star' + (c.favorite ? ' on' : '')} aria-label={c.favorite ? '取消收藏会话' : '收藏会话'}
+                onClick={(e) => { e.stopPropagation(); toggleFavConv(c.id, !c.favorite) }}>
+                {c.favorite ? '★' : '☆'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
       {/* 顶栏：汉堡 / 模型胶囊 / 状态胶囊 */}
       <div className="chat-topbar" style={{ flexWrap: 'wrap', gap: 4 }}>
         <button className="icon-btn" onClick={() => setDrawerOpen(true)} aria-label="会话列表">
@@ -944,6 +968,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         </div>
       </aside>
 
+      {/* chat-main：桌面端右侧聊天列（1024px 以上 flex 列）；手机上 display:contents 不占位，里面元素照旧是 chat-wrap 的子项 */}
+      <div className="chat-main">
       {/* 早报 / 汕头看板共用入口横条：两者任一有数据才出现；早报优先，没有早报才显示看板 */}
       {(briefPeek || shantouPeek) && !briefOpen && (
         <button className="brief-strip" onClick={() => (briefPeek ? openPanel('brief') : openPanel('shantou'))}>
@@ -1036,7 +1062,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       </div>
 
       {/* 底部输入区：蓝色圆形拍照键 + 输入框 + 蓝色圆形发送键 */}
-      <div style={{ display: mathOpen ? 'block' : 'none', padding: '0 14px 8px' }}>
+      <div className="math-wrap" style={{ display: mathOpen ? 'block' : 'none', padding: '0 14px 8px' }}>
         <MathKeyboard
           onInsert={(s, c) => insertIntoTextarea(inputRef.current, input, setInput, s, c)}
           onBackspace={() => deleteBackward(inputRef.current, input, setInput)}
@@ -1100,6 +1126,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
           </div>
         </div>
       )}
+      </div>{/* chat-main 结束：早报覆盖层在 chat-main 里，桌面只盖聊天列、手机上仍盖全屏 */}
       <Toast msg={toastMsg} tkey={toastKey} />
       {cropSrc && (
         <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />

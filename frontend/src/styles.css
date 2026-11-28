@@ -1636,11 +1636,16 @@ body::before {
   .st-fc-card { flex: 0 0 128px; }
 }
 
-/* ============ 桌面响应式：1024px 以上左导航 + 内容加宽，768px 以上先放宽 ============ */
+/* ============ 桌面响应式 v2：真正的桌面布局，不是手机单栏拉长 ============ */
 /* 桌面边栏默认不显示：手机上仍用底部 tabbar */
 .sidebar { display: none; }
 /* 工具页副标题的桌面版文案默认不显示：手机上仍是“左右滑动”版 */
 .tools-sub-d { display: none; }
+/* 桌面端会话栏默认不显示：手机上仍走左侧抽屉 */
+.conv-rail { display: none; }
+/* 词典两栏默认只显示当前子板块（.sub-dict/.sub-vocab 控制，和原来条件渲染的行为一致） */
+.dict-sec.sub-dict .dict-col-vocab { display: none; }
+.dict-sec.sub-vocab .dict-col-main { display: none; }
 
 /* 平板过渡（768–1023px）：只把窄列放宽，导航和布局不动 */
 @media (min-width: 768px) {
@@ -1655,8 +1660,8 @@ body::before {
   /* 密码门 / 账号恢复屏在桌面也居中 */
   .app > .gate { flex: 1; min-height: 100dvh; }
   .main { flex: 1; min-width: 0; }
-  /* 内容区限宽居中：聊天、工具、设置都按这个宽度走，太宽读着累 */
-  .tabview { max-width: 880px; margin: 0 auto; width: 100%; }
+  /* 内容区放宽：880px → 1180px；1920px 屏上两侧各留约 250px，不再是两边各空 400px 的细条 */
+  .tabview { max-width: 1180px; margin: 0 auto; width: 100%; }
   /* 底部导航收起，改走左边栏；提示条不再给底栏留位置 */
   .tabbar { display: none; }
   .toast { bottom: 28px; }
@@ -1708,9 +1713,9 @@ body::before {
   .sidebar-subitem.active { color: var(--blue-deep); font-weight: 700; }
   .sidebar-foot { margin-top: auto; padding: 10px 12px 0; font-size: 12px; color: var(--ink3); }
 
-  /* 学习工具首页：横向滑动大卡片改成两列网格 */
+  /* 学习工具首页：4 张卡一排铺满（auto-fit：窄屏自动回落到 3 列 / 2 列） */
   .tool-stream {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     overflow: visible; padding: 4px 20px 16px;
   }
   .tool-slide { flex: none; min-height: 240px; }
@@ -1721,4 +1726,50 @@ body::before {
   /* 聊天区左右留白多一点 */
   .chat-list { padding: 12px 28px 16px; }
   .deep-row { padding: 2px 28px 10px; }
+
+  /* 聊天：左侧常驻会话栏 + 右侧聊天列，不再是 240px 空边栏 + 848px 窄列 */
+  .chat-wrap { flex-direction: row; }
+  .conv-rail {
+    display: flex; flex-direction: column;
+    width: 264px; flex-shrink: 0; height: 100%;
+    border-right: 1px solid var(--line);
+    padding: 16px 10px 16px 14px; gap: 10px;
+  }
+  .conv-rail-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px; font-size: 15px; font-weight: 800; }
+  .conv-rail-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* chat-main：桌面端右侧聊天列；手机上 display:contents 不占位（见 Assistant.tsx） */
+  .chat-main { display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%; position: relative; }
+  .chat-main > .chat-list { min-height: 0; }
+  /* 消息列限宽 860px 居中：长答案读着不累，左右不再是纯空白 */
+  .chat-main > .chat-topbar, .chat-main > .brief-strip,
+  .chat-main > .composer, .chat-main > .math-wrap { max-width: 860px; width: 100%; margin-left: auto; margin-right: auto; }
+  .chat-list > .msg, .chat-list > .chat-welcome, .chat-list > .spin-slot { width: 100%; max-width: 860px; margin-left: auto; margin-right: auto; }
+
+  /* 词典：查词和生词本左右并排，不再一页只看一半、下面空 570px */
+  .dict-sec { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 8px 28px; align-items: start; }
+  .dict-sec .work-head { grid-column: 1 / -1; }
+  .dict-sec .seg { display: none; }
+  .dict-sec.sub-dict .dict-col-vocab, .dict-sec.sub-vocab .dict-col-main { display: block; }
+  .dict-col { min-width: 0; }
+
+  /* 知识库：展开的知识块改两列，单列长文不再拉满整行 */
+  .kb-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+  .kb-detail > :not(.kb-chunk) { grid-column: 1 / -1; }
+
+  /* 设置：一级菜单三组卡片改两列，8 行单列不再拖满屏；子页面表单放宽到 880px */
+  .settings-page:not(.settings-over) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; align-items: start; }
+  .st-page { max-width: 880px; }
+
+  /* 个人中心：6 枚成就徽章一排六个，不再横滑挤作一团 */
+  .me-badge-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); overflow: visible; margin: 0 0 18px; padding: 4px 0 8px; }
+  .me-badge { min-width: 0; }
+}
+
+/* 更宽的桌面（1440px 以上）：内容再放宽一档，会话栏和消息列跟着加宽 */
+@media (min-width: 1440px) {
+  .tabview { max-width: 1320px; }
+  .conv-rail { width: 280px; }
+  .chat-main > .chat-topbar, .chat-main > .brief-strip,
+  .chat-main > .composer, .chat-main > .math-wrap { max-width: 900px; }
+  .chat-list > .msg, .chat-list > .chat-welcome, .chat-list > .spin-slot { max-width: 900px; }
 }
