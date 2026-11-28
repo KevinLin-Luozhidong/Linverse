@@ -81,6 +81,17 @@ function buildRetrievalQuery(question, historyMsgs) {
   return [...users.slice(-2), q].join(' ');
 }
 const FAQ_DISTANCE_THRESHOLD = parseFloat(process.env.FAQ_THRESHOLD) || 0.3;
+// P1 相关性门槛（2026-11-28 标定）：向量检索的块按余弦距离过滤，距离超过此值视为不相关、不进 RRF。
+// 标定数据（21 个问题 × top9，见 /tmp/kb_calib_results.json）：课内问题 top1 距离 0.32–0.52、
+// 相关块最大 0.581；题外问题（天气/红烧肉/世界杯）top1 距离 0.71–0.75。阈值 0.6 取在两者
+// 之间的空隙（0.58–0.71），既保住课内检索、又拦住明显跑题的块。注意：余弦距离不能
+// 区分“题目在另一本没入库的书里”的情况（如点到直线距离公式在必修第二册），那类仍
+// 会返回库内最接近的块，属已知局限。
+const CHUNK_DISTANCE_THRESHOLD = parseFloat(process.env.KB_CHUNK_THRESHOLD) || 0.6;
+// P1 相关性门槛（纯函数，可离线测）：向量块按余弦距离过滤，超过阈值的块不进 RRF。
+function filterByDistance(rows, threshold = CHUNK_DISTANCE_THRESHOLD) {
+  return (rows || []).filter((r) => typeof r.distance === 'number' && r.distance < threshold);
+}
 async function searchKbContext(question, topK = 5, profileId) {
 // 向量链和关键词链互不依赖，并行跑（以前是串行等三段）；标准问答复用向量，拿到向量后再跑
 const vecChain = (async () => {
@@ -101,7 +112,11 @@ console.warn('[rag] 关键词检索失败：', e.message);
 return [];
 }
 })();
-const [{ vec, vecRows }, kwRows] = await Promise.all([vecChain, kwChain]);
+const [{ vec, vecRows: vecRowsRaw }, kwRows] = await Promise.all([vecChain, kwChain]);
+// P1 相关性门槛：向量块按余弦距离过滤，超过阈值的块不进 RRF（关键词链不受影响，
+// 它靠术语匹配、本身就不易返回完全无关的块）。题外问题过滤后 vecRows 为空，
+// 整体很可能无上下文，上层降级为普通问答、不再硬引课本。
+const vecRows = filterByDistance(vecRowsRaw);
 // 标准问答匹配：复用问题向量，不额外花钱再调一次 embedding
 let faq = null;
 if (vec) {
@@ -241,3 +256,5 @@ module.exports = router;
 module.exports.searchKbContext = searchKbContext;
 module.exports.buildRetrievalQuery = buildRetrievalQuery;
 module.exports.needsRetrievalContext = needsRetrievalContext;
+module.exports.filterByDistance = filterByDistance;
+module.exports.CHUNK_DISTANCE_THRESHOLD = CHUNK_DISTANCE_THRESHOLD;

@@ -3,7 +3,7 @@
 // 全部纯函数，不出网、不连数据库。
 const { test, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRetrievalQuery, needsRetrievalContext } = require('../src/routes/kb');
+const { buildRetrievalQuery, needsRetrievalContext, filterByDistance, CHUNK_DISTANCE_THRESHOLD } = require('../src/routes/kb');
 const { _test: aiTest } = require('../src/routes/ai');
 const { buildFinalQuestion } = aiTest;
 const { _test: provTest } = require('../src/ai/providers');
@@ -92,5 +92,32 @@ describe('system 提示词：主题一致性规则', () => {
     assert.equal(sys.role, 'system');
     assert.ok(sys.content.includes('先结合对话历史确定本轮问题说的是什么'), 'system 应要求先结合历史确定主体');
     assert.ok(sys.content.includes('教材内容与本轮问题或对话主题不相关时，忽略它'), 'system 应要求忽略不相关教材');
+  });
+});
+
+describe('filterByDistance：P1 相关性门槛', () => {
+  const rows = [
+    { text: '相关块A', distance: 0.317 },
+    { text: '相关块B', distance: 0.581 },
+    { text: '边界块', distance: 0.6 },
+    { text: '跑题块', distance: 0.71 },
+    { text: '无距离块' },
+  ];
+  it('默认阈值 0.6：保住课内块（最大 0.581），拦住题外块（0.71+）', () => {
+    assert.equal(CHUNK_DISTANCE_THRESHOLD, 0.6);
+    const kept = filterByDistance(rows);
+    assert.deepEqual(kept.map((r) => r.text), ['相关块A', '相关块B']);
+  });
+  it('边界值 0.6 本身不保留（严格小于）', () => {
+    const kept = filterByDistance([{ text: 'x', distance: 0.6 }]);
+    assert.equal(kept.length, 0);
+  });
+  it('无 distance 字段的块不保留', () => {
+    const kept = filterByDistance([{ text: 'x' }, { text: 'y', distance: 0.5 }]);
+    assert.deepEqual(kept.map((r) => r.text), ['y']);
+  });
+  it('空输入返回空数组', () => {
+    assert.deepEqual(filterByDistance([]), []);
+    assert.deepEqual(filterByDistance(null), []);
   });
 });
