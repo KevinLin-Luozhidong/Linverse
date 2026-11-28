@@ -33,9 +33,10 @@ assert.equal(isNewsQuestion('今天天气怎么样'), false);
 });
 
 describe('NEWS_JSON_RULES（结构化输出要求）', () => {
-test('只出 JSON、最多 10 条、时间没写不许编', () => {
+test('只出 JSON、最多 10 条、至少 5 条、时间没写不许编', () => {
 assert.match(NEWS_JSON_RULES, /只输出一个 JSON 对象/);
 assert.match(NEWS_JSON_RULES, /最多 10 条/);
+assert.match(NEWS_JSON_RULES, /至少 5 条/);
 assert.match(NEWS_JSON_RULES, /严禁编造/);
 assert.match(NEWS_JSON_RULES, /"source": "来源标题"/);
 });
