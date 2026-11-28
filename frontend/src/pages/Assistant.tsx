@@ -287,14 +287,27 @@ function splitKnowledge(text: string): { body: string; know: string[] } {
   return { body: rest.join('\n'), know }
 }
 
+// 剥掉正文里模型顺手写的行内引用“（参考：……）”/“(参考：……)”：
+// 同一份引用信息已经在底下的“参考课本”卡片里以结构化、可点开 PDF 的形式出现，
+// 行内那句只是重复，还打断段落、跟正文一个样式分不出来。
+// 只有当 kbRefs 非空（卡片会显示）时才剥；kbRefs 为空时保留行内引用，不丢信息。
+// 剥完把多余空行压回两行以内，避免留出空白段落。
+function stripInlineRefs(text: string): string {
+  return text
+    .replace(/[（(]参考[:：][^）)]*[）)]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 // AI 回答卡片：富文本 + 相关知识点 + 胶囊按钮（复制 / 存入错题本 / 分享 / 收藏）
 // memo 化：流式每 120ms 刷一次，以前整条对话列表每个卡片都重跑 renderRich，
 // 手机上主线程被占满就是"卡顿"的来源；现在只有正在输出的那条重渲染。
 // props 全是原始值或稳定回调（onToast 是 setState，onSkip 用模块级 noop），memo 才生效。
-const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onToast, showActions = true, showSkip = false, kbRefs }: {
+const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkText, typing, onSkip, onToast, showActions = true, showSkip = false, kbRefs, onOpenRef }: {
   text: string; question: string; profileId: string | null;
   thinkText: string; typing: boolean; onSkip: () => void; onToast: (m: string) => void;
   showActions?: boolean; showSkip?: boolean; kbRefs?: KbRef[];
+  onOpenRef?: (url: string, title: string) => void;
 }) {
   const [favTick, setFavTick] = useState(0)
   const [mistakeSubject, setMistakeSubject] = useState('数学')
@@ -306,7 +319,10 @@ const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkTe
   // 普通文本段在 inline 里再单独跑 cleanLatex；cleanLatex 本身不动（OCR 也在用）。
   // 知识点名仍单独过一遍 cleanLatex，保持以前的显示（如下标 x_1 → x₁）。
   const cleanText = text
-  const { body, know: knowRaw } = splitKnowledge(cleanText)
+  const { body: bodyRaw, know: knowRaw } = splitKnowledge(cleanText)
+  // 行内引用（参考：……）与底下“参考课本”卡片重复时，只留卡片，正文里剥掉；
+  // 卡片没有引用时保留行内那句，不丢信息。
+  const body = kbRefs && kbRefs.length > 0 ? stripInlineRefs(bodyRaw) : bodyRaw
   const know = knowRaw.map((k) => cleanLatex(k))
 
   const copy = async () => {
@@ -347,12 +363,17 @@ const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkTe
       try { await navigator.clipboard.writeText(text); onToast('已复制，去别处粘贴分享') } catch { onToast('分享失败') }
     }
   }
-  // 引用行点开原书 PDF：跳到对应页（书页码 + 每本书的 PDF 偏移，前言跳第 1 页）
+  // 引用行点开原书 PDF：跳到对应页（书页码 + 每本书的 PDF 偏移，前言跳第 1 页）。
+  // 不再 window.open 新标签（手机上新标签的 PDF 阅读器没有明显退出键，用户出不来），
+  // 改走应用内全屏浮层：顶部有关闭 ×，点一下就回聊天。
   const openRef = (r: KbRef) => {
     const pdf = KB_PDF[r.book]
     if (!pdf) return
     const pdfPage = r.page_start > 0 ? r.page_start + pdf.off : 1
-    window.open(`/kb-pdfs/${pdf.file}#page=${pdfPage}`, '_blank')
+    const url = `/kb-pdfs/${pdf.file}#page=${pdfPage}`
+    const title = `${r.book} · 第${r.page_start > 0 ? r.page_start : '前言'}页`
+    if (onOpenRef) { onOpenRef(url, title); return }
+    window.open(url, '_blank')
   }
 
   return (
@@ -487,6 +508,9 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [useKb, setUseKb] = useState(() => localStorage.getItem('linverse.useKb') !== '0')
   const [drawerOpen, setDrawerOpen] = useState(false) // 抽屉默认关闭，不闪现
   const [menuOpen, setMenuOpen] = useState(false) // 模型下拉
+  // 原书 PDF 浮层：点“参考课本”后在应用内全屏打开，顶部有关闭 × 回聊天；
+  // 不走 window.open 新标签（手机上新标签的 PDF 阅读器没有明显退出键）。
+  const [pdfView, setPdfView] = useState<{ url: string; title: string } | null>(null)
   const menuWrapRef = useRef<HTMLDivElement>(null)
   // 点菜单外任意处关闭：窗口级 mousedown + ref 判定（全屏遮罩层实测两次没接住点击，顶栏 sticky 层叠上下文可疑，改走这条最稳的路）
   useEffect(() => {
@@ -1166,6 +1190,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                 showActions={false}
                 onSkip={noop}
                 onToast={setToast}
+                onOpenRef={(url, title) => setPdfView({ url, title })}
               />
             ) : (
               <AnswerCard
@@ -1181,6 +1206,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
                 kbRefs={m.kbRefs}
                 onSkip={noop}
                 onToast={setToast}
+                onOpenRef={(url, title) => setPdfView({ url, title })}
               />
             )}
           </div>
@@ -1263,6 +1289,19 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       <Toast msg={toastMsg} tkey={toastKey} />
       {cropSrc && (
         <Cropper src={cropSrc} onDone={onCropDone} onCancel={onCropCancel} />
+      )}
+      {/* 原书 PDF 浮层：应用内全屏打开，顶部有关闭 × 回聊天；iframe 里是浏览器自带 PDF 阅读器 */}
+      {pdfView && (
+        <div className="pdf-overlay">
+          <div className="pdf-nav">
+            <button className="icon-btn" onClick={() => setPdfView(null)} aria-label="关闭">
+              <I n="x" size={20} />
+            </button>
+            <span className="pdf-title">{pdfView.title}</span>
+            <span className="brief-nav-sp" />
+          </div>
+          <iframe className="pdf-frame" src={pdfView.url} title={pdfView.title} />
+        </div>
       )}
     </div>
   )
