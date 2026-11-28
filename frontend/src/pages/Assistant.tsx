@@ -288,7 +288,7 @@ const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkTe
                 <span className="ans-ref-book">{r.book}</span>
                 <span className="ans-ref-loc">{[r.chapter, r.section].filter(Boolean).join(' · ')}{r.page_start > 0 ? ` · 第${r.page_start}${r.page_end > r.page_start ? `–${r.page_end}` : ''}页` : ' · 前言'}</span>
               </span>
-              <I n="chev" size={16} />
+              <I n="chev" size={18} />
             </button>
           ))}
         </div>
