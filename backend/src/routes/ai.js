@@ -113,7 +113,7 @@ function buildFinalQuestion(question, faq, context) {
   const q = (question || '').trim();
   // 标准问答命中：人工校准过的答案放最前面，优先级最高——但只在它确实回答了本轮问题时
   const faqBlock = faq
-    ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过，如果它确实回答了本轮问题，请优先采用它的答案作答，数学符号和公式必须原文照抄、一字不许改写（√、≤、∈、∪ 等不许"翻译"成英文单词，不许改成 LaTeX）：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
+    ? `【标准问答】下面这道问答与用户问题高度相关，答案已经人工校准过（直接取自教材原文），如果它确实回答了本轮问题，必须逐字照抄它的答案作答，一字不许改写、不许换词、不许增删、不许扩写：数字、术语、符号、标点全部原文照抄（数学符号和公式尤其不许"翻译"成英文单词、不许改成 LaTeX；√、≤、∈、∪ 等一律保留原样）：\n问：${faq.question}\n答：${faq.answer}\n（参考：《${faq.book}》第${faq.page_start}页）\n\n---\n`
     : '';
   return (
     faqBlock +

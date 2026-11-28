@@ -72,10 +72,11 @@ describe('buildFinalQuestion：教材采用改为有条件', () => {
     assert.ok(out.includes('忽略不相关的材料'), '应要求忽略不相关材料');
     assert.ok(out.includes('用户问题：' + R2_Q), '应保留原始用户问题');
   });
-  it('命中 FAQ 时：只在确实回答本轮问题时才优先采用', () => {
+  it('命中 FAQ 时：只在确实回答本轮问题时才逐字照抄', () => {
     const faq = { question: '集合的表示方法有哪些？', answer: '列举法和描述法。', book: '人教A版高中数学必修第一册', page_start: 3 };
     const out = buildFinalQuestion(R2_Q, faq, ctx);
-    assert.ok(out.includes('如果它确实回答了本轮问题，请优先采用'), 'FAQ 应改为有条件优先');
+    assert.ok(out.includes('如果它确实回答了本轮问题，必须逐字照抄'), 'FAQ 应改为有条件逐字照抄');
+    assert.ok(out.includes('一字不许改写'), '应要求逐字照抄、不许改写');
     assert.ok(!out.includes('答案已经人工校准过，请优先采用'), '不应再有无条件优先 FAQ 的旧写法');
   });
   it('未命中 FAQ 时不出现标准问答块', () => {
