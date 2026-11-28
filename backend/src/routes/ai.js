@@ -142,6 +142,11 @@ router.post('/ask', ah(async (req, res) => {
     if (!modelName) modelName = s.aiModel;
   }
 
+  // 时效问题（"今日新闻"这类）＋开了联网搜索：课本根本答不了，检索到的无关教材块
+  // 还会把模型带跑偏（实测：模型跟着教材说"教材里没有新闻"，把搜到的新闻晾一边）。
+  // 这种组合直接跳过课本检索，只走联网搜索；搜不到或没开搜索时照常查课本。
+  // 注意：必须声明在流式分支外面，下面的 if (doKb) 在块外，块里声明读不到。
+  const doKb = useKb && !(webSearch && searchKey && isTimeSensitive(question.trim()));
   // 流式先开 SSE 通道：状态事件立刻发出去，RAG 检索那 1-3 秒界面也不黑屏
   const isStream = !!req.body.stream;
   let sendEvent = null;
@@ -155,10 +160,6 @@ router.post('/ask', ah(async (req, res) => {
     sendEvent = (type, data) => {
       try { res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
     };
-    // 时效问题（"今日新闻"这类）＋开了联网搜索：课本根本答不了，检索到的无关教材块
-    // 还会把模型带跑偏（实测：模型跟着教材说"教材里没有新闻"，把搜到的新闻晾一边）。
-    // 这种组合直接跳过课本检索，只走联网搜索；搜不到或没开搜索时照常查课本。
-    const doKb = useKb && !(webSearch && searchKey && isTimeSensitive(question.trim()));
     sendEvent('status', { text: doKb ? '正在查课本…' : '正在思考…' });
   }
 
