@@ -12,6 +12,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 export default function PdfViewer({ url, page, title }: { url: string; page: number; title: string }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // 渲染竞争防护（GPT 评审 blocker）：快速翻页时旧渲染必须取消，否则旧页会盖掉新页、
+  // 同一 canvas 并发渲染会报错。用序号丢弃过期的 getPage 结果。
+  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null)
+  const seqRef = useRef(0)
   const [doc, setDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [pageNum, setPageNum] = useState(page)
   const [numPages, setNumPages] = useState(0)
@@ -32,29 +36,45 @@ export default function PdfViewer({ url, page, title }: { url: string; page: num
   }, [url])
 
   // 当前页渲染：宽度贴合容器（手机屏），高度按比例来；页码越界就夹到有效范围。
-  // 清晰度关键：必须按设备像素比渲染——iPhone 是 3 倍屏，canvas 只画 CSS 像素
-  // （390px）再由屏幕放大 3 倍显示，就是用户说的“超级无敌模糊”；
-  // 按 dpr 渲染（390×3=1170 设备像素），CSS 尺寸不变，字就锐了。
+  // 清晰度关键：必须按设备像素比渲染——canvas 只画 CSS 像素再由屏幕放大显示就是模糊；
+  // 按 dpr 渲染（设备像素），CSS 尺寸不变，字就锐了。dpr 是运行时读的，
+  // iPhone 3 倍、安卓 2/2.5/3 倍、桌面 1 倍都自适应，不写死某一台机器。
+  // GPT 评审修正：canvas 用 ceil 取整；CSS 宽直接用容器宽（不取整）、高用 auto，
+  // 免得容器变窄时固定高度把图拉变形。
   useEffect(() => {
     if (!doc || !canvasRef.current || !wrapRef.current) return
     const target = Math.min(Math.max(1, pageNum), doc.numPages)
     if (target !== pageNum) { setPageNum(target); return }
+    const seq = ++seqRef.current
+    // 先取消上一轮还没画完的渲染，避免旧页盖新页
+    if (renderTaskRef.current) {
+      try { renderTaskRef.current.cancel() } catch { /* 已结束的任务取消会抛错，忽略 */ }
+      renderTaskRef.current = null
+    }
     let cancelled = false
     doc.getPage(target).then((p) => {
-      if (cancelled || !canvasRef.current || !wrapRef.current) return
+      if (cancelled || seq !== seqRef.current || !canvasRef.current || !wrapRef.current) return
       const base = p.getViewport({ scale: 1 })
       const cssW = wrapRef.current.clientWidth || 360
       const dpr = Math.min(window.devicePixelRatio || 1, 3)
       const vp = p.getViewport({ scale: (cssW / base.width) * dpr })
       const canvas = canvasRef.current
-      canvas.width = Math.floor(vp.width)
-      canvas.height = Math.floor(vp.height)
-      canvas.style.width = Math.floor(vp.width / dpr) + 'px'
-      canvas.style.height = Math.floor(vp.height / dpr) + 'px'
+      canvas.width = Math.ceil(vp.width)
+      canvas.height = Math.ceil(vp.height)
+      canvas.style.width = cssW + 'px'
+      canvas.style.height = 'auto'
       // pdfjs-dist v6 的 render 要直接给 canvas 元素（不再只给 canvasContext）
-      p.render({ canvas, viewport: vp })
+      const task = p.render({ canvas, viewport: vp })
+      renderTaskRef.current = task
+      task.promise.catch(() => { /* 取消不算错误，静默 */ })
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      if (renderTaskRef.current) {
+        try { renderTaskRef.current.cancel() } catch { /* 忽略 */ }
+        renderTaskRef.current = null
+      }
+    }
   }, [doc, pageNum])
 
   return (
