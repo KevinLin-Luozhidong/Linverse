@@ -111,8 +111,9 @@ export default function Cropper({ src, onDone, onCancel }: {
       </div>
       <div className="crop-foot">
         <button className="mini-btn" onClick={onCancel}>取消</button>
-        <button className="mini-btn" onClick={() => {
+        <button className="btn" onClick={() => {
           // 直接使用原图：把显示的图片转成 blob 交给上传流程
+          // （跟"确认裁剪"同一个按钮等级：都是把图交出去的正经操作，不是次要选项）
           const img = imgRef.current
           if (!img) return
           const c = document.createElement('canvas')
