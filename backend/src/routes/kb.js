@@ -92,6 +92,12 @@ const CHUNK_DISTANCE_THRESHOLD = parseFloat(process.env.KB_CHUNK_THRESHOLD) || 0
 function filterByDistance(rows, threshold = CHUNK_DISTANCE_THRESHOLD) {
   return (rows || []).filter((r) => typeof r.distance === 'number' && r.distance < threshold);
 }
+// P1 门槛第二道关（纯函数，可离线测）：向量检索成功且返回了原始结果、但全被门槛
+// 滤掉、且无标准问答命中时，判定为题外问题。向量检索本身失败（vec 为空）时不判定，
+// 保留纯关键词兜底。
+function isOffTopic(vec, vecRowsRaw, vecRows, faq) {
+  return !!(vec && (vecRowsRaw || []).length > 0 && (vecRows || []).length === 0 && !faq);
+}
 async function searchKbContext(question, topK = 5, profileId) {
 // 向量链和关键词链互不依赖，并行跑（以前是串行等三段）；标准问答复用向量，拿到向量后再跑
 const vecChain = (async () => {
@@ -113,9 +119,7 @@ return [];
 }
 })();
 const [{ vec, vecRows: vecRowsRaw }, kwRows] = await Promise.all([vecChain, kwChain]);
-// P1 相关性门槛：向量块按余弦距离过滤，超过阈值的块不进 RRF（关键词链不受影响，
-// 它靠术语匹配、本身就不易返回完全无关的块）。题外问题过滤后 vecRows 为空，
-// 整体很可能无上下文，上层降级为普通问答、不再硬引课本。
+// P1 相关性门槛：向量块按余弦距离过滤，超过阈值的块不进 RRF。
 const vecRows = filterByDistance(vecRowsRaw);
 // 标准问答匹配：复用问题向量，不额外花钱再调一次 embedding
 let faq = null;
@@ -126,6 +130,14 @@ if (frows.length && frows[0].distance < FAQ_DISTANCE_THRESHOLD) faq = frows[0];
 } catch (e) {
 console.warn('[rag] 问答库检索失败：', e.message);
 }
+}
+// P1 门槛的第二道关（2026-11-28 实测补漏）：只滤向量链不够。题外问题里“今天/天气”
+// 这类常用词在课本里到处出现，关键词链照样能捞回一堆无关块，RRF 融合后照样进引用。
+// 所以向量检索成功（vec 非空）且返回了原始结果、但全被门槛滤掉、且无标准问答命中时，
+// 判定为题外问题，整轮不拼课本上下文（关键词链的结果也一并丢弃），上层降级为普通问答。
+// 向量检索本身失败（vec 为空）时不走这条，仍保留纯关键词兜底。
+if (isOffTopic(vec, vecRowsRaw, vecRows, faq)) {
+return { context: '', refs: [], faq: null };
 }
 // 命中标准问答时只留 2 块教材佐证（2026-10-22 优化）：标准答案已人工校准，
 // 全量 5 块拼进去只是白烧 token、拖慢回答；没命中时保持 topK 不变
@@ -257,4 +269,5 @@ module.exports.searchKbContext = searchKbContext;
 module.exports.buildRetrievalQuery = buildRetrievalQuery;
 module.exports.needsRetrievalContext = needsRetrievalContext;
 module.exports.filterByDistance = filterByDistance;
+module.exports.isOffTopic = isOffTopic;
 module.exports.CHUNK_DISTANCE_THRESHOLD = CHUNK_DISTANCE_THRESHOLD;

@@ -3,7 +3,7 @@
 // 全部纯函数，不出网、不连数据库。
 const { test, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildRetrievalQuery, needsRetrievalContext, filterByDistance, CHUNK_DISTANCE_THRESHOLD } = require('../src/routes/kb');
+const { buildRetrievalQuery, needsRetrievalContext, filterByDistance, isOffTopic, CHUNK_DISTANCE_THRESHOLD } = require('../src/routes/kb');
 const { _test: aiTest } = require('../src/routes/ai');
 const { buildFinalQuestion } = aiTest;
 const { _test: provTest } = require('../src/ai/providers');
@@ -119,5 +119,26 @@ describe('filterByDistance：P1 相关性门槛', () => {
   it('空输入返回空数组', () => {
     assert.deepEqual(filterByDistance([]), []);
     assert.deepEqual(filterByDistance(null), []);
+  });
+});
+
+describe('isOffTopic：P1 门槛第二道关', () => {
+  const vec = [0.1, 0.2];
+  const raw = [{ distance: 0.71 }, { distance: 0.73 }];
+  it('向量成功、有原始结果、全被滤掉、无 FAQ → 题外', () => {
+    assert.equal(isOffTopic(vec, raw, [], null), true);
+  });
+  it('向量成功、但有块通过门槛 → 不是题外', () => {
+    assert.equal(isOffTopic(vec, raw, [{ distance: 0.5 }], null), false);
+  });
+  it('有 FAQ 命中 → 不是题外（标准问题优先）', () => {
+    assert.equal(isOffTopic(vec, raw, [], { question: '什么是酶？' }), false);
+  });
+  it('向量检索失败（vec 为空）→ 不是题外，保留关键词兜底', () => {
+    assert.equal(isOffTopic(null, raw, [], null), false);
+    assert.equal(isOffTopic(null, [], [], null), false);
+  });
+  it('向量成功但原始结果为空 → 不是题外', () => {
+    assert.equal(isOffTopic(vec, [], [], null), false);
   });
 });
