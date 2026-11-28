@@ -80,7 +80,7 @@ const delAsProfile = <T>(id: string, p: string) =>
 
 // ---- 类型定义（与契约字段一一对应） ----
 export interface ConversationMeta { id: string; title: string; createdAt: string; favorite?: boolean }
-export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; aspectRatio?: number; createdAt: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[]; thinkSeconds?: number; deepThink?: boolean; metadata?: { kbRefs?: KbRef[] } }
+export interface ChatMsg { role: 'user' | 'assistant'; content: string; imageUrl?: string; imgW?: number; imgH?: number; createdAt: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[]; thinkSeconds?: number; deepThink?: boolean; metadata?: { kbRefs?: KbRef[] } }
 export interface Conversation extends ConversationMeta { messages: ChatMsg[] }
 
 export interface AskResult { answer: string; thinkSeconds: number; conversationId: string; model: string; webSearched?: boolean; kbUsed?: boolean; kbRefs?: KbRef[] }

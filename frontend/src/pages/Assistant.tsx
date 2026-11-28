@@ -436,7 +436,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片，有值就弹裁剪器
   const [uploading, setUploading] = useState(false)
   const [uploadPreview, setUploadPreview] = useState('') // 上传中的本地缩略图：有值才显示"上传中"遮罩
-  const [imgAspect, setImgAspect] = useState(0) // 待发图片的宽高比：发出去前先占位，图片慢慢加载时气泡不跳变
+  const [imgSize, setImgSize] = useState({ w: 0, h: 0 }) // 待发图片的自然尺寸：发出去时写进 img 的 width/height 属性提前占位，图片慢慢加载时气泡不跳变
   // typingFor：正在打字的消息下标（-1 = 无），合并了 typing + typingIdx 两个状态，避免不同步
   const [typingFor, setTypingFor] = useState(-1)
   // streamingFor：正在流式输出的消息下标（-1 = 无）；streamStatus：流式进行中的状态文案
@@ -636,12 +636,13 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     const previewUrl = URL.createObjectURL(blob)
     setUploadPreview(previewUrl)
     setUploading(true)
-    // 先量出图的宽高比：发出去时用 aspect-ratio 占位，图片从服务器慢慢回来时气泡高度不再跳变
+    // 先量出图的自然尺寸：发出去时写进 img 的 width/height 属性占位（只给 aspect-ratio 不够，
+    // 没加载完的图片宽度不定、算不出高度，实测仍是 0×0；有了 width/height 属性浏览器立刻按比例留好位置）
     try {
       const bmp = await createImageBitmap(blob)
-      setImgAspect(bmp.width / bmp.height)
+      setImgSize({ w: bmp.width, h: bmp.height })
       bmp.close()
-    } catch { setImgAspect(0) }
+    } catch { setImgSize({ w: 0, h: 0 }) }
     try {
       const upUrl = await uploadImage(new File([blob], 'crop.jpg', { type: 'image/jpeg' }))
       setImgUrl(upUrl)
@@ -677,7 +678,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     const userMsg: ChatMsg = {
       role: 'user', content: question,
       imageUrl: imgUrl || undefined,
-      aspectRatio: imgAspect || undefined,
+      imgW: imgSize.w || undefined,
+      imgH: imgSize.h || undefined,
       createdAt: new Date().toISOString(),
     }
     stickRef.current = true
@@ -689,7 +691,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     sendReqIdRef.current = reqId // 唯一请求ID，防止多次请求串台
     const savedImgUrl = userMsg.imageUrl // 失败时恢复图片用
     setImgUrl('')
-    setImgAspect(0)
+    setImgSize({ w: 0, h: 0 })
     // 流式占位消息下标：用户消息在 msgs.length，AI 占位在 msgs.length + 1
     const aiIdx = msgs.length + 1
     try {
@@ -1053,7 +1055,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
           <div key={i} className={'msg ' + (m.role === 'user' ? 'user' : '')}>
             {m.role === 'user' ? (
               <div className="user-bubble">
-                {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" style={m.aspectRatio ? { aspectRatio: m.aspectRatio } : undefined} />}
+                {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" width={m.imgW} height={m.imgH} />}
                 {renderUserText(m.content)}
               </div>
             ) : i === typingFor && typingFor >= 0 ? (
