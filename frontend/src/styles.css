@@ -91,7 +91,12 @@
 html, body { height: 100%; }
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  /* 全站默认字体：STIX Two Math 打头（LinverseSymbols），中文走苹方。
+     这样错题本、笔记本、词典、知识库、设置、个人中心、学习工具等所有页面，
+     不用逐个改，符号一律取 STIX，不再混字体错位。
+     KaTeX 公式不受影响：KaTeX 自己的 CSS 给 .katex 设了专用字体，
+     类选择器优先级高于 body 的元素选择器，公式仍用 KaTeX 字体。 */
+  font-family: 'LinverseSymbols', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   background: var(--bg);
   color: var(--ink);
   font-size: var(--fs);
@@ -111,7 +116,7 @@ body {
   position: relative;
   overflow: hidden;
 }
-.main { flex: 1; overflow-y: auto; position: relative; }
+.main { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
 .tabview { animation: tabIn 0.25s var(--ease); height: 100%; }
 @keyframes tabIn { from { opacity: 0; transform: translateY(8px); } }
 
@@ -373,7 +378,7 @@ body {
 }
 
 /* 聊天区 */
-.chat-list { flex: 1; overflow-y: auto; padding: 8px 18px 12px; display: flex; flex-direction: column; gap: 18px; }
+.chat-list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 18px 12px; display: flex; flex-direction: column; gap: 18px; }
 .msg { display: flex; animation: msgIn 0.25s var(--ease); }
 @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } }
 .msg.user { justify-content: flex-end; }
