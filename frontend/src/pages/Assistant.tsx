@@ -828,6 +828,10 @@ export default function Assistant({ profileId, active = true }: { profileId: str
           ))}
         </div>
       </div>
+      {/* chat-main：桌面端右侧聊天列（1024px 以上 flex 列）；手机上 display:contents 不占位，里面元素照旧是 chat-wrap 的子项。
+          注意：开口必须在顶栏之前——顶栏要是落在 chat-main 外面，桌面上它会变成 chat-wrap 横排里的一个整列
+          （整屏高、内容竖直居中悬在半空），还会把聊天列挤窄。 */}
+      <div className="chat-main">
       {/* 顶栏：汉堡 / 模型胶囊 / 状态胶囊 */}
       <div className="chat-topbar" style={{ flexWrap: 'wrap', gap: 4 }}>
         <button className="icon-btn" onClick={() => setDrawerOpen(true)} aria-label="会话列表">
@@ -968,8 +972,6 @@ export default function Assistant({ profileId, active = true }: { profileId: str
         </div>
       </aside>
 
-      {/* chat-main：桌面端右侧聊天列（1024px 以上 flex 列）；手机上 display:contents 不占位，里面元素照旧是 chat-wrap 的子项 */}
-      <div className="chat-main">
       {/* 早报 / 汕头看板共用入口横条：两者任一有数据才出现；早报优先，没有早报才显示看板 */}
       {(briefPeek || shantouPeek) && !briefOpen && (
         <button className="brief-strip" onClick={() => (briefPeek ? openPanel('brief') : openPanel('shantou'))}>
