@@ -1,6 +1,21 @@
 /* Linverse 全局样式：浅蓝简约高级风，移动端优先，跟随系统深浅色 */
 /* 动画铁律：只用 transform / opacity，不触发重排 */
 
+/* 专业符号字体：STIX Two Math（OFL 开源，自托管 WOFF2）。
+   键盘按键、输入框、消息气泡三处统一用它打头，中文由苹方承接：
+   font-family: LinverseSymbols, "PingFang SC", sans-serif。
+   作用是把 ♀♂ ° ∠ · ∩ ∪ 等符号的字形来源统一成一个字体，
+   不再让 iPhone 从多个字体里拼字形（混字体是符号上下歪的根因）。
+   全角中文标点（， 。）STIX 里没有，会自动回落到苹方，不受影响。
+   （用户 2026-11-28 立：各科符号必须用专业库；GPT 选型亦推荐 STIX Two Math。） */
+@font-face {
+  font-family: 'LinverseSymbols';
+  src: url('/fonts/STIXTwoMath.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #eef4ff;
   --card: rgba(255,255,255,.55);
@@ -370,11 +385,13 @@ body {
   padding: 11px 15px; border-radius: 20px 20px 5px 20px;
   font-size: var(--fs); line-height: 1.65;
   white-space: pre-wrap; word-break: break-word;
+  /* 符号走 STIX Two Math，中文走苹方：同一行字不再混多个字体拼字形 */
+  font-family: 'LinverseSymbols', 'PingFang SC', sans-serif;
 }
 .user-bubble img { max-width: 100%; height: auto; max-height: 420px; object-fit: contain; border-radius: 10px; margin-bottom: 8px; display: block; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 
 /* AI 回答：无边框卡片，排版舒适，重点蓝色高亮 */
-.answer { max-width: 100%; font-size: var(--fs); line-height: 1.75; color: var(--ink); }
+.answer { max-width: 100%; font-size: var(--fs); line-height: 1.75; color: var(--ink); font-family: 'LinverseSymbols', 'PingFang SC', sans-serif; }
 .answer img { max-width: 100%; border-radius: 12px; margin-bottom: 8px; display: block; outline: 1px solid var(--image-outline); outline-offset: -1px; }
 .rich p { margin: 0 0 12px; }
 .rich p:last-child { margin-bottom: 0; }
@@ -471,7 +488,9 @@ body {
 .composer-box:focus-within { border-color: var(--blue); }
 .chat-input {
   flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink);
-  padding: 10px 0; font-size: var(--fs); font-family: inherit;
+  padding: 10px 0; font-size: var(--fs);
+  /* 符号走 STIX Two Math，中文走苹方：打进输入框的符号不再歪 */
+  font-family: 'LinverseSymbols', 'PingFang SC', sans-serif;
   outline: none; resize: none; max-height: 120px;
 }
 .send-btn {
@@ -513,6 +532,8 @@ body {
   border: 1px solid var(--line); background: var(--bg); color: var(--ink);
   border-radius: var(--radius-sm); cursor: pointer;
   font-size: calc(17px * var(--fss)); padding: 9px 0;
+  /* 符号走 STIX Two Math：键帽里的字形来源统一，不再混字体 */
+  font-family: 'LinverseSymbols', 'PingFang SC', sans-serif;
   /* 键面居中：光靠行内文本基线放，，. ! ° 这类字形会在框里忽高忽低；
      flex 居中先把行框摆正，剩下的字形光学偏差由 MathKeyboard 的 NUDGE_EM 微调 */
   display: flex; align-items: center; justify-content: center; line-height: 1;
