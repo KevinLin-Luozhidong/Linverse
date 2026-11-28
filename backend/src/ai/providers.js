@@ -386,7 +386,7 @@ if (r.content) s += `\n   ${r.content}`;
 if (r.link) s += `\n   来源：${r.link}`;
 return s;
 });
-return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；回答中的每条新闻必须标注对应来源的发布日期（上面每条结果的"发布日期"字段就是它）；该日期仅表示来源网页的发布日期，不代表其中新闻自身的发布日期或事件发生日期，不得混用；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
+return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；上面每条结果的"发布日期"字段就是该来源网页的发布日期，该日期不代表其中新闻自身的发布日期或事件发生日期，不得混用；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
 + lines.join('\n')
 + '\n\n【用户问题】\n';
 }
@@ -403,6 +403,95 @@ return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效�
 // 事件只列一次——给模型一个机械分配，比"最多10条"好执行。
 // 注意：只在时效问题追加；普通知识问题不加，别把"列出新闻"套到非新闻问题上。
 const NEWS_OUTPUT_RULES = `\n\n【回答要求】\n请只依据上述联网搜索结果回答用户问题，直接列出最多10条不重复的新闻（每个来源最多取2条，5个来源正好10条），不写开场或结语。允许从同一合集提取多条，但每条必须对应所给内容中明确、独立的新闻事实；不得补充未提供的事实，不得将同一事件重复列出——不同来源里同一事件只列一次，留措辞最全的那个。每条固定格式为：\n- 【来源发布：日期】标题：一至两句事实摘要。（来源：对应来源标题）\n将格式中的"日期"替换为对应来源"发布日期"字段的原值；字段为"未注明"时，写"日期未注明"。每条都必须保留日期标注和来源，不得把来源发布日期称为事件发生日期。摘要只能复述所给内容支持的事实；信息不足时减少条数，不凑数，不输出只有标题的条目。\n`;
+
+// ---------- 新闻结构化（用户 2026-11-28 拍板） ----------
+// 背景：自由文本提示词调了三轮，条数/摘要/去重总有一项不听话（36 条 0 日期 →
+// 28 条全带日期但重复截断 → 18 条格式全对但超 10 条、0 摘要），小模型一次吞不下
+// 这么多约束。改成模型只出 JSON，后端校验、去重、限量、渲染成 Markdown，格式和
+// 条数由后端保证，不靠模型自觉。用户原话：日期只放最前面一次，每条有时间就放
+// 时间，来源别丢。
+// 新闻类才走 JSON：光含"新闻"不够（"新闻联播是什么"是定义问题），须同时有时效词；
+// "早报/简报"本身就是当日新闻，直接算。
+function isNewsQuestion(q) {
+  const s = q || '';
+  if (/早报|简报/.test(s)) return true;
+  return /(新闻|资讯|头条|热点)/.test(s) && /(今日|今天|最新|最近|昨晚|今早|今年|本周|本月)/.test(s);
+}
+function todayISO() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+}
+const NEWS_JSON_RULES = `\n\n【回答格式】\n只输出一个 JSON 对象，不要写任何其他文字（不要开场、不要结语、不要 Markdown 代码围栏外的文字）。格式如下：\n{"items": [{"title": "新闻标题", "time": "HH:MM 或空字符串", "summary": "一至两句事实摘要", "source": "来源标题", "date": "YYYY-MM-DD 或空字符串"}]}\n规则：\n- 最多 10 条，每个来源最多取 2 条；不同来源里同一事件只列一次。\n- date 必须是该条来源"发布日期"字段的原值；没有日期的写 ""。\n- time 只有来源内容里明确写了具体时间时才填，照抄来源内容里的时间写法（如"08:30"、"上午9点"）；没有就不填（""），严禁编造。\n- summary 只能复述来源内容支持的事实；信息不足时减少条数，不凑数。\n- 每条必须对应所给内容中明确、独立的新闻事实，不得补充未提供的事实。\n`;
+// 标题比对用的归一化：去空白标点、转小写（中英文标题都能比）
+function normKey(s) {
+  return String(s || '').replace(/[\s\p{P}]/gu, '').toLowerCase();
+}
+// 时间是否在来源内容里出现过（防模型编时间）：原文照抄优先；"08:30" 与
+// "8:30"、"上午9点" 与 "9点" 这类写法差异放宽到数字比对
+function timeInContent(time, content) {
+  const t = String(time || '').trim();
+  if (!t) return false;
+  const c = String(content || '');
+  if (c.includes(t)) return true;
+  const digits = t.replace(/\D/g, '');
+  if (digits.length >= 2 && c.replace(/\D/g, '').includes(digits)) return true;
+  const hm = t.match(/(\d{1,2})点/);
+  if (hm && c.includes(`${Number(hm[1])}点`)) return true;
+  return false;
+}
+// 模型原文（JSON）＋搜索结果 → 渲染好的 Markdown。
+// 校验：source 必须在搜索结果里找得到（对不上就丢条，防编造）；date 以来源的
+// publish_date 为准（模型写错就纠正，没写就补上）；time 不在来源内容里就去掉；
+// 标题去重；超 10 条截断。解析失败或校验后无条目时原样返回模型原文（降级，不 500）。
+// 渲染：首行放一次今天日期；每条"标题（时间，来源：《X》）：摘要"，没有 time
+// 就不写 time 位，没有 summary 就不写冒号；只有 date 与今天不同才在括号里加该条
+// 日期（平日日期只放最前面一次）。
+function renderNewsAnswer(raw, results) {
+  const list = Array.isArray(results) ? results : [];
+  let parsed = null;
+  try {
+    let text = String(raw || '').trim();
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return raw;
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch { return raw; }
+  const items = parsed && Array.isArray(parsed.items) ? parsed.items : null;
+  if (!items || !items.length) return raw;
+  const today = todayISO();
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    if (out.length >= 10) break;
+    const title = String((it && it.title) || '').trim();
+    const source = String((it && it.source) || '').trim();
+    if (!title || !source) continue;
+    const key = normKey(title);
+    if (!key || seen.has(key)) continue;
+    const hit = list.find((r) => {
+      const a = normKey(r.title);
+      const b = normKey(source);
+      return a && b && (a === b || a.includes(b) || b.includes(a));
+    });
+    if (!hit) continue;
+    seen.add(key);
+    const time = timeInContent(it.time, hit.content) ? String(it.time).trim() : '';
+    const summary = String((it && it.summary) || '').trim();
+    out.push({ title, time, summary, source: hit.title, date: hit.publish_date || '' });
+  }
+  if (!out.length) return raw;
+  const lines = [`【${todayZh()} 今日新闻】`, ''];
+  out.forEach((it, i) => {
+    const parts = [];
+    if (it.time) parts.push(it.time);
+    if (it.date && it.date !== today) parts.push(it.date.slice(5));
+    parts.push(`来源：《${it.source}》`);
+    let line = `${i + 1}. ${it.title}（${parts.join('，')}）`;
+    if (it.summary) line += `：${it.summary}`;
+    lines.push(line);
+  });
+  return lines.join('\n');
+}
 
 // ---------- 联网搜索问句改写 ----------
 // 实测教训（2026-11-28）："今日新闻"这种模糊问句直接搜，智谱 search_std
@@ -493,11 +582,15 @@ let finalQuestion = question; // 搜索前缀只加进 finalQuestion，不改写
 // 跟当前聊的是哪个模型没关系——在 DeepSeek 上也能联网搜，不再只限智谱线路。
 // searchKey 没传（自定义那栏不是智谱、或没填 Key）就不搜，直接普通问答
 let webSearched = false;
+let newsMode = false;
+let newsResults = [];
 if (webSearch && searchKey) {
 try {
 const { results, timeSensitive } = await searchForQuestion(question, searchKey);
 if (results.length) {
-finalQuestion = buildSearchBlock(results) + question + (timeSensitive ? NEWS_OUTPUT_RULES : '');
+newsMode = timeSensitive && isNewsQuestion(question);
+newsResults = results;
+finalQuestion = buildSearchBlock(results) + question + (newsMode ? NEWS_JSON_RULES : (timeSensitive ? NEWS_OUTPUT_RULES : ''));
 webSearched = true;
 }
 } catch (err) {
@@ -524,6 +617,8 @@ break;
 default:
 throw new Error(`不支持的模型类型：${model}`);
 }
+// 新闻结构化：模型只出 JSON，后端校验渲染成 Markdown（见 renderNewsAnswer）
+if (newsMode) answer = renderNewsAnswer(answer, newsResults);
 return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched};
 }
 
@@ -677,7 +772,11 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
   const key = aiKey || process.env.AI_API_KEY || '';
   const started = Date.now();
   let answer = '';
-  const emit = (t) => { answer += t; onToken(t); };
+  // 新闻结构化时压制流式：模型出 JSON，不实时推词，出完后统一渲染再发
+  // （前端最终用 done 事件的 answer 整体替换占位消息，不会重复显示）
+  let newsMode = false;
+  let newsResults = [];
+  const emit = (t) => { answer += t; if (!newsMode) onToken(t); };
 
   // 没 Key 就直说，不推假词
   if (!key) {
@@ -691,7 +790,9 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
     try {
       const { results, timeSensitive } = await searchForQuestion(question, searchKey);
       if (results.length) {
-        finalQuestion = buildSearchBlock(results) + question + (timeSensitive ? NEWS_OUTPUT_RULES : '');
+        newsMode = timeSensitive && isNewsQuestion(question);
+        newsResults = results;
+        finalQuestion = buildSearchBlock(results) + question + (newsMode ? NEWS_JSON_RULES : (timeSensitive ? NEWS_OUTPUT_RULES : ''));
         webSearched = true;
       }
     } catch (err) {
@@ -716,9 +817,14 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
     default:
       throw new Error(`不支持的模型类型：${model}`);
   }
+  // 新闻结构化：模型出完 JSON 后统一渲染，再一次性发给前端
+  if (newsMode) {
+    answer = renderNewsAnswer(answer, newsResults);
+    onToken(answer);
+  }
   return { answer, thinkSeconds: Number(((Date.now() - started) / 1000).toFixed(1)), webSearched };
 }
 
 module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, searchForQuestion, MODELS_TIMEOUT_MS };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };

@@ -46,8 +46,8 @@ describe('buildSearchBlock（搜索块提示词）', () => {
     ]);
     assert.match(block, /发布日期：2026-11-28/);
     assert.match(block, /发布日期：未注明/);
-    // 头部规则（GPT 评审 2026-11-28 第二轮）：标对应来源的发布日期，不得混同事件日期
-    assert.match(block, /对应来源的发布日期/);
+    // 头部规则：说明"发布日期"字段就是来源网页的发布日期，不得混同事件日期
+    assert.match(block, /来源网页的发布日期/);
     assert.match(block, /不得混用/);
   });
 });
