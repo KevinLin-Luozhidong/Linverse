@@ -436,6 +436,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片，有值就弹裁剪器
   const [uploading, setUploading] = useState(false)
   const [uploadPreview, setUploadPreview] = useState('') // 上传中的本地缩略图：有值才显示"上传中"遮罩
+  const [imgAspect, setImgAspect] = useState(0) // 待发图片的宽高比：发出去前先占位，图片慢慢加载时气泡不跳变
   // typingFor：正在打字的消息下标（-1 = 无），合并了 typing + typingIdx 两个状态，避免不同步
   const [typingFor, setTypingFor] = useState(-1)
   // streamingFor：正在流式输出的消息下标（-1 = 无）；streamStatus：流式进行中的状态文案
@@ -606,10 +607,13 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   // 聊天区自动滚到底（粘底式）：流式每 120ms 刷一次，以前无条件 scrollTop =
   // scrollHeight，配合键盘开合、内容长高，页面就一直跳。现在只在用户本
   // 来就贴底时才跟，翻上去读旧消息时不动；发送新问题时强制重新粘底。
+  // 贴底的判定只留 8px 余量：以前是 120px，慢慢往上拖一点（<120px）还算"贴底"，
+  // 流式每 120ms 刷一次就把人拽回底，手指根本翻不上去、像页面划不动一样
+  // （用户 2026-11-28 报"传了图片发出去页面划不动"，长回答流式时最明显）。
   const onListScroll = () => {
     const el = listRef.current
     if (!el) return
-    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8
   }
   useEffect(() => {
     const el = listRef.current
@@ -632,6 +636,12 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     const previewUrl = URL.createObjectURL(blob)
     setUploadPreview(previewUrl)
     setUploading(true)
+    // 先量出图的宽高比：发出去时用 aspect-ratio 占位，图片从服务器慢慢回来时气泡高度不再跳变
+    try {
+      const bmp = await createImageBitmap(blob)
+      setImgAspect(bmp.width / bmp.height)
+      bmp.close()
+    } catch { setImgAspect(0) }
     try {
       const upUrl = await uploadImage(new File([blob], 'crop.jpg', { type: 'image/jpeg' }))
       setImgUrl(upUrl)
@@ -667,6 +677,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     const userMsg: ChatMsg = {
       role: 'user', content: question,
       imageUrl: imgUrl || undefined,
+      aspectRatio: imgAspect || undefined,
       createdAt: new Date().toISOString(),
     }
     stickRef.current = true
@@ -678,6 +689,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     sendReqIdRef.current = reqId // 唯一请求ID，防止多次请求串台
     const savedImgUrl = userMsg.imageUrl // 失败时恢复图片用
     setImgUrl('')
+    setImgAspect(0)
     // 流式占位消息下标：用户消息在 msgs.length，AI 占位在 msgs.length + 1
     const aiIdx = msgs.length + 1
     try {
@@ -1041,7 +1053,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
           <div key={i} className={'msg ' + (m.role === 'user' ? 'user' : '')}>
             {m.role === 'user' ? (
               <div className="user-bubble">
-                {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" />}
+                {m.imageUrl && <img src={imgSrc(m.imageUrl)} alt="题目图片" style={m.aspectRatio ? { aspectRatio: m.aspectRatio } : undefined} />}
                 {renderUserText(m.content)}
               </div>
             ) : i === typingFor && typingFor >= 0 ? (
