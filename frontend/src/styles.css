@@ -513,6 +513,9 @@ body {
   border: 1px solid var(--line); background: var(--bg); color: var(--ink);
   border-radius: var(--radius-sm); cursor: pointer;
   font-size: calc(17px * var(--fss)); padding: 9px 0;
+  /* 键面居中：光靠行内文本基线放，，. ! ° 这类字形会在框里忽高忽低；
+     flex 居中先把行框摆正，剩下的字形光学偏差由 MathKeyboard 的 NUDGE_EM 微调 */
+  display: flex; align-items: center; justify-content: center; line-height: 1;
   transition: transform 0.12s var(--ease), background 0.2s var(--ease);
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
@@ -884,6 +887,7 @@ body {
 .mini-btn {
   border: 1px solid var(--line); background: var(--card); color: var(--blue-deep);
   font-size: calc(12px * var(--fss)); font-weight: 600; border-radius: 14px; padding: 6px 12px; cursor: pointer;
+  white-space: nowrap;
   transition: transform 0.15s var(--ease);
 }
 .mini-btn:active { transform: scale(0.94); }

@@ -22,6 +22,18 @@ export interface MathKey {
 // 每组末尾都放一个，走到哪都能删。
 const BACKSPACE_KEY: MathKey = { label: '⌫', snippet: '', action: 'backspace', aria: '退格' }
 
+// 字形光学微调（em，正数往下、负数往上）：flex 居中摆的是行框，不是字墨；
+// 基线字（，。_）墨在框底会显得沉底，上标字（° ^）墨在框顶会显得飘顶，
+// ∪∩∨∧∇∂∀⊥ 这类上下不对称的字形视觉中心也不在框心，各补一点才看着齐。
+// 只调偏差明显的单字形；文字键（sin(、绝对值）和整组统一的字形（希腊小写）不动。
+const NUDGE_EM: Record<string, number> = {
+  '，': -0.18, '.': -0.2, '_': -0.18,
+  '·': -0.06, '!': -0.08, '∠': -0.08,
+  '°': 0.08, '^': 0.1,
+  '∪': -0.06, '∩': 0.06, '∨': -0.06, '∧': 0.06,
+  '∇': 0.06, '∂': -0.06, '∀': 0.05, '⊥': -0.05,
+}
+
 const GROUPS: { name: string; keys: MathKey[] }[] = [
   {
     name: '数字',
@@ -292,7 +304,7 @@ export default function MathKeyboard({
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleKey(k) }
             }}>
-            {k.label}
+            <span style={NUDGE_EM[k.label] !== undefined ? { transform: `translateY(${NUDGE_EM[k.label]}em)` } : undefined}>{k.label}</span>
           </button>
         ))}
       </div>

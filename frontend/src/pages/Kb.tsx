@@ -20,7 +20,7 @@ export default function Kb({ active }: { active?: boolean }) {
   const [books, setBooks] = useState<KbBook[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmDel, setConfirmDel] = useState('') // 正在二次确认的书名
-  const [deleting, setDeleting] = useState(false)
+  const [deletingBook, setDeletingBook] = useState<string | null>(null) // 正在删哪本书：防连点只锁那一行，别把整列删除按钮都锁了
   const [toastMsg, toastKey, setToast] = useToast()
   // 展开的书详情：书名 / 已拉到的块 / 总数 / 拉取中 / 拉取失败 / 已展开全文的块 id
   const [expanded, setExpanded] = useState('')
@@ -75,7 +75,8 @@ export default function Kb({ active }: { active?: boolean }) {
 
   const onDelete = async (book: string) => {
     if (confirmDel !== book) { setConfirmDel(book); return } // 第一次点：进入确认态
-    setDeleting(true)
+    if (deletingBook) return
+    setDeletingBook(book)
     try {
       const r = await kbDeleteBook(book)
       setToast(`已删除《${r.book}》，共 ${r.deleted} 个知识块`)
@@ -84,7 +85,7 @@ export default function Kb({ active }: { active?: boolean }) {
     } catch (e) {
       setToast(e instanceof Error ? e.message : '删除失败')
     } finally {
-      setDeleting(false)
+      setDeletingBook(null)
     }
   }
 
@@ -172,11 +173,11 @@ export default function Kb({ active }: { active?: boolean }) {
                 {/* 删除按钮（点它不触发展开） */}
                 <button
                   className={'kb-del-btn' + (confirmDel === b.book ? ' confirm' : '')}
-                  disabled={deleting}
+                  disabled={deletingBook === b.book}
                   onClick={(e) => { e.stopPropagation(); onDelete(b.book) }}
                   aria-label={confirmDel === b.book ? '再次点击确认删除' : `删除《${b.book}》`}
                 >
-                  {deleting && confirmDel === b.book
+                  {deletingBook === b.book
                     ? <span className="kb-del-spin" />
                     : confirmDel === b.book
                     ? <><I n="trash" size={14} sw={2.5} /><span>确认删除</span></>

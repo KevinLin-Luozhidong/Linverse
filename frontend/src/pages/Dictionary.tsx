@@ -149,7 +149,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   const [reviewBusyId, setReviewBusyId] = useState<string | number | null>(null) // 正在提交的那个单词 id：防连点只锁自己，别把整列按钮都锁了
   const [clearBusy, setClearBusy] = useState(false) // 清除历史中：防连点
   const [delVocabId, setDelVocabId] = useState<string | null>(null) // 生词删除二次确认
-  const [delVocabBusy, setDelVocabBusy] = useState(false) // 生词删除提交中：防连点
+  const [delVocabBusyId, setDelVocabBusyId] = useState<string | number | null>(null) // 正在删哪个生词：防连点只锁那一行，别把整列删除按钮都锁了
 
   // 列表请求版本号：清除、删除、复习等写操作后，之前发出的旧 GET 晚回来也不
   // 能覆盖界面（幽灵条目）；只有最新一轮的响应才能写状态
@@ -456,8 +456,8 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
   // 删除生词：点一次进确认态，再点一次真正删除（与错题本单条删除同款）
   const delVocab = async (v: VocabWord) => {
     if (delVocabId !== v.id) { setDelVocabId(v.id); return }
-    if (delVocabBusy) return
-    setDelVocabBusy(true)
+    if (delVocabBusyId !== null) return
+    setDelVocabBusyId(v.id)
     try {
       await deleteVocab(v.id, profileId || undefined)
       // 写操作后旧的列表 GET 作废（晚回来会把刚删的词恢复出来）
@@ -468,7 +468,7 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
       setToast('已删除')
     } catch (e) {
       setToast(e instanceof Error ? e.message : '删除失败')
-    } finally { setDelVocabBusy(false) }
+    } finally { setDelVocabBusyId(null) }
   }
 
   // 每日打卡（与个人中心页同款：打卡中禁用 + 进行中文案，防连点）
@@ -755,13 +755,13 @@ export default function Dictionary({ profileId }: { profileId: string | null }) 
                     setWord(v.word)
                     search(v.word)
                   }}>
-                  <span><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))` }}>{v.meaning}</span></span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button className="mini-btn" style={{ color: 'var(--red)' }} disabled={delVocabBusy}
+                  <span style={{ flex: 1, minWidth: 0 }}><b>{v.word}</b> <span style={{ color: 'var(--ink2)', fontSize: `calc(13px * var(--fss))` }}>{v.meaning}</span></span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <button className="mini-btn" style={{ color: 'var(--red)' }} disabled={delVocabBusyId === v.id}
                       onClick={(e) => { e.stopPropagation(); delVocab(v) }}>
-                      {delVocabBusy && delVocabId === v.id ? '删除中…' : delVocabId === v.id ? '确认删除' : '删除'}
+                      {delVocabBusyId === v.id ? '删除中…' : delVocabId === v.id ? '确认删除' : '删除'}
                     </button>
-                    <span style={{ color: 'var(--ink3)', fontSize: `calc(12px * var(--fss))` }}>查词 →</span>
+                    <span style={{ color: 'var(--ink3)', fontSize: `calc(12px * var(--fss))`, whiteSpace: 'nowrap' }}>查词 →</span>
                   </span>
                 </div>
               ))}
