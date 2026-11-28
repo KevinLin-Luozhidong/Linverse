@@ -546,6 +546,26 @@ body {
 .frac .frac {
   font-size: 0.82em;
 }
+/* 根号部首：√ + 横线盖住被开方数（课本写法），不用 KaTeX 也能画出来；
+   横线是被开方数顶部的 border，根号符号与它顶对齐；嵌套根号自动缩小 */
+.sqrt {
+  display: inline-flex;
+  align-items: flex-start;
+  vertical-align: middle;
+  line-height: 1.05;
+}
+.sqrt-sign {
+  line-height: 1;
+}
+.sqrt-body {
+  border-top: 1.5px solid var(--ink);
+  padding: 0 0.12em;
+  margin-top: 0.14em;
+  line-height: 1.05;
+}
+.sqrt .sqrt {
+  font-size: 0.82em;
+}
 .photo-preview {
   position: relative; width: 52px; height: 52px; border-radius: 14px;
   overflow: hidden; flex-shrink: 0; border: 1px solid var(--line);

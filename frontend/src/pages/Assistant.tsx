@@ -63,6 +63,24 @@ function readFraction(source: string, start: number): { numerator: string; denom
   return { numerator: num.content, denominator: den.content, end: den.end }
 }
 
+// 从 source[start] 起读 \sqrt{被开方数} 或 \sqrtX（单个字符）；失败返回 null。
+// 根号必须画成真正的部首（√ + 横线盖住被开方数），不能只转成 √{...} 纯文本——
+// 纯文本画不出横线，高中生要的是课本那种。渲染见 renderRich / renderUserText 里的 .sqrt。
+function readSqrt(source: string, start: number): { radicand: string; end: number } | null {
+  if (!source.startsWith('\\sqrt', start)) return null
+  const g = readFractionGroup(source, start + 5)
+  if (g) {
+    if (!g.content) return null
+    return { radicand: g.content, end: g.end }
+  }
+  // \sqrt 后直接跟单个字符（\sqrt5）也算开方；空格、反斜杠不算
+  const ch = source[start + 5]
+  if (ch && !/\s/.test(ch) && ch !== '\\') {
+    return { radicand: ch, end: start + 6 }
+  }
+  return null
+}
+
 // 用户气泡：只把 \frac{分子}{分母} 转成叠排分数，其他内容原样显示。
 // 不走 renderRich：用户原话不做标题/列表/**重点**二次排版；分子分母递归同一套；
 // 解析失败时拼成 a/b（或分子/），不留 \frac 命令字符。
@@ -74,9 +92,31 @@ function renderUserText(text: string): ReactNode[] {
     if (plain) { out.push(<span key={key}>{plain}</span>); key += 1 }
   }
   while (cursor < text.length) {
-    const at = text.indexOf('\\frac', cursor)
+    const atFrac = text.indexOf('\\frac', cursor)
+    const atSqrt = text.indexOf('\\sqrt', cursor)
+    let at = -1
+    let isSqrt = false
+    if (atFrac >= 0 && (atSqrt < 0 || atFrac <= atSqrt)) { at = atFrac }
+    else if (atSqrt >= 0) { at = atSqrt; isSqrt = true }
     if (at < 0) { pushPlain(text.slice(cursor)); break }
     pushPlain(text.slice(cursor, at))
+    if (isSqrt) {
+      const r = readSqrt(text, at)
+      if (r) {
+        out.push(
+          <span className="sqrt" key={key}>
+            <span className="sqrt-sign">√</span>
+            <span className="sqrt-body">{renderUserText(r.radicand)}</span>
+          </span>,
+        )
+        key += 1
+        cursor = r.end
+        continue
+      }
+      pushPlain('\\sqrt')
+      cursor = at + 5
+      continue
+    }
     const f = readFraction(text, at)
     if (f) {
       out.push(
@@ -133,9 +173,33 @@ function renderRich(text: string): ReactNode[] {
       })
     }
     while (cursor < s.length) {
-      const at = s.indexOf('\\frac', cursor)
+      const atFrac = s.indexOf('\\frac', cursor)
+      const atSqrt = s.indexOf('\\sqrt', cursor)
+      let at = -1
+      let isSqrt = false
+      if (atFrac >= 0 && (atSqrt < 0 || atFrac <= atSqrt)) { at = atFrac }
+      else if (atSqrt >= 0) { at = atSqrt; isSqrt = true }
       if (at < 0) { renderPlain(s.slice(cursor)); break }
       renderPlain(s.slice(cursor, at))
+      if (isSqrt) {
+        const r = readSqrt(s, at)
+        if (r) {
+          // 被开方数递归走同一套 inline：嵌套分数、嵌套根号、上下标都生效。
+          out.push(
+            <span className="sqrt" key={key}>
+              <span className="sqrt-sign">√</span>
+              <span className="sqrt-body">{inline(r.radicand)}</span>
+            </span>,
+          )
+          key += 1
+          cursor = r.end
+          continue
+        }
+        // 解析失败回退，绝不抛异常：原样交给 cleanLatex（√{...} 纯文本兜底）。
+        renderPlain('\\sqrt')
+        cursor = at + 5
+        continue
+      }
       const f = readFraction(s, at)
       if (f) {
         // 分子/分母递归走同一套 inline：嵌套分数、分子里的 \sqrt、上下标都生效。
