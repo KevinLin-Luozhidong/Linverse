@@ -435,6 +435,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
   const [imgUrl, setImgUrl] = useState('') // 待发送的图片
   const [cropSrc, setCropSrc] = useState('') // 裁剪中的图片，有值就弹裁剪器
   const [uploading, setUploading] = useState(false)
+  const [uploadPreview, setUploadPreview] = useState('') // 上传中的本地缩略图：有值才显示"上传中"遮罩
   // typingFor：正在打字的消息下标（-1 = 无），合并了 typing + typingIdx 两个状态，避免不同步
   const [typingFor, setTypingFor] = useState(-1)
   // streamingFor：正在流式输出的消息下标（-1 = 无）；streamStatus：流式进行中的状态文案
@@ -627,6 +628,9 @@ export default function Assistant({ profileId, active = true }: { profileId: str
     const url = cropSrc
     setCropSrc('')
     if (url) URL.revokeObjectURL(url)
+    // 上传中先给一张本地缩略图 + "上传中" 遮罩，别让屏幕干等（用户 2026-11-28 要求）
+    const previewUrl = URL.createObjectURL(blob)
+    setUploadPreview(previewUrl)
     setUploading(true)
     try {
       const upUrl = await uploadImage(new File([blob], 'crop.jpg', { type: 'image/jpeg' }))
@@ -635,6 +639,8 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       setToast(e instanceof Error ? e.message : '上传失败')
     } finally {
       setUploading(false)
+      setUploadPreview('')
+      URL.revokeObjectURL(previewUrl)
     }
   }
   const onCropCancel = () => {
@@ -1092,9 +1098,15 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       <div className="composer">
         <input ref={fileRef} type="file" accept="image/*"
           style={{ display: 'none' }} onChange={(e) => onPickImage(e.target.files?.[0])} />
-        <button className="cam-btn" onClick={() => fileRef.current?.click()} aria-label="拍照提问">
+        <button className="cam-btn" onClick={() => fileRef.current?.click()} aria-label="拍照提问" disabled={uploading}>
           {uploading ? <Spin /> : <I n="camera" size={24} />}
         </button>
+        {uploading && uploadPreview && (
+          <div className="photo-preview photo-uploading">
+            <img src={uploadPreview} alt="正在上传" />
+            <div className="photo-uploading-mask"><Spin /><span>上传中…</span></div>
+          </div>
+        )}
         {imgUrl && (
           <div className="photo-preview">
             <img src={imgSrc(imgUrl)} alt="待发送" />
@@ -1113,7 +1125,7 @@ export default function Assistant({ profileId, active = true }: { profileId: str
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
           <button className="send-btn" onClick={() => send()}
-            disabled={sending || (!input.trim() && !imgUrl)} aria-label="发送">
+            disabled={sending || uploading || (!input.trim() && !imgUrl)} aria-label="发送">
             <I n="send" size={18} />
           </button>
         </div>

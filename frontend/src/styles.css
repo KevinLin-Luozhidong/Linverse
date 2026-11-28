@@ -557,6 +557,15 @@ body {
   border: 0; background: rgba(0, 0, 0, 0.55); color: #fff;
   font-size: calc(12px * var(--fss)); cursor: pointer; line-height: 1;
 }
+/* 上传中遮罩：缩略图上盖一层半透明 + 小转圈 + "上传中…"，弱网下也有明确反馈 */
+.photo-uploading-mask {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  color: var(--ink2); font-size: calc(10px * var(--fss)); line-height: 1.2;
+}
+.photo-uploading-mask .spin { width: 20px; height: 20px; border-width: 2px; }
 /* 空状态欢迎语 */
 .chat-welcome { margin: auto 0; text-align: center; padding: 0 32px; }
 .chat-welcome .w-title { font-size: calc(21px * var(--fss)); font-weight: 800; margin-bottom: 8px; }
