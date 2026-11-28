@@ -31,7 +31,10 @@ export default function PdfViewer({ url, page, title }: { url: string; page: num
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url])
 
-  // 当前页渲染：宽度贴合容器（手机屏），高度按比例来；页码越界就夹到有效范围
+  // 当前页渲染：宽度贴合容器（手机屏），高度按比例来；页码越界就夹到有效范围。
+  // 清晰度关键：必须按设备像素比渲染——iPhone 是 3 倍屏，canvas 只画 CSS 像素
+  // （390px）再由屏幕放大 3 倍显示，就是用户说的“超级无敌模糊”；
+  // 按 dpr 渲染（390×3=1170 设备像素），CSS 尺寸不变，字就锐了。
   useEffect(() => {
     if (!doc || !canvasRef.current || !wrapRef.current) return
     const target = Math.min(Math.max(1, pageNum), doc.numPages)
@@ -40,14 +43,14 @@ export default function PdfViewer({ url, page, title }: { url: string; page: num
     doc.getPage(target).then((p) => {
       if (cancelled || !canvasRef.current || !wrapRef.current) return
       const base = p.getViewport({ scale: 1 })
-      const w = wrapRef.current.clientWidth || 360
-      const scale = w / base.width
-      const vp = p.getViewport({ scale })
+      const cssW = wrapRef.current.clientWidth || 360
+      const dpr = Math.min(window.devicePixelRatio || 1, 3)
+      const vp = p.getViewport({ scale: (cssW / base.width) * dpr })
       const canvas = canvasRef.current
       canvas.width = Math.floor(vp.width)
       canvas.height = Math.floor(vp.height)
-      canvas.style.width = vp.width + 'px'
-      canvas.style.height = vp.height + 'px'
+      canvas.style.width = Math.floor(vp.width / dpr) + 'px'
+      canvas.style.height = Math.floor(vp.height / dpr) + 'px'
       // pdfjs-dist v6 的 render 要直接给 canvas 元素（不再只给 canvasContext）
       p.render({ canvas, viewport: vp })
     })
