@@ -284,9 +284,11 @@ const AnswerCard = memo(function AnswerCard({ text, question, profileId, thinkTe
           <div className="ans-refs-title"><I n="book" size={13} />参考课本</div>
           {kbRefs.map((r, i) => (
             <button key={i} className="ans-ref" onClick={() => openRef(r)}>
-              <span className="ans-ref-book">{r.book}</span>
-              <span className="ans-ref-loc">{[r.chapter, r.section].filter(Boolean).join(' · ')}{r.page_start > 0 ? ` · 第${r.page_start}${r.page_end > r.page_start ? `-${r.page_end}` : ''}页` : ' · 前言'}</span>
-              <I n="chev" size={13} />
+              <span className="ans-ref-text">
+                <span className="ans-ref-book">{r.book}</span>
+                <span className="ans-ref-loc">{[r.chapter, r.section].filter(Boolean).join(' · ')}{r.page_start > 0 ? ` · 第${r.page_start}${r.page_end > r.page_start ? `–${r.page_end}` : ''}页` : ' · 前言'}</span>
+              </span>
+              <I n="chev" size={16} />
             </button>
           ))}
         </div>

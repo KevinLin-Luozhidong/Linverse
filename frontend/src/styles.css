@@ -412,15 +412,22 @@ body {
 .fade-in { animation: fadeUp 0.25s var(--ease); }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(4px); } }
 /* 参考课本块：和正文分开——字小一号、颜色浅、顶上细线分隔，一眼能分清这不是答案正文 */
-.ans-refs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+/* 引用区垫一层底（两层玻璃叠加后更实，户外/暗屏下小字仍看得清），行内再分两行 */
+.ans-refs { display: flex; flex-direction: column; gap: 8px;
+  margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); }
 .ans-refs-title { display: flex; align-items: center; gap: 5px;
-  font-size: calc(12px * var(--fss)); font-weight: 700; color: var(--ink3); margin-bottom: 4px; }
-.ans-ref { display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left;
-  padding: 6px 2px; background: none; border: 0; cursor: pointer;
-  font-size: calc(12px * var(--fss)); line-height: 1.5; color: var(--ink3); }
-.ans-ref-book { font-weight: 700; color: var(--ink2); flex-shrink: 0; }
-.ans-ref-loc { flex: 1; min-width: 0; }
-.ans-ref svg { flex-shrink: 0; align-self: center; opacity: 0.5; }
+  font-size: calc(12px * var(--fss)); font-weight: 700; color: var(--ink3); margin-bottom: 2px; }
+.ans-ref { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  min-height: 44px; padding: 10px 12px; background: none; border: 0; border-radius: 10px;
+  cursor: pointer; color: var(--ink3); }
+.ans-ref:active { background: var(--blue-soft); }
+@media (hover: hover) { .ans-ref:hover { background: var(--blue-soft); } }
+.ans-ref-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ans-ref-book { font-size: calc(15px * var(--fss)); font-weight: 600; line-height: 1.35; color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ans-ref-loc { font-size: calc(12px * var(--fss)); line-height: 1.4; color: var(--ink3); }
+.ans-ref svg { flex-shrink: 0; align-self: center; opacity: 0.6; }
 /* 打字机 */
 .caret { display: inline-block; width: 2px; height: 1.1em; background: var(--blue); vertical-align: -2px; animation: blink 0.9s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
