@@ -814,7 +814,14 @@ export default function Assistant({ profileId, active = true }: { profileId: str
           ＋ 新会话
         </button>
         <div className="conv-rail-list">
-          {convs.length === 0 && <Empty text="还没有会话，开始第一次提问吧" />}
+          {convs.length === 0 ? (
+            <div className="rail-suggest">
+              <div className="rail-suggest-label">还没有会话，点一个开始问</div>
+              <button className="rail-suggest-item" onClick={() => send('集合的定义是什么')}>集合的定义是什么？</button>
+              <button className="rail-suggest-item" onClick={() => send('今日新闻')}>今日新闻</button>
+              <button className="rail-suggest-item" onClick={() => send('abandon 是什么意思')}>abandon 是什么意思</button>
+            </div>
+          ) : null}
           {convs.map((c) => (
             <div key={c.id}
               className={'conv-item' + (c.id === convId ? ' active' : '')}

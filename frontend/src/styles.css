@@ -1740,6 +1740,11 @@ body::before {
   }
   .conv-rail-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px; font-size: 15px; font-weight: 800; }
   .conv-rail-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* 会话栏空态：没会话时不留大白板，给三个点一下就能问的快速开始（桌面端才看得到栏，手机上走抽屉） */
+  .rail-suggest { padding: 10px 6px; display: flex; flex-direction: column; gap: 8px; }
+  .rail-suggest-label { font-size: 12px; color: var(--ink2); padding: 2px 6px 0; }
+  .rail-suggest-item { display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 13.5px; line-height: 1.4; cursor: pointer; }
+  .rail-suggest-item:active { transform: scale(.98); }
   /* chat-main：桌面端右侧聊天列；手机上 display:contents 不占位（见 Assistant.tsx） */
   .chat-main { display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%; position: relative; }
   .chat-main > .chat-list { min-height: 0; }
@@ -1770,9 +1775,10 @@ body::before {
 
 /* 更宽的桌面（1440px 以上）：内容再放宽一档，会话栏和消息列跟着加宽 */
 @media (min-width: 1440px) {
-  .tabview { max-width: 1320px; }
+  /* v2.1：宽屏再用足一点——内容上限 1320px → 1480px（1920px 屏上两侧留白从 180px 收到 100px），消息列 900px → 1020px */
+  .tabview { max-width: 1480px; }
   .conv-rail { width: 280px; }
   .chat-main > .chat-topbar, .chat-main > .brief-strip,
-  .chat-main > .composer, .chat-main > .math-wrap { max-width: 900px; }
-  .chat-list > .msg, .chat-list > .chat-welcome, .chat-list > .spin-slot { max-width: 900px; }
+  .chat-main > .composer, .chat-main > .math-wrap { max-width: 1020px; }
+  .chat-list > .msg, .chat-list > .chat-welcome, .chat-list > .spin-slot { max-width: 1020px; }
 }
