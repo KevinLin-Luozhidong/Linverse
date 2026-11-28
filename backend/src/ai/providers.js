@@ -362,18 +362,31 @@ return items.slice(0, 5).map((it) => ({
 title: it.title || '',
 content: String(it.content || '').slice(0, 500), // 单条截断，防 prompt 爆炸
 link: it.link || '',
+publish_date: normalizePublishDate(it.publish_date),
 })).filter((it) => it.title || it.content);
+}
+
+// 搜索结果的发布日期归一化（GPT 评审 2026-11-28）：智谱 publish_date 是 string，
+// 不承诺一定是 YYYY-MM-DD（可能带时间、可能为空）。只认白名单：开头是
+// YYYY-MM-DD 的取前 10 位；其他非空原样保留（不猜、不换算时区）；空的返回 ''，
+// 拼块时显示"未注明"。注意发布日期 ≠ 事件发生日，模型照抄即可。
+function normalizePublishDate(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : s;
 }
 
 // 把搜索结果拼成 prompt 前缀：要求模型注明来源，提醒时效性以来源为准
 function buildSearchBlock(results) {
 const lines = results.map((r, i) => {
 let s = `${i + 1}. ${r.title}`;
+s += `\n   发布日期：${r.publish_date || '未注明'}`;
 if (r.content) s += `\n   ${r.content}`;
 if (r.link) s += `\n   来源：${r.link}`;
 return s;
 });
-return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
+return `【联网搜索结果（今天是 ${todayZh()}，仅供参考，时效性信息请以来源为准，回答时请注明信息来源；回答新闻类问题时，每条新闻开头必须标注该条的发布日期，照抄上面给出的日期，严禁编造，没有日期的写"日期未注明"；如果搜索结果与问题无关、过时或只是泛泛而谈，直接说明没搜到相关内容，不要编造通用建议）】\n`
 + lines.join('\n')
 + '\n\n【用户问题】\n';
 }
@@ -694,4 +707,4 @@ async function askStream({ model, question, imageUrl, deepThink, aiKey, endpoint
 
 module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, MODELS_TIMEOUT_MS };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate, MODELS_TIMEOUT_MS };

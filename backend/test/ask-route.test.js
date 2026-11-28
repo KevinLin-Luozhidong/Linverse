@@ -73,4 +73,34 @@ describe('/ask 路由 doKb 作用域回归', () => {
     assert.ok(res.jsonBody && typeof res.jsonBody.answer === 'string');
     assert.equal(res.jsonBody.kbUsed, true);
   });
+
+  it('有引用时 assistant 消息带 metadata.kbRefs 存档、user 消息不带', async () => {
+    // 引用块持久化（迁移 011）：saveTurn 必须把本轮 kbRefs 写进 assistant 消息的
+    // 第 5 参数 metadata 里，否则重进历史会话拿不到引用块。user 消息不带 metadata。
+    const daoStub = require.cache[require.resolve('../src/db/dao.js')].exports;
+    const kbStub = require.cache[require.resolve('../src/routes/kb.js')].exports;
+    const calls = [];
+    const origAdd = daoStub.addMessage;
+    const origSearch = kbStub.searchKbContext;
+    const refs = [{ book: '数学', chapter: '第一章', section: '1.1', page_start: 1, page_end: 2 }];
+    daoStub.addMessage = async (...args) => { calls.push(args); return {}; };
+    kbStub.searchKbContext = async () => ({ context: '教材块', refs, faq: null });
+    try {
+      const handle = findAskHandler();
+      const req = { body: { profileId: '3', question: '集合的定义是什么', useKb: true, historyMsgs: [] } };
+      const res = mockRes();
+      let err = null;
+      await handle(req, res, (e) => { err = e; });
+      assert.equal(err, null, err && err.message);
+      const assistantCall = calls.find((c) => c[2] === 'assistant');
+      assert.ok(assistantCall, '没存 assistant 消息');
+      assert.deepEqual(assistantCall[4], { kbRefs: refs });
+      const userCall = calls.find((c) => c[2] === 'user');
+      assert.ok(userCall, '没存 user 消息');
+      assert.equal(userCall[4], undefined);
+    } finally {
+      daoStub.addMessage = origAdd;
+      kbStub.searchKbContext = origSearch;
+    }
+  });
 });

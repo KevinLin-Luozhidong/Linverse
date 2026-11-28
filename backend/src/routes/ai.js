@@ -88,7 +88,9 @@ function resolveImageForVision(imageUrl) {
 
 // 问答存档（JSON 与流式两路共用）：有 conversationId 就续写，没有就新建；
 // 失败不留空会话，所以先调 AI、成功后才建会话存档。返回会话 id，串号时返回 null。
-async function saveTurn(profileId, conversationId, question, answer) {
+// kbRefs：本轮 RAG 引用块，存进 assistant 消息的 metadata 里（迁移 011），
+// 重进历史会话时前端从这里还原引用块；没有引用时不传，存 '{}'。
+async function saveTurn(profileId, conversationId, question, answer, kbRefs) {
   let cid = conversationId;
   if (cid) {
     // 防止串到别人的对话：必须同时匹配 profileId
@@ -99,7 +101,7 @@ async function saveTurn(profileId, conversationId, question, answer) {
     cid = (await dao.createConversation(profileId, title)).id;
   }
   await dao.addMessage(profileId, cid, 'user', question.trim());
-  await dao.addMessage(profileId, cid, 'assistant', answer);
+  await dao.addMessage(profileId, cid, 'assistant', answer, kbRefs && kbRefs.length ? { kbRefs } : undefined);
   return cid;
 }
 
@@ -202,7 +204,7 @@ router.post('/ask', ah(async (req, res) => {
         historyMsgs: Array.isArray(historyMsgs) ? historyMsgs : [],
         onToken: (t) => sendEvent('token', { text: t }),
       });
-      const cid = await saveTurn(profileId, conversationId, question, answer);
+      const cid = await saveTurn(profileId, conversationId, question, answer, kbRefs);
       if (!cid) {
         sendEvent('error', { message: '对话不存在' });
         return res.end();
@@ -232,7 +234,7 @@ router.post('/ask', ah(async (req, res) => {
   });
 
   // 问答自动存档（与流式分支同一份逻辑）
-  const cid = await saveTurn(profileId, conversationId, question, answer);
+  const cid = await saveTurn(profileId, conversationId, question, answer, kbRefs);
   if (!cid) return res.status(404).json({ error: '对话不存在' });
 
   res.json({ answer, thinkSeconds, conversationId: cid, model: model || 'deepseek', webSearched: !!webSearched, kbUsed, kbRefs });

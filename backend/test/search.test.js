@@ -5,7 +5,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { _test } = require('../src/ai/providers');
-const { isTimeSensitive, buildSearchQuery, buildSearchBlock } = _test;
+const { isTimeSensitive, buildSearchQuery, buildSearchBlock, normalizePublishDate } = _test;
 
 describe('isTimeSensitive（时效词判断）', () => {
   test('新闻类问句命中', () => {
@@ -37,5 +37,32 @@ describe('buildSearchBlock（搜索块提示词）', () => {
     assert.match(block, /不要编造通用建议/);
     assert.match(block, /新闻早餐/);
     assert.match(block, /https:\/\/example\.com\/a/);
+  });
+
+  test('每条结果带发布日期行：有日期的显示、无日期的写未注明', () => {
+    const block = buildSearchBlock([
+      { title: 'A', content: 'c', link: 'https://example.com/a', publish_date: '2026-11-28' },
+      { title: 'B', content: 'c', link: 'https://example.com/b', publish_date: '' },
+    ]);
+    assert.match(block, /发布日期：2026-11-28/);
+    assert.match(block, /发布日期：未注明/);
+    assert.match(block, /每条新闻开头必须标注该条的发布日期/);
+  });
+});
+
+describe('normalizePublishDate（发布日期归一化）', () => {
+  test('YYYY-MM-DD 原样', () => {
+    assert.equal(normalizePublishDate('2026-11-28'), '2026-11-28');
+  });
+  test('ISO 时间戳只取日期部分', () => {
+    assert.equal(normalizePublishDate('2026-11-28T08:30:00+08:00'), '2026-11-28');
+  });
+  test('空值 / 缺失返回空串', () => {
+    assert.equal(normalizePublishDate(''), '');
+    assert.equal(normalizePublishDate(null), '');
+    assert.equal(normalizePublishDate(undefined), '');
+  });
+  test('非日期字符串原样保留、不猜', () => {
+    assert.equal(normalizePublishDate('昨天'), '昨天');
   });
 });

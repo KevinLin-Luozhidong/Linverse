@@ -515,7 +515,12 @@ export default function Assistant({ profileId, active = true }: { profileId: str
       const c = await getConversation(id, profileId)
       if (seq !== openSeqRef.current) return // 已被更新的点击超车，丢弃过期响应
       setConvId(id)
-      setMsgs(c.messages)
+      // 引用块持久化（迁移 011）：历史消息的 kbRefs 存在 metadata 里，读出来还原；
+      // 必须是数组才认（防脏数据），老数据没有 metadata，自然没有引用块。
+      setMsgs(c.messages.map((m) => ({
+        ...m,
+        kbRefs: Array.isArray(m.metadata?.kbRefs) ? m.metadata!.kbRefs : m.kbRefs,
+      })))
       setTypingFor(-1)
       setDrawerOpen(false)
     } catch (e) {

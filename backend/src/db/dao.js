@@ -208,10 +208,12 @@ async function createConversation(profileId, title) {
   return r.rows[0];
 }
 
-async function addMessage(profileId, conversationId, role, content) {
+async function addMessage(profileId, conversationId, role, content, metadata) {
+  // metadata 可选：assistant 消息存 { kbRefs: [...] }（引用块持久化，迁移 011），
+  // 不传就是 '{}'（列默认值）；JSON.stringify 后存 JSONB 列。
   const r = await query(
-    'INSERT INTO messages ("profileId", "conversationId", role, content) VALUES ($1, $2, $3, $4) RETURNING *',
-    [profileId, conversationId, role, content]
+    'INSERT INTO messages ("profileId", "conversationId", role, content, metadata) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [profileId, conversationId, role, content, JSON.stringify(metadata || {})]
   );
   return r.rows[0];
 }
