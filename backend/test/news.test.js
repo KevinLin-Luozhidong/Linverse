@@ -1,7 +1,7 @@
 const assert = require('node:assert');
 const { describe, test} = require('node:test');
 const providers = require('../src/ai/providers');
-const { isNewsQuestion, renderNewsAnswer, extractNewsPartial, validateNewsItems, stripUnbalancedQuotes, NEWS_JSON_RULES, todayISO, todayZh} = providers._test;
+const { isNewsQuestion, renderNewsAnswer, extractNewsPartial, readPartialField, validateNewsItems, stripUnbalancedQuotes, NEWS_JSON_RULES, todayISO, todayZh} = providers._test;
 
 // 搜索结果桩（publish_date 已是归一化后的 YYYY-MM-DD）
 const RESULTS = [
@@ -169,16 +169,18 @@ const lines = out.split('\n').filter((l) => /^\d+\. /.test(l));
 assert.equal(lines.length, 10);
 });
 
-test('逐条渲染：第一条写完就能显示，第二条没写完不显示', () => {
+test('逐条渲染：第一条写完就能显示，第二条正在写也实时跟出来', () => {
 const partial = '{"items": [{"title": "新闻A", "time": "", "summary": "摘要A。", "source": "早安长春！新闻早班车", "date": "2026-11-28"}, {"title": "新闻B", "time": "", "summary": "摘要B';
 const out = extractNewsPartial(partial, RESULTS);
 assert.ok(out);
 assert.match(out, /1\. 新闻A/);
-assert.doesNotMatch(out, /新闻B/);
+assert.match(out, /2\. 新闻B：摘要B/); // 没写完的第二条实时显示，不用等它写完才"跳"出来
 });
 
-test('逐条渲染：没有完整条目时返回 null（继续等）', () => {
-assert.equal(extractNewsPartial('{"items": [{"title": "新闻A", "time": ""', RESULTS), null);
+test('逐条渲染：只有标题也实时显示（正在写的那条）；不是 JSON / 空串才返回 null', () => {
+const out = extractNewsPartial('{"items": [{"title": "新闻A", "time": ""', RESULTS);
+assert.ok(out);
+assert.match(out, /1\. 新闻A/);
 assert.equal(extractNewsPartial('不是 JSON', RESULTS), null);
 assert.equal(extractNewsPartial('', RESULTS), null);
 });
@@ -202,6 +204,43 @@ assert.match(partials[0], /1\. 新闻A/);
 assert.doesNotMatch(partials[0], /新闻B/);
 assert.match(partials[1], /新闻B/);
 assert.equal(partials[2], renderNewsAnswer(full, RESULTS));
+});
+
+test('流式：摘要一词一词长出来，越喂越长，最后与最终答案一致', () => {
+const full = jsonItems([
+{ title: '新闻A', time: '上午9点', summary: '个人不低于10万元，机构不低于500万元。', source: '早安长春！新闻早班车', date: '2026-11-28'},
+{ title: '新闻B', time: '', summary: '贪污5.87亿元。', source: '每日资讯简报', date: '2026-11-28'},
+]);
+// 在第一条摘要中间切开，模拟流式逐词到达；来源字段还没写到，所以第一段只有时间没有来源
+const cutSummary = full.indexOf('机构不低于');
+const cutNext = full.indexOf('{"title":"新闻B"');
+const p1 = extractNewsPartial(full.slice(0, cutSummary), RESULTS);
+const p2 = extractNewsPartial(full.slice(0, cutNext), RESULTS);
+const p3 = extractNewsPartial(full, RESULTS);
+assert.ok(p1);
+assert.match(p1, /1\. 新闻A（上午9点）：个人不低于10万元，/);
+assert.doesNotMatch(p1, /机构不低于/);
+assert.doesNotMatch(p1, /来源/);
+assert.doesNotMatch(p1, /新闻B/);
+assert.ok(p2);
+assert.match(p2, /1\. 新闻A（上午9点，来源：《早安长春！新闻早班车》）：个人不低于10万元，机构不低于500万元。/);
+assert.doesNotMatch(p2, /新闻B/);
+assert.equal(p3, renderNewsAnswer(full, RESULTS));
+});
+
+test('流式：来源写出来了就显示来源；转义引号不抠错', () => {
+const partial = '{"items": [{"title": "新闻A", "time": "上午9点", "summary": "他说 \\"好\\" 。", "source": "早安长春！新闻早班';
+const out = extractNewsPartial(partial, RESULTS);
+assert.ok(out);
+assert.match(out, /1\. 新闻A（上午9点，来源：《早安长春！新闻早班》）：他说 "好" 。/);
+});
+
+test('readPartialField：转义还原、没写完取现有内容、没这字段返回空串', () => {
+assert.equal(readPartialField('{"title": "A\\"B', 'title'), 'A"B');
+assert.equal(readPartialField('{"title": "AB', 'title'), 'AB');
+assert.equal(readPartialField('{"title": "AB", "time": "上午9点', 'time'), '上午9点');
+assert.equal(readPartialField('{"title": "AB"}', 'summary'), '');
+assert.equal(readPartialField('{"summary": "第一行\\n第二行', 'summary'), '第一行\n第二行');
 });
 
 test('逐条渲染：标题里带花括号/引号也不抠错对象', () => {

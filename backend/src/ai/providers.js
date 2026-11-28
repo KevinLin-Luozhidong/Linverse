@@ -550,6 +550,35 @@ function renderNewsAnswer(raw, results) {
 // 做法：找 "items" 后的 [，逐个抠顶层 {...}（字符串/转义感知的花括号配对），
 // 抠出的逐个 JSON.parse，坏的跳过。渲染与最终答案共用同一套校验＋排序，
 // 所以逐条显示的内容与最终 done 的答案一致，不会跳变。
+// 从未写完的 JSON 对象文本里抠一个字符串字段的值（新闻流式渲染用）：
+// 找到 "field": " 后，读到下一个未转义的 " 为止；收尾引号还没到就取现有内容。
+// 转义按 JSON 规则还原（\" \\ \n \t \r \uXXXX），还不回来的原样保留。
+function readPartialField(objText, field) {
+  const m = String(objText || '').match(new RegExp(`"${field}"\\s*:\\s*"`));
+  if (!m) return '';
+  let i = m.index + m[0].length;
+  let out = '';
+  while (i < objText.length) {
+    const ch = objText[i];
+    if (ch === '\\' && i + 1 < objText.length) {
+      const nx = objText[i + 1];
+      if (nx === '"') { out += '"'; i += 2; continue; }
+      if (nx === '\\') { out += '\\'; i += 2; continue; }
+      if (nx === 'n') { out += '\n'; i += 2; continue; }
+      if (nx === 't') { out += '\t'; i += 2; continue; }
+      if (nx === 'r') { out += '\r'; i += 2; continue; }
+      if (nx === 'u' && i + 5 < objText.length) {
+        const code = parseInt(objText.slice(i + 2, i + 6), 16);
+        if (!Number.isNaN(code)) { out += String.fromCharCode(code); i += 6; continue; }
+      }
+      out += nx; i += 2; continue;
+    }
+    if (ch === '"') break;
+    out += ch; i++;
+  }
+  return out;
+}
+
 function extractNewsPartial(raw, results) {
   const text = String(raw || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
   const itemsIdx = text.indexOf('"items"');
@@ -576,10 +605,35 @@ function extractNewsPartial(raw, results) {
     try { items.push(JSON.parse(text.slice(i, j + 1))); } catch { /* 坏对象跳过 */ }
     i = j + 1;
   }
-  if (!items.length) return null;
   const out = validateNewsItems(items, results);
-  if (!out.length) return null;
-  return formatNewsAnswer(out);
+  // 正在写的这一条：对象还没闭合。以前要等它写完才显示，所以新闻是一条一条
+  // "跳出来"的（第一条还要等 7–9 秒才出现）。现在把已经写出的字段（标题先到、
+  // 摘要随后）实时抠出来，跟在已完成条目后面一起渲染，文字就一词一词往外长，
+  // 跟普通问答的流式一样。这一条还没校验（来源、日期要等写完才对得上），只是
+  // 过渡显示；最后 done 那一下由 renderNewsAnswer 全量校验后整体替换为准。
+  // 抠字段本身绝不能炸流式：出错就当没这条，退回以前的行为。
+  let transient = '';
+  try {
+    if (i < text.length && text[i] === '{') {
+      const objText = text.slice(i);
+      const title = stripUnbalancedQuotes(readPartialField(objText, 'title').trim());
+      if (title) {
+        const time = readPartialField(objText, 'time').trim();
+        const summary = stripUnbalancedQuotes(readPartialField(objText, 'summary').trim());
+        const source = readPartialField(objText, 'source').trim();
+        const parts = [];
+        if (time) parts.push(time);
+        if (source) parts.push(`来源：《${source}》`);
+        transient = `${out.length + 1}. ${title}`;
+        if (parts.length) transient += `（${parts.join('，')}）`;
+        if (summary) transient += `：${summary}`;
+      }
+    }
+  } catch { transient = ''; }
+  if (!out.length && !transient) return null;
+  let rendered = out.length ? formatNewsAnswer(out) : `【${todayZh()} 今日新闻】`;
+  if (transient) rendered += (out.length ? '\n' : '\n\n') + transient;
+  return rendered;
 }
 
 // ---------- 联网搜索问句改写 ----------
@@ -938,4 +992,4 @@ async function askStream({ model, question, rawQuestion, imageUrl, deepThink, ai
 
 module.exports = { ask, askStream, listModels, isTimeSensitive };
 // 导出纯函数供自动化测试
-module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, extractNewsPartial, validateNewsItems, formatNewsAnswer, stripUnbalancedQuotes, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };
+module.exports._test = { resolveCustomEndpoint, assertSafeEndpoint, isBlockedIp, extractOpenAIDelta, extractGeminiText, extractOllamaText, pumpSseStream, openAICompatibleBody, normalizeModelIds, sanitizeHistory, geminiContents, fetchWithSafeRedirects, loadOllamaImage, ollamaMessages, isTimeSensitive, isNewsQuestion, buildSearchQuery, buildSearchBlock, normalizePublishDate, NEWS_OUTPUT_RULES, NEWS_JSON_RULES, renderNewsAnswer, extractNewsPartial, readPartialField, validateNewsItems, formatNewsAnswer, stripUnbalancedQuotes, todayZh, todayISO, searchForQuestion, MODELS_TIMEOUT_MS };
